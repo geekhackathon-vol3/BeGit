@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Prevent infinite loop when this hook amends the commit
+if [ -n "$README_UPDATE_IN_PROGRESS" ]; then
+  exit 0
+fi
+
+# Skip if claude is not installed
+if ! command -v claude &> /dev/null; then
+  exit 0
+fi
+
+# Check if package-related files changed in this commit
+CHANGED=$(git diff HEAD~1 HEAD --name-only 2>/dev/null)
+PACKAGE_CHANGED=false
+
+echo "$CHANGED" | grep -qE "(Package\.swift|Podfile|\.podspec|project\.pbxproj|package\.json|requirements\.txt|Cargo\.toml|go\.mod|Makefile)" && PACKAGE_CHANGED=true
+
+if [ "$PACKAGE_CHANGED" = false ]; then
+  exit 0
+fi
+
+echo "📦 パッケージ変更を検出。READMEを更新します..."
+
+# Run claude in non-interactive mode to update README
+export README_UPDATE_IN_PROGRESS=1
+claude -p "直前のgitコミットでパッケージや依存関係に関するファイルが変更されました。
+git diff HEAD~1 HEAD を確認し、README.md の依存関係・パッケージに関する記述を最新の状態に更新してください。
+変更がなければ何もしないでください。" \
+  --allowedTools "Bash,Read,Edit" \
+  --output-format text 2>/dev/null
+
+# If README was updated, amend the commit to include it
+if ! git diff --quiet README.md 2>/dev/null; then
+  git add README.md
+  git commit --amend --no-edit --no-verify
+  echo "✅ READMEをコミットに含めました"
+fi
