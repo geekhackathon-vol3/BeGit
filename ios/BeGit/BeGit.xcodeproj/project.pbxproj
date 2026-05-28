@@ -10,9 +10,22 @@
 		848E88C32FC31C7E0099886A /* BeGit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BeGit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		84222EF02FC546390094F554 /* Exceptions for "BeGit" folder in "BeGit" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 848E88C22FC31C7E0099886A /* BeGit */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		848E88C52FC31C7E0099886A /* BeGit */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				84222EF02FC546390094F554 /* Exceptions for "BeGit" folder in "BeGit" target */,
+			);
 			path = BeGit;
 			sourceTree = "<group>";
 		};
@@ -254,6 +267,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BeGit/Info.plist;
+				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleURLName=com.Palm7710.BeGit.oauth;CFBundleURLSchemes=(begit);})";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -298,6 +313,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BeGit/Info.plist;
+				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleURLName=com.Palm7710.BeGit.oauth;CFBundleURLSchemes=(begit);})";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
