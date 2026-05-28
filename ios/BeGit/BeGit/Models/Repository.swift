@@ -4,7 +4,7 @@
 import Foundation
 
 //  GitHub Repository情報
-struct Repository: Identifiable, Equatable, Sendable {
+struct Repository: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID                    //  Repository識別子
     let name: String                //  Repository名
     let memberCount: Int            //  Team member数
