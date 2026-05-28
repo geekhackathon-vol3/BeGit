@@ -7,24 +7,21 @@ import SwiftUI
 struct MakeNotificationView: View {
     //  通知作成画面の状態を管理するViewModel
     @StateObject private var viewModel: MakeNotificationViewModel
+    private let onSend: (RepositoryNotification) -> Void
 
      //  通知作成画面の状態を管理するViewModel
-    init(repository: Repository) {
+    init(repository: Repository, onSend: @escaping (RepositoryNotification) -> Void = { _ in }) {
         _viewModel = StateObject(wrappedValue: MakeNotificationViewModel(repository: repository))
-}
-
-struct MakeNotificationView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationStack {
-            MakeNotificationView(repository: Repository.mockRepositories[0])
-        }
-        .previewDevice("iPhone SE (3rd generation)")
+        self.onSend = onSend
     }
-}
 
     //  外部ViewModel注入用
-    init(viewModel: MakeNotificationViewModel) {
+    init(
+        viewModel: MakeNotificationViewModel,
+        onSend: @escaping (RepositoryNotification) -> Void = { _ in }
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.onSend = onSend
     }
 
     var body: some View {
@@ -49,8 +46,8 @@ struct MakeNotificationView_Previews: PreviewProvider {
                     .padding(.bottom, 104)  //  下部固定button領域分の余白  
                 }
 
-                //  通知結果画面へ遷移
-                NavigationLink(value: RepositoryNavigationRoute.notificationResult(viewModel.makeNotification())) {
+                //  通知を生成して結果画面へ遷移
+                Button(action: sendNotification) {
                     PrimaryCapsuleButtonLabel(
                         title: "通知を送る",
                         systemImage: "paperplane.fill",
@@ -148,5 +145,18 @@ struct MakeNotificationView_Previews: PreviewProvider {
             endPoint: .bottom
         )
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func sendNotification() {
+        onSend(viewModel.makeNotification())
+    }
+}
+
+struct MakeNotificationView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationStack {
+            MakeNotificationView(repository: Repository.mockRepositories[0])
+        }
+        .previewDevice("iPhone SE (3rd generation)")
     }
 }

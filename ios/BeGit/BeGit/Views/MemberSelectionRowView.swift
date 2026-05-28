@@ -21,6 +21,9 @@ struct MemberSelectionRowView: View {
                     .foregroundStyle(isSelected ? AppTheme.accent : Color.white.opacity(0.34))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("\(member.login)の通知対象")
+            .accessibilityValue(isSelected ? "選択済み" : "未選択")
+            .accessibilityHint("ダブルタップで選択状態を切り替えます")
 
             //  member avatar
             AvatarView(member: member, size: 38)
@@ -75,4 +78,3 @@ struct MemberSelectionRowView: View {
         )
     }
 }
-

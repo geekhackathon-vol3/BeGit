@@ -165,7 +165,9 @@ struct RepositoryListView: View {
             RepositoryDashboardView(repository: repository)
         //  通知作成画面へ遷移
         case .makeNotification(let repository):
-            MakeNotificationView(repository: repository)
+            MakeNotificationView(repository: repository) { notification in
+                navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
+            }
         //  通知結果画面へ遷移
         case .notificationResult(let notification):
             NotificationResultView(notification: notification) {

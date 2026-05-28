@@ -11,16 +11,7 @@ struct RepositoryDashboardView: View {
     //  Dashboard画面の状態を管理するViewModel
     init(repository: Repository) {
         _viewModel = StateObject(wrappedValue: RepositoryDashboardViewModel(repository: repository))
-}
-
-struct RepositoryDashboardView_Previews: PreviewProvider {
-    static var previews: some View {
-        NavigationStack {
-            RepositoryDashboardView(repository: Repository.mockRepositories[0])
-        }
-        .previewDevice("iPhone 16 Pro Max")
     }
-}
 
     //  外部ViewModel注入用
     init(viewModel: RepositoryDashboardViewModel) {
@@ -107,5 +98,14 @@ struct RepositoryDashboardView_Previews: PreviewProvider {
             endPoint: .bottom
         )
         .ignoresSafeArea(edges: .bottom)
+    }
+}
+
+struct RepositoryDashboardView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationStack {
+            RepositoryDashboardView(repository: Repository.mockRepositories[0])
+        }
+        .previewDevice("iPhone 16 Pro Max")
     }
 }
