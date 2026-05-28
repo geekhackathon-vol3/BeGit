@@ -1,0 +1,11 @@
+ios:
+  - changed-files:
+    - any-glob-to-any-file: 'ios/**'
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file: 'backend/**'
+
+infra:
+  - changed-files:
+    - any-glob-to-any-file: 'infra/**'
