@@ -8,7 +8,6 @@ import UIKit
 struct RepositoryListView: View {
     @EnvironmentObject private var authState: AuthState         //  アプリ全体で共有される認証状態
     @StateObject private var viewModel: RepositoryListViewModel //  Repository一覧状態を管理するViewModel
-    @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
 
     //  デフォルトViewModelで初期化
     init() {
@@ -22,7 +21,7 @@ struct RepositoryListView: View {
 
     var body: some View {
         //  Navigation対応Home画面
-        NavigationStack(path: $navigationPath) {
+        NavigationStack {
             ZStack {
                 //  背景色
                 AppTheme.background
@@ -38,10 +37,7 @@ struct RepositoryListView: View {
 
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
-                                NavigationLink(value: RepositoryNavigationRoute.dashboard(repository)) {
-                                    RepositoryCardView(repository: repository)
-                                }
-                                .buttonStyle(.plain)
+                                RepositoryCardView(repository: repository)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -73,9 +69,6 @@ struct RepositoryListView: View {
                     //  Repository一覧へ追加
                     viewModel.addRepository(repository)
                 }
-            }
-            .navigationDestination(for: RepositoryNavigationRoute.self) { route in
-                destination(for: route)
             }
         }
         .tint(AppTheme.accent)
@@ -155,25 +148,6 @@ struct RepositoryListView: View {
         //  SafeArea下部まで背景を拡張
         .ignoresSafeArea(edges: .bottom)
     }
-
-    //  routeに応じて遷移先Viewを生成
-    @ViewBuilder
-    private func destination(for route: RepositoryNavigationRoute) -> some View {
-        switch route {
-        //  Repository Dashboard画面へ遷移
-        case .dashboard(let repository):
-            RepositoryDashboardView(repository: repository)
-        //  通知作成画面へ遷移
-        case .makeNotification(let repository):
-            MakeNotificationView(repository: repository)
-        //  通知結果画面へ遷移
-        case .notificationResult(let notification):
-            NotificationResultView(notification: notification) {
-                //  NavigationStackをrootまで戻す
-                navigationPath.removeLast(navigationPath.count)
-            }
-        }
-    }
 }
 
 //  BeGit共通テーマカラー
@@ -186,8 +160,6 @@ enum AppTheme {
     static let fieldBackground = Color.white.opacity(0.07)
     //  メインアクセントカラー
     static let accent = Color(red: 0.804, green: 0.718, blue: 0.965)
-    //  Dashboard / Notificationで使うsoft pink
-    static let softPink = Color(red: 1.00, green: 0.72, blue: 0.84)
 }
 
 //  iPhone SE Preview

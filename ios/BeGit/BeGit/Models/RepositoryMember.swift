@@ -4,7 +4,7 @@
 import Foundation
 
 //  Repository member情報
-struct RepositoryMember: Identifiable, Equatable, Hashable, Sendable {
+struct RepositoryMember: Identifiable, Equatable, Sendable {
     let id: UUID        //  member識別子
     let login: String   //  GitHub login名
     let avatarURL: URL? //  GitHub avatar画像URL
@@ -15,3 +15,4 @@ struct RepositoryMember: Identifiable, Equatable, Hashable, Sendable {
         self.avatarURL = avatarURL
     }
 }
+
