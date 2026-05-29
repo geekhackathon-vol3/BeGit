@@ -20,39 +20,45 @@ struct LoginView: View {
     }
 
     var body: some View {
-        //  画面サイズに応じてレイアウトを調整
-        GeometryReader { proxy in
-            ZStack {
-                Color.black
-                    .ignoresSafeArea()
 
-                VStack(spacing: 24) {
-                    Spacer(minLength: proxy.size.height * 0.08)
+        NavigationStack {
 
-                    logoSection
+            GeometryReader { proxy in
 
-                    signInButton
-                        .padding(.top, 20)
+                ZStack {
+                    Color.black
+                        .ignoresSafeArea()
 
-                    avatarSection
-                        .padding(.top, 12)
+                    VStack(spacing: 24) {
+                        Spacer(minLength: proxy.size.height * 0.08)
 
-                    Spacer(minLength: proxy.size.height * 0.12)
+                        logoSection
+
+                        signInButton
+                            .padding(.top, 20)
+
+                        debugCameraButton
+
+                        avatarSection
+                            .padding(.top, 12)
+
+                        Spacer(minLength: proxy.size.height * 0.12)
+                    }
+                    .frame(maxWidth: min(proxy.size.width - 32, 460))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 24)
+                    .safeAreaPadding(.vertical, 8)
                 }
-                .frame(maxWidth: min(proxy.size.width - 32, 460))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 24)
-                .safeAreaPadding(.vertical, 8)
             }
-        }
-        //  ログイン失敗時のアラート表示
-        .alert(item: $viewModel.alertContext) { context in
-            Alert(
-                title: Text(context.title),
-                message: Text(context.message),
-                dismissButton: .default(Text("OK"), action: viewModel.dismissAlert)
-            )
+            // alertはそのまま
+            .alert(item: $viewModel.alertContext) { context in
+                Alert(
+                    title: Text(context.title),
+                    message: Text(context.message),
+                    dismissButton: .default(Text("OK"), action: viewModel.dismissAlert)
+                )
+            }
         }
     }
 
@@ -144,5 +150,30 @@ struct LoginView_iPhone16ProMax_Previews: PreviewProvider {
     static var previews: some View {
         LoginView()
             .previewDevice("iPhone 16 Pro Max")
+    }
+}
+
+// デバッグ用カメラ遷移ボタン
+private var debugCameraButton: some View {
+
+    NavigationLink {
+
+        CameraView()
+
+    } label: {
+
+        Text("Debug Camera")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.8))
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 999)
+                    .fill(Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 999)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
     }
 }
