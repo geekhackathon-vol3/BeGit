@@ -1,3 +1,8 @@
+//
+//  CameraView.swift
+//  BeGit
+//
+
 import SwiftUI
 
 struct CameraView: View {
@@ -10,67 +15,70 @@ struct CameraView: View {
 
         ZStack {
 
-            // カメラ映像
+            // MARK: - Camera Preview
+
             CameraPreview(session: camera.session)
                 .ignoresSafeArea()
 
-            // 上下グラデーション
+            // MARK: - Gradient Overlay
+
             LinearGradient(
                 colors: [
-                    .black.opacity(0.5),
+                    .black.opacity(0.45),
                     .clear,
-                    .black.opacity(0.85)
+                    .black.opacity(0.9)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             .ignoresSafeArea()
 
+            // MARK: - UI
+
             VStack {
 
-                // タイトル
-                Text("BeGit_")
-                    .font(
-                        .system(
-                            size: 28,
-                            weight: .black,
-                            design: .monospaced
-                        )
-                    )
-                    .foregroundStyle(.white)
-                    .padding(.top, 20)
-
-                Spacer()
-
-                // 前面カメラ風小窓
+                // Header
                 HStack {
-
-                    ZStack {
-
-                        RoundedRectangle(cornerRadius: 20)
-                            .fill(Color.black.opacity(0.35))
-
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(.white.opacity(0.8))
-                    }
-                    .frame(width: 110, height: 150)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(Color.white.opacity(0.8), lineWidth: 2)
-                    )
-                    .shadow(radius: 10)
+                    Spacer()
+                    
+                    Text("BeGit_")
+                        .font(
+                            .system(
+                                size: 28,
+                                weight: .black,
+                                design: .monospaced
+                            )
+                        )
+                        .foregroundStyle(.white)
 
                     Spacer()
                 }
                 .padding(.horizontal, 20)
+                .padding(.top, 14)
 
                 Spacer()
 
-                // シャッターボタン
+                // Front camera ON/OFF
+                HStack {
+
+                    Toggle(isOn: $camera.useFrontCamera) {
+
+                        Label(
+                            "Front Camera",
+                            systemImage: "camera.rotate"
+                        )
+                        .foregroundStyle(.white)
+                        .font(.system(size: 16, weight: .bold))
+                    }
+                    .tint(.white)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+
+                // Shutter Button
                 Button {
 
-                    camera.takePhoto()
+                    camera.takeBeRealPhoto()
 
                 } label: {
 
@@ -90,27 +98,36 @@ struct CameraView: View {
         }
         .navigationBarBackButtonHidden()
 
-        // カメラ開始
+        // MARK: - Start Camera
+
         .onAppear {
 
             camera.startSession()
         }
 
-        // 撮影後遷移
+        // MARK: - Show Preview
+
         .onReceive(camera.$capturedImage) { image in
 
             if image != nil {
 
-                showPreview = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+
+                    showPreview = true
+                }
             }
         }
 
-        // プレビュー画面
+        // MARK: - Preview Screen
+
         .fullScreenCover(isPresented: $showPreview) {
 
-            if let image = camera.capturedImage {
+            if let mainImage = camera.capturedImage {
 
-                PhotoPreviewView(image: image)
+                PhotoPreviewView(
+                    mainImage: mainImage,
+                    frontImage: camera.frontCapturedImage
+                )
 
             } else {
 
