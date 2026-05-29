@@ -51,6 +51,10 @@ struct AddRepositoryView: View {
             .navigationBarTitleDisplayMode(.inline)
             //  NavigationBar items
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    BeGitToolbarLogoView()
+                }
+
                 ToolbarItem(placement: .topBarLeading) {
                     //  Sheetを閉じる
                     Button("Cancel", action: dismiss.callAsFunction)
@@ -66,7 +70,7 @@ struct AddRepositoryView: View {
 
     //  Header表示
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .center, spacing: 10) {
             Text("CONNECT A REPO")
                 .font(.system(size: 13, weight: .black, design: .monospaced))
                 .foregroundStyle(AppTheme.accent)
@@ -74,8 +78,10 @@ struct AddRepositoryView: View {
             Text("Paste a GitHub URL and add the teammates you want to track.")
                 .font(.system(size: 15, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.62))
+                .multilineTextAlignment(.center)
                 .lineSpacing(4)
         }
+        .frame(maxWidth: .infinity)
     }
 
     //  Repository URL入力Section

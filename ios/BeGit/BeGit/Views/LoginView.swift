@@ -23,21 +23,18 @@ struct LoginView: View {
         //  画面サイズに応じてレイアウトを調整
         GeometryReader { proxy in
             ZStack {
-                Color.black
+                AppTheme.background
                     .ignoresSafeArea()
 
                 VStack(spacing: 24) {
-                    Spacer(minLength: proxy.size.height * 0.08)
+                    Spacer(minLength: 0)
 
                     logoSection
 
                     signInButton
                         .padding(.top, 20)
 
-                    avatarSection
-                        .padding(.top, 12)
-
-                    Spacer(minLength: proxy.size.height * 0.12)
+                    Spacer(minLength: proxy.size.height * 0.34)
                 }
                 .frame(maxWidth: min(proxy.size.width - 32, 460))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -58,12 +55,12 @@ struct LoginView: View {
 
     //  ロゴとキャッチコピー
     private var logoSection: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 2) {
             if let image = UIImage(named: "begit_logo") {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 160, maxHeight: 160)
+                    .frame(maxWidth: 240, maxHeight: 84)
             } else {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(Color(red: 0.80, green: 0.72, blue: 0.96))
@@ -76,11 +73,11 @@ struct LoginView: View {
             }
 
             Text("Real-time development or nothing.")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .regular, design: .rounded))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white)
-                .lineLimit(2)
-                .minimumScaleFactor(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
     }
 
@@ -88,9 +85,10 @@ struct LoginView: View {
     private var signInButton: some View {
         Button(action: viewModel.signInWithGitHub) {
             HStack(spacing: 14) {
-                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.black)
+                Image("github_sign_in_icon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
 
                 Text("Sign in with GitHub")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
@@ -105,32 +103,6 @@ struct LoginView: View {
         .accessibilityIdentifier("github_sign_in_button")
     }
 
-    //  アバター表示エリア
-    private var avatarSection: some View {
-        Group {
-            if let image = UIImage(named: "avatar_placeholder") {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .overlay(
-                        Image(systemName: "person.crop.circle.fill")
-                            .resizable()
-                            .scaledToFit()
-                            .padding(14)
-                            .foregroundStyle(Color.white.opacity(0.72))
-                    )
-            }
-        }
-        .frame(width: 84, height: 84)
-        .clipShape(Circle())
-        .overlay(
-            Circle()
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
-    }
 }
 
 struct LoginView_iPhoneSE_Previews: PreviewProvider {
