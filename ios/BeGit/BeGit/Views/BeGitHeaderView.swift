@@ -11,16 +11,11 @@ struct BeGitHeaderView: View {
 
     var body: some View {
         //  Header本体
-        HStack(spacing: 14) {
+        VStack(spacing: 8) {
             //  BeGitロゴ表示
             logoView
 
-            VStack(alignment: .leading, spacing: 4) {
-                //  アプリロゴテキスト
-                Text("BeGit_")
-                    .font(.system(size: 28, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-
+            VStack(spacing: 4) {
                 //  Headerタイトル表示
                 Text(title)
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -33,11 +28,12 @@ struct BeGitHeaderView: View {
                         .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.50))
                         .lineLimit(1)
+                        .multilineTextAlignment(.center)
                 }
             }
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
     }
 
     //  BeGitロゴView
@@ -48,7 +44,6 @@ struct BeGitHeaderView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .padding(7)
             } else {
                 //  ロゴ画像未設定時のFallback表示
                 Text("BG")
@@ -56,9 +51,6 @@ struct BeGitHeaderView: View {
                     .foregroundStyle(.black)
             }
         }
-        .frame(width: 54, height: 54)                                           //  ロゴサイズ
-        .background(AppTheme.accent)                                            //  ロゴ背景色
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))      //  ロゴShape
+        .frame(width: 150, height: 52)                                          //  ロゴサイズ
     }
 }
-

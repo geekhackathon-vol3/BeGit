@@ -66,7 +66,14 @@ struct AddRepositoryView: View {
 
     //  Header表示
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .center, spacing: 10) {
+            if let image = UIImage(named: "begit_logo") {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 150, height: 52)
+            }
+
             Text("CONNECT A REPO")
                 .font(.system(size: 13, weight: .black, design: .monospaced))
                 .foregroundStyle(AppTheme.accent)
@@ -74,8 +81,10 @@ struct AddRepositoryView: View {
             Text("Paste a GitHub URL and add the teammates you want to track.")
                 .font(.system(size: 15, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.62))
+                .multilineTextAlignment(.center)
                 .lineSpacing(4)
         }
+        .frame(maxWidth: .infinity)
     }
 
     //  Repository URL入力Section

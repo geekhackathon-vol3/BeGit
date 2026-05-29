@@ -85,32 +85,25 @@ struct RepositoryListView: View {
 
     //  Header表示
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 16) {
-                //  BeGitロゴ表示
-                logoView
+        VStack(alignment: .center, spacing: 18) {
+            //  BeGitロゴ表示
+            logoView
 
-                VStack(alignment: .leading, spacing: 4) {
-                    //  アプリ名
-                    Text("BeGit")
-                        .font(.system(size: 34, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
-
-                    //  Home画面タイトル
-                    Text("Repository Home")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AppTheme.accent)
-                        .textCase(.uppercase)
-                }
-            }
+            //  Home画面タイトル
+            Text("Repository Home")
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.accent)
+                .textCase(.uppercase)
 
             //  ログインユーザー向け説明文
             Text("Welcome, \(authState.githubUser?.login ?? "Developer"). Track your active repositories from one place.")
                 .font(.system(size: 14, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.62))
                 .lineSpacing(4)
+                .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity)
     }
 
     //  BeGitロゴView
@@ -121,7 +114,6 @@ struct RepositoryListView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .padding(8)
             } else {
                 //  ロゴ画像未設定時のFallback表示
                 Text("BG")
@@ -129,9 +121,7 @@ struct RepositoryListView: View {
                     .foregroundStyle(.black)
             }
         }
-        .frame(width: 62, height: 62)   //  ロゴサイズ
-        .background(AppTheme.accent)    //  ロゴ背景色
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))  //  ロゴShape
+        .frame(width: 160, height: 56)  //  ロゴサイズ
     }
 
     //  Repository追加ボタン
@@ -181,7 +171,7 @@ struct RepositoryListView: View {
 //  BeGit共通テーマカラー
 enum AppTheme {
     //  アプリ背景色
-    static let background = Color(red: 0.02, green: 0.02, blue: 0.05)
+    static let background = Color(red: 0.149, green: 0.157, blue: 0.188)
     //  カード背景色
     static let cardBackground = Color(red: 0.07, green: 0.06, blue: 0.11)
     //  入力欄背景色
