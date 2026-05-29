@@ -9,6 +9,7 @@ graph TD
         S[Workers Secrets]
     end
 
+    FCM[FCM\nFirebase Cloud Messaging]
     APNs[APNs\nApple]
     GH[GitHub\nWebhooks / OAuth / API]
 
@@ -16,7 +17,8 @@ graph TD
     W <-->|ルーティング| C
     C <-->|SQL| D1
     C <-->|S3互換API| R2
-    C -->|HTTP/2| APNs
+    C -->|HTTP POST| FCM
+    FCM -->|APNs配信| APNs
     APNs -->|Push通知| iOS
     GH -->|Webhook POST| W
     C <-->|REST API| GH
@@ -24,10 +26,12 @@ graph TD
 
     classDef cf fill:#FEE4C4,stroke:#F6821F,color:#333
     classDef apple fill:#FFD6E0,stroke:#FF6B9D,color:#333
+    classDef firebase fill:#FFF9C4,stroke:#FBC02D,color:#333
     classDef github fill:#D6EAF8,stroke:#5DADE2,color:#333
     classDef ios fill:#D5F5E3,stroke:#58D68D,color:#333
 
     class W,C,D1,R2,S cf
     class APNs apple
+    class FCM firebase
     class GH github
     class iOS ios

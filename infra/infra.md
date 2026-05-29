@@ -15,7 +15,9 @@ iOSアプリ
 [Workers Container]        [D1]          [R2]
       (Go)              (メインDB)    (写真ストレージ)
       ↓
-    [APNs]               ← Push通知
+    [FCM]                ← Push通知 (Firebase Cloud Messaging)
+      ↓
+    [APNs]               ← FCM → APNs → iPhone
       ↑
 [GitHub Webhooks]          ← commit / PRイベント受信
 ```
@@ -31,7 +33,7 @@ iOSアプリ
 | **Cloudflare D1** | メインDB | SQLite互換 |
 | **Cloudflare R2** | 写真ストレージ | S3互換API、egress無料 |
 | **Cloudflare Workers Secrets** | シークレット管理 | 下記参照 |
-| **APNs** | iOSへのPush通知 | GoからHTTP/2で直接送信 |
+| **FCM** (Firebase Cloud Messaging) | iOSへのPush通知中継 | Go → FCM → APNs → iPhone |
 | **GitHub Webhooks** | commit / PRイベント受信 | HMAC-SHA256で署名検証 |
 
 ---
@@ -42,9 +44,7 @@ iOSアプリ
 |------------|------|
 | `GITHUB_CLIENT_SECRET` | GitHub OAuth |
 | `GITHUB_WEBHOOK_SECRET` | Webhook署名検証 |
-| `APNS_PRIVATE_KEY` | APNs認証 (.p8) |
-| `APNS_KEY_ID` | APNs Key ID |
-| `APNS_TEAM_ID` | Apple Developer Team ID |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | FCM 認証（サービスアカウントキー） |
 | `DB_ENCRYPTION_KEY` | GitHubアクセストークンの暗号化 |
 
 ---
@@ -83,11 +83,12 @@ Terraformと Wranglerを併用する。
 
 ## 外部依存サービス
 
-Cloudflare外で依存するのは以下の2つのみ。
+Cloudflare外で依存するのは以下の3つ。
 
 | サービス | 用途 |
 |---------|------|
-| **APNs** (Apple) | iOSへのPush通知 |
+| **FCM** (Firebase Cloud Messaging) | Push通知の中継（FCM → APNs → iPhone） |
+| **APNs** (Apple) | FCM 経由で最終配信（直接管理不要） |
 | **GitHub** | OAuth認証 / Webhooks / REST API |
 
 ---

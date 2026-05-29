@@ -137,7 +137,7 @@
    GET /repos/{owner}/{repo}/collaborators
 3. 一覧の中でBeGit連携済みユーザーを抽出
 4. 該当ユーザーをGroupMemberに自動追加
-5. 追加されたユーザーにAPNs通知「{repo名} のグループに追加されました 🎉」
+5. 追加されたユーザーにFCM通知「{repo名} のグループに追加されました 🎉」
 ```
 
 > **注:** ユーザーは参加を辞退（脱退）することも可能。
@@ -162,7 +162,7 @@
 
 #### commit / PR検知 → スマホ通知の技術構成
 
-**概要:** GitHubでcommitやPR reviewが発生したことをサーバーが検知し、該当ユーザーのスマホへAPNs経由でpush通知を送る。
+**概要:** GitHubでcommitやPR reviewが発生したことをサーバーが検知し、該当ユーザーのスマホへFCM経由でpush通知を送る。FCMがAPNsへの配信を中継するため、バックエンドはAPNsを直接管理しない。
 
 **全体フロー:**
 
@@ -177,8 +177,10 @@
   2. eventの種別を判定
      - push event       → commitを検知
      - pull_request_review event → PR reviewを検知
-  3. 対象ユーザーのAPNs device tokenをDBから取得
-  4. APNs へ通知リクエストを送信（HTTP/2）
+  3. 対象ユーザーのFCM registration tokenをDBから取得
+  4. FCM HTTP API へ通知リクエストを送信
+        ↓
+[FCM (Firebase Cloud Messaging)]
         ↓
 [APNs (Apple Push Notification service)]
         ↓
@@ -207,21 +209,25 @@
 }
 ```
 
-**APNs通知ペイロード:**
+**FCM通知ペイロード:**
 
 ```json
 {
-  "aps": {
-    "alert": {
+  "message": {
+    "token": "FCM_REGISTRATION_TOKEN",
+    "notification": {
       "title": "commit完了！",
       "body": "認証つけたよー — user/repo main"
     },
-    "sound": "default",
-    "badge": 1
-  },
-  "type": "commit_detected",
-  "repo": "user/repo",
-  "commit_message": "認証つけたよー"
+    "data": {
+      "type": "commit_detected",
+      "repo": "user/repo",
+      "commit_message": "認証つけたよー"
+    },
+    "apns": {
+      "payload": { "aps": { "sound": "default", "badge": 1 } }
+    }
+  }
 }
 ```
 
@@ -409,10 +415,10 @@ User
   - access_token (encrypted)
   - created_at
 
-APNsDeviceToken
+FCMToken
   - id
   - user_id
-  - device_token
+  - registration_token
   - updated_at
 
 Group
@@ -506,7 +512,7 @@ Comment
 
 | Method | Path | 説明 |
 |--------|------|------|
-| `POST` | `/devices` | APNs device token を登録・更新 |
+| `POST` | `/devices` | FCM registration token を登録・更新 |
 | `DELETE` | `/devices/:token` | デバイストークン削除（ログアウト時） |
 
 ### 投稿
@@ -537,7 +543,7 @@ Comment
 | バックエンド | Go | Workers Containers (linux/amd64) |
 | クラウド | Cloudflare Workers | エントリーポイント・ルーティング |
 | DB | Cloudflare D1 | SQLite 互換 |
-| Push通知 | APNs (Apple Push Notification service) | |
+| Push通知 | FCM (Firebase Cloud Messaging) → APNs | Go → FCM HTTP API → APNs → iPhone |
 | GitHub連携 | GitHub REST API v3 / Webhooks | |
 | 認証 | GitHub OAuth 2.0 | |
 | ストレージ | Cloudflare R2 | S3互換API、写真保存用 |
