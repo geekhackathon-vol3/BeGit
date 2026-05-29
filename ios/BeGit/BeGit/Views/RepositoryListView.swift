@@ -32,9 +32,11 @@ struct RepositoryListView: View {
                     ScrollView {
                         //  Repository card一覧
                         LazyVStack(alignment: .leading, spacing: 16) {
-                            //  Header表示
-                            headerSection
-                                .padding(.bottom, 10)
+                            Text("Repositories")
+                                .font(.custom("Bitcount", size: 34))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.bottom, 2)
 
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
@@ -86,26 +88,6 @@ struct RepositoryListView: View {
     }
 
     // MARK: - Components
-
-    //  Header表示
-    private var headerSection: some View {
-        VStack(alignment: .center, spacing: 12) {
-            //  Home画面タイトル
-            Text("Repository Home")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.accent)
-                .textCase(.uppercase)
-
-            //  ログインユーザー向け説明文
-            Text("Welcome, \(authState.githubUser?.login ?? "Developer"). Track your active repositories from one place.")
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.62))
-                .lineSpacing(4)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity)
-    }
 
     //  Repository追加ボタン
     private var addRepositoryButton: some View {

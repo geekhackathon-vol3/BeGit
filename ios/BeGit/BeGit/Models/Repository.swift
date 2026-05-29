@@ -25,33 +25,42 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
 
 //  Preview / Mock表示用データ
 extension Repository {
+    private static func mockMembers() -> [RepositoryMember] {
+        [
+            RepositoryMember(
+                login: "Riochin",
+                avatarURL: URL(string: "https://avatars.githubusercontent.com/u/175614867?v=4")
+            ),
+            RepositoryMember(
+                login: "s2108tomoka",
+                avatarURL: URL(string: "https://avatars.githubusercontent.com/u/163800046?v=4")
+            ),
+            RepositoryMember(
+                login: "palm7710",
+                avatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4")
+            ),
+            RepositoryMember(
+                login: "liruly",
+                avatarURL: URL(string: "https://avatars.githubusercontent.com/u/141731612?v=4")
+            )
+        ]
+    }
+
     nonisolated static let mockRepositories: [Repository] = [
         Repository(
             name: "apple/swift",
-            memberCount: 5,
-            members: [
-                RepositoryMember(login: "aya"),
-                RepositoryMember(login: "ken"),
-                RepositoryMember(login: "mika")
-            ]
+            memberCount: 4,
+            members: Self.mockMembers()
         ),
         Repository(
             name: "begit/mobile",
-            memberCount: 3,
-            members: [
-                RepositoryMember(login: "palm"),
-                RepositoryMember(login: "nora"),
-                RepositoryMember(login: "dev")
-            ]
+            memberCount: 4,
+            members: Self.mockMembers()
         ),
         Repository(
             name: "openai/swift-sdk",
-            memberCount: 8,
-            members: [
-                RepositoryMember(login: "codex"),
-                RepositoryMember(login: "reviewer"),
-                RepositoryMember(login: "ops")
-            ]
+            memberCount: 4,
+            members: Self.mockMembers()
         )
     ]
 }
