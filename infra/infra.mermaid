@@ -1,0 +1,33 @@
+graph TD
+    iOS[iOS App]
+
+    subgraph Cloudflare
+        W[Workers]
+        C[Workers Container\nGo]
+        D1[D1\nSQLite DB]
+        R2[R2\n写真ストレージ]
+        S[Workers Secrets]
+    end
+
+    APNs[APNs\nApple]
+    GH[GitHub\nWebhooks / OAuth / API]
+
+    iOS <-->|HTTPS| W
+    W <-->|ルーティング| C
+    C <-->|SQL| D1
+    C <-->|S3互換API| R2
+    C -->|HTTP/2| APNs
+    APNs -->|Push通知| iOS
+    GH -->|Webhook POST| W
+    C <-->|REST API| GH
+    S -.->|シークレット注入| C
+
+    classDef cf fill:#FEE4C4,stroke:#F6821F,color:#333
+    classDef apple fill:#FFD6E0,stroke:#FF6B9D,color:#333
+    classDef github fill:#D6EAF8,stroke:#5DADE2,color:#333
+    classDef ios fill:#D5F5E3,stroke:#58D68D,color:#333
+
+    class W,C,D1,R2,S cf
+    class APNs apple
+    class GH github
+    class iOS ios

@@ -534,13 +534,14 @@ Comment
 | レイヤー | 技術 | 備考 |
 |--------|------|------|
 | iOS アプリ | Swift / SwiftUI | ターゲット: iOS 16+ |
-| バックエンド | Go | REST API |
-| クラウド | TBD（AWS / GCP 等） | |
-| DB | TBD（PostgreSQL 等） | |
+| バックエンド | Go | Workers Containers (linux/amd64) |
+| クラウド | Cloudflare Workers | エントリーポイント・ルーティング |
+| DB | Cloudflare D1 | SQLite 互換 |
 | Push通知 | APNs (Apple Push Notification service) | |
 | GitHub連携 | GitHub REST API v3 / Webhooks | |
 | 認証 | GitHub OAuth 2.0 | |
-| ストレージ | TBD（S3等） | 写真保存用 |
+| ストレージ | Cloudflare R2 | S3互換API、写真保存用 |
+| IaC | Terraform (cloudflare provider) + Wrangler | リソース作成は Terraform、デプロイは Wrangler |
 
 ---
 
