@@ -11,33 +11,28 @@ struct BeGitHeaderView: View {
 
     var body: some View {
         //  Header本体
-        VStack(spacing: 8) {
-            //  BeGitロゴ表示
-            logoView
+        VStack(spacing: 4) {
+            //  Headerタイトル表示
+            Text(title)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.softPink)
+                .textCase(.uppercase)
 
-            VStack(spacing: 4) {
-                //  Headerタイトル表示
-                Text(title)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppTheme.softPink)
-                    .textCase(.uppercase)
-
-                //  subtitle表示
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.50))
-                        .lineLimit(1)
-                        .multilineTextAlignment(.center)
-                }
+            //  subtitle表示
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.50))
+                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
             }
-            .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
     }
+}
 
-    //  BeGitロゴView
-    private var logoView: some View {
+struct BeGitToolbarLogoView: View {
+    var body: some View {
         Group {
             //  ロゴ画像が存在する場合
             if let image = UIImage(named: "begit_logo") {
@@ -51,6 +46,6 @@ struct BeGitHeaderView: View {
                     .foregroundStyle(.black)
             }
         }
-        .frame(width: 150, height: 52)                                          //  ロゴサイズ
+        .frame(width: 118, height: 34)
     }
 }

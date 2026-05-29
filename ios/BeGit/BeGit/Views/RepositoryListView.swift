@@ -60,6 +60,10 @@ struct RepositoryListView: View {
             .navigationBarTitleDisplayMode(.inline)
             //  NavigationBar items
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    BeGitToolbarLogoView()
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     //  ログアウト
                     Button("Log Out", action: authState.logout)
@@ -85,10 +89,7 @@ struct RepositoryListView: View {
 
     //  Header表示
     private var headerSection: some View {
-        VStack(alignment: .center, spacing: 18) {
-            //  BeGitロゴ表示
-            logoView
-
+        VStack(alignment: .center, spacing: 12) {
             //  Home画面タイトル
             Text("Repository Home")
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -104,24 +105,6 @@ struct RepositoryListView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    //  BeGitロゴView
-    private var logoView: some View {
-        Group {
-            //  ロゴ画像が存在する場合
-            if let image = UIImage(named: "begit_logo") {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                //  ロゴ画像未設定時のFallback表示
-                Text("BG")
-                    .font(.system(size: 18, weight: .black, design: .monospaced))
-                    .foregroundStyle(.black)
-            }
-        }
-        .frame(width: 160, height: 56)  //  ロゴサイズ
     }
 
     //  Repository追加ボタン

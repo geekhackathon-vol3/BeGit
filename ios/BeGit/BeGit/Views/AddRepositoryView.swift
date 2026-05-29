@@ -51,6 +51,10 @@ struct AddRepositoryView: View {
             .navigationBarTitleDisplayMode(.inline)
             //  NavigationBar items
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    BeGitToolbarLogoView()
+                }
+
                 ToolbarItem(placement: .topBarLeading) {
                     //  Sheetを閉じる
                     Button("Cancel", action: dismiss.callAsFunction)
@@ -67,13 +71,6 @@ struct AddRepositoryView: View {
     //  Header表示
     private var headerSection: some View {
         VStack(alignment: .center, spacing: 10) {
-            if let image = UIImage(named: "begit_logo") {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 150, height: 52)
-            }
-
             Text("CONNECT A REPO")
                 .font(.system(size: 13, weight: .black, design: .monospaced))
                 .foregroundStyle(AppTheme.accent)

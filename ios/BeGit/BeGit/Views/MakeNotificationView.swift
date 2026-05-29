@@ -63,6 +63,11 @@ struct MakeNotificationView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                BeGitToolbarLogoView()
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
     }
