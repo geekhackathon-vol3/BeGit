@@ -189,7 +189,7 @@ go run cmd/server/main.go
 ### iOS アプリ
 
 ```bash
-cd BeGit/ios
+cd BeGit/ios/BeGit
 open BeGit.xcodeproj
 ```
 
@@ -214,12 +214,13 @@ go run cmd/migrate/main.go
 ```
 BeGit/
 ├── ios/
-│   ├── BeGit/
-│   │   ├── Views/          # SwiftUI 画面
-│   │   ├── Models/         # データモデル
-│   │   ├── ViewModels/     # ViewModel
-│   │   └── Services/       # API クライアント・GitHub連携
-│   └── BeGit.xcodeproj
+│   └── BeGit/
+│       ├── BeGit/          # ソースコード
+│       │   ├── Views/          # SwiftUI 画面
+│       │   ├── Models/         # データモデル
+│       │   ├── ViewModels/     # ViewModel
+│       │   └── Services/       # API クライアント・GitHub連携
+│       └── BeGit.xcodeproj
 └── backend/
     ├── cmd/
     │   └── server/         # エントリーポイント
