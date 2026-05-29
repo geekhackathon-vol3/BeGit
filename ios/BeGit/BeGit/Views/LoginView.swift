@@ -90,7 +90,7 @@ struct LoginView: View {
                     .scaledToFit()
                     .frame(width: 24, height: 24)
 
-                Text("Sign in with GitHub")
+                Text("[Sign in with GitHub]")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(.black)
             }
