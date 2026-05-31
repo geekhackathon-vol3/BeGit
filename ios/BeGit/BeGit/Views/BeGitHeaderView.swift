@@ -49,3 +49,23 @@ struct BeGitToolbarLogoView: View {
         .frame(width: 118, height: 34)
     }
 }
+
+struct BeGitBackButton: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Button(action: dismiss.callAsFunction) {
+            HStack(spacing: 5) {
+                Image("begit_back_arrow")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+
+                Text("Back")
+                    .font(.system(size: 21, weight: .bold, design: .monospaced))
+            }
+            .foregroundStyle(AppTheme.softPink)
+        }
+        .buttonStyle(.plain)
+    }
+}

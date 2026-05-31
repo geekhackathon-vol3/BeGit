@@ -64,8 +64,7 @@ extension RepositoryActivity {
                 title: "Implemented realtime repository home",
                 comment: "UI polish and state wiring landed before the notification window.",
                 date: Date(timeIntervalSinceNow: -60 * 18),
-                //  SF Symbols icon名
-                imageName: "chevron.left.forwardslash.chevron.right",
+                imageName: "begit_timeline_mock",
                 author: members[0],
                 reaction: .check
             ),
@@ -75,8 +74,7 @@ extension RepositoryActivity {
                 title: "Opened PR for dashboard flow",
                 comment: "Needs review on navigation and activity card density.",
                 date: Date(timeIntervalSinceNow: -60 * 64),
-                //  SF Symbols icon名
-                imageName: "arrow.triangle.pull",
+                imageName: "begit_timeline_mock",
                 author: members[min(1, members.count - 1)],
                 reaction: .heart
             ),
@@ -86,12 +84,10 @@ extension RepositoryActivity {
                 title: "Sorry, build was red for 12 minutes",
                 comment: "Fixed the missing Combine import and re-ran simulator build.",
                 date: Date(timeIntervalSinceNow: -60 * 130),
-                //  SF Symbols icon名
-                imageName: "exclamationmark.triangle",
+                imageName: "begit_timeline_mock",
                 author: members[min(2, members.count - 1)],
                 reaction: .sorry
             )
         ]
     }
 }
-

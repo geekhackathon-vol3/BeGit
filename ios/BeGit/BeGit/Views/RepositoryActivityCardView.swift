@@ -2,6 +2,7 @@
 //  Repository DashboardとResultで表示するTimeline card
 
 import SwiftUI
+import UIKit
 
 //  Repository Timeline activity card
 struct RepositoryActivityCardView: View {
@@ -84,12 +85,20 @@ struct RepositoryActivityCardView: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(activity.type.tint.opacity(0.14))
 
-            //  activity icon
-            Image(systemName: activity.imageName ?? activity.type.systemImage)
-                .font(.system(size: 30, weight: .black))
-                .foregroundStyle(activity.type.tint)
+            //  activity画像
+            if let imageName = activity.imageName, UIImage(named: imageName) != nil {
+                Image(imageName)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                //  activity icon
+                Image(systemName: activity.imageName ?? activity.type.systemImage)
+                    .font(.system(size: 30, weight: .black))
+                    .foregroundStyle(activity.type.tint)
+            }
         }
         .frame(height: 132)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
      //  activity種別badge
@@ -190,4 +199,3 @@ private extension RepositoryReaction {
         }
     }
 }
-
