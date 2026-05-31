@@ -14,7 +14,7 @@
   - `go build ./...` が成功する
   - _Requirements: 7.2_
 
-- [ ] 1.3 全ドメインモデル型（User・Group・Sprint・Notification・Post・PostFeed・GroupMember）を定義する
+- [x] 1.3 全ドメインモデル型（User・Group・Sprint・Notification・Post・PostFeed・GroupMember）を定義する
   - `internal/model/models.go` に設計書の Go 構造体を実装する
   - ポインタ型フィールド（`*string`, `*int64` 等）を設計書の仕様どおりに定義する
   - `go build ./internal/model/...` が成功する
