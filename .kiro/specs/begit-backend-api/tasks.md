@@ -36,7 +36,7 @@
   - _Requirements: 7.6_
 
 - [ ] 2. 外部 API 連携クライアント — GitHub・FCM
-- [ ] 2.1 (P) GitHub REST API v3 クライアントを実装する
+- [x] 2.1 (P) GitHub REST API v3 クライアントを実装する
   - `pkg/github/client.go` に `ExchangeCode`, `GetUser`, `GetRepoInfo`, `GetCollaborators`, `RegisterWebhook`, `GetRecentCommits` を実装する
   - `ExchangeCode` は `POST https://github.com/login/oauth/access_token` に form データを送信し access_token を返す
   - `GetRecentCommits` は `GET /repos/{owner}/{repo}/commits?author={login}&per_page=5` → 最新コミット SHA で `GET /repos/{owner}/{repo}/commits/{sha}` を呼んで `CommitSummary` を返す（2 API calls）
