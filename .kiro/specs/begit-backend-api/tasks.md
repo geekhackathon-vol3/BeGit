@@ -162,7 +162,7 @@
   - _Boundary: NotificationHandler, PostHandler, WebhookHandler, FCMTokenHandler_
 
 - [ ] 6. サーバー統合・環境設定
-- [ ] 6.1 `cmd/server/main.go` にルーティング・DI・サーバー設定を完成させる
+- [x] 6.1 `cmd/server/main.go` にルーティング・DI・サーバー設定を完成させる
   - 全コンポーネントを依存関係順に初期化して DI で接続する（pkg → repository → service → handler）
   - Go 1.22 ServeMux で全エンドポイントを登録する（`/auth/github`, `/webhook/github`, `/groups`, `/groups/{id}`, `/groups/{id}/notifications`, `/groups/{id}/notifications/{nid}`, `/groups/{id}/posts`, `/me/fcm-token`）
   - BearerAuthMiddleware を `/webhook/github` と `/auth/github` を除く全ルートに適用する
