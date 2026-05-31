@@ -15,9 +15,9 @@
 
 ---
 
-- [ ] 1. Terraform IaC 基盤を構築する
+- [x] 1. Terraform IaC 基盤を構築する
 
-- [ ] 1.1 Terraform プロジェクト構造と provider 設定を作成する
+- [x] 1.1 Terraform プロジェクト構造と provider 設定を作成する
   - `infra/terraform/` ディレクトリを作成し、`main.tf`・`variables.tf` を追加する
   - `main.tf`: cloudflare provider `~> 4` を `required_providers` に指定し、local backend を設定する
   - `variables.tf`: `cloudflare_account_id`（必須）と `cloudflare_api_token`（`TF_VAR_` 環境変数経由）を定義する
@@ -26,7 +26,7 @@
   - `terraform init` が正常に完了し `.terraform/` ディレクトリが生成される
   - _Requirements: 8.1, 8.4, 8.5_
 
-- [ ] 1.2 D1 データベースと R2 バケットの Terraform リソースを定義する
+- [x] 1.2 D1 データベースと R2 バケットの Terraform リソースを定義する
   - `d1.tf`: `cloudflare_d1_database "begit_db"` リソース（`name = "begit-db"`）を定義する
   - `r2.tf`: `cloudflare_r2_bucket "begit_photos"` リソース（`name = "begit-photos"`）を定義する
   - `outputs.tf`: `d1_database_id`（D1 データベース ID）と `r2_bucket_name` を出力定義する
