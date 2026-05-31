@@ -28,7 +28,7 @@
   - `Encrypt` → `Decrypt` で元の文字列が復元されることを確認できる
   - _Requirements: 7.1_
 
-- [ ] 1.5 Cloudflare D1 REST API クライアントを実装する
+- [x] 1.5 Cloudflare D1 REST API クライアントを実装する
   - `pkg/d1/client.go` に `Query` / `Exec` メソッドを持つ `Client` インターフェースと実装を作成する
   - `POST https://api.cloudflare.com/client/v4/accounts/{account_id}/d1/database/{database_id}/query` を呼び出す
   - UNIQUE 制約違反（error_code に "UNIQUE constraint failed" を含む）は `ErrConstraintViolation`、空結果は `ErrNotFound` として返す
