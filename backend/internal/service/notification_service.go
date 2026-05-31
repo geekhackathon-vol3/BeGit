@@ -133,6 +133,20 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 		return nil, fmt.Errorf("notification_service: GetByID failed: %w", err)
 	}
 
+	// スプリントを取得してグループIDを確認
+	sprint, err := s.sprintRepo.GetByID(ctx, notif.SprintID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("notification_service: GetSprintByID failed: %w", err)
+	}
+
+	// 通知のグループが要求されたグループと一致するか確認
+	if sprint.GroupID != groupID {
+		return nil, ErrNotFound
+	}
+
 	// グループのメンバー一覧を取得
 	members, err := s.groupRepo.GetMembers(ctx, groupID)
 	if err != nil {

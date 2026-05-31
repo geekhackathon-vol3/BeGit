@@ -172,6 +172,10 @@ func (r *groupRepository) GetByRepoFullName(ctx context.Context, repoFullName st
 		return nil, fmt.Errorf("group_repository: GetByRepoFullName failed: %w", err)
 	}
 
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+
 	return scanGroup(rows[0])
 }
 

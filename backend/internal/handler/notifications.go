@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/irj0927/begit/internal/service"
 )
@@ -101,7 +102,7 @@ func (h *notificationHandler) sendNotification(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(NotificationJSON{
 		ID:       notif.ID,
 		SprintID: notif.SprintID,
-		SentAt:   notif.SentAt.Format("2006-01-02T15:04:05Z"),
+		SentAt:   notif.SentAt.UTC().Format(time.RFC3339),
 	})
 }
 

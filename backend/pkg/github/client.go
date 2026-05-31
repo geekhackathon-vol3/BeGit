@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // エラー型定義
@@ -62,7 +64,9 @@ type githubClient struct {
 // NewClient は GitHub API クライアントを作成する
 func NewClient() Client {
 	return &githubClient{
-		httpClient:    &http.Client{},
+		httpClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 		oauthEndpoint: "https://github.com",
 		apiEndpoint:   "https://api.github.com",
 	}
@@ -102,6 +106,15 @@ func (c *githubClient) doAPIRequest(ctx context.Context, method, path, accessTok
 	if resp.StatusCode == http.StatusUnauthorized {
 		resp.Body.Close()
 		return nil, ErrUnauthorized
+	}
+
+	// 2xx 以外のステータスコードをエラーとして扱う
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// ボディから一部読み取ってエラーメッセージに含める
+		bodySnippet := make([]byte, 200)
+		n, _ := io.ReadFull(resp.Body, bodySnippet)
+		resp.Body.Close()
+		return nil, fmt.Errorf("%w: status %d, body: %s", ErrExternalAPI, resp.StatusCode, string(bodySnippet[:n]))
 	}
 
 	return resp, nil

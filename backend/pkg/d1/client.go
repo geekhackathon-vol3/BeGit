@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // エラー型定義
@@ -65,7 +66,9 @@ type d1APIResponse struct {
 // NewClient は D1 REST API クライアントを作成する
 func NewClient(accountID, databaseID, apiToken string) Client {
 	return &d1Client{
-		httpClient: &http.Client{},
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 		accountID:  accountID,
 		databaseID: databaseID,
 		apiToken:   apiToken,
@@ -165,7 +168,12 @@ func (c *d1Client) Exec(ctx context.Context, sql string, params []interface{}) (
 
 	var rowsAffected int64
 	if len(apiResp.Result) > 0 && apiResp.Result[0].Meta != nil {
-		if v, ok := apiResp.Result[0].Meta["rows_written"]; ok {
+		// 優先的に changes キーを使用し、なければ rows_written にフォールバック
+		if v, ok := apiResp.Result[0].Meta["changes"]; ok {
+			if f, ok := v.(float64); ok {
+				rowsAffected = int64(f)
+			}
+		} else if v, ok := apiResp.Result[0].Meta["rows_written"]; ok {
 			if f, ok := v.(float64); ok {
 				rowsAffected = int64(f)
 			}

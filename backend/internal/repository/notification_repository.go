@@ -44,7 +44,10 @@ func scanNotification(row map[string]interface{}) (*model.Notification, error) {
 	if v, ok := row["sent_at"].(string); ok {
 		t, err := time.Parse(time.RFC3339, v)
 		if err != nil {
-			t, _ = time.Parse("2006-01-02 15:04:05", v)
+			t, err = time.Parse("2006-01-02 15:04:05", v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse sent_at: %w", err)
+			}
 		}
 		n.SentAt = t
 	}

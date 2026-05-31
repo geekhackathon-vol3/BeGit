@@ -59,7 +59,7 @@ func BearerAuthMiddleware(
 					writeError(w, http.StatusUnauthorized, "unauthorized")
 					return
 				}
-				writeError(w, http.StatusUnauthorized, "unauthorized")
+				writeError(w, http.StatusInternalServerError, "internal server error")
 				return
 			}
 

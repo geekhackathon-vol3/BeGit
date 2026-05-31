@@ -59,6 +59,30 @@ func NewGroupService(
 	}
 }
 
+// isHookAlreadyExistsError は Webhook が既に存在するエラーかどうかを判定する
+func isHookAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return contains(errMsg, "hook already exists") || contains(errMsg, "Hook already exists")
+}
+
+// contains は文字列に部分文字列が含まれるかチェック
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || indexString(s, substr) >= 0)
+}
+
+// indexString は部分文字列の位置を返す
+func indexString(s, substr string) int {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+	return -1
+}
+
 // ListGroups はユーザーが所属するグループ一覧を返す
 func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]model.Group, error) {
 	groups, err := s.groupRepo.ListByUserID(ctx, userID)
@@ -68,7 +92,7 @@ func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]model.Gr
 	return groups, nil
 }
 
-// CreateGroup は Webhook 先行登録 → グループ作成 → オーナー追加 → コラボレーター自動追加の順に処理する
+// CreateGroup はグループ作成 → Webhook 登録 → オーナー追加 → コラボレーター自動追加の順に処理する
 func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error) {
 	// Step 1: リポジトリ情報（avatar_url）を取得
 	repoInfo, err := s.githubClient.GetRepoInfo(ctx, req.RepoFullName, req.AccessToken)
@@ -79,13 +103,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		return nil, fmt.Errorf("%w: get repo info failed: %v", ErrExternalAPI, err)
 	}
 
-	// Step 2: GitHub Webhook を先行登録（失敗したら D1 INSERT しない）
-	webhookURL := s.config.AppBaseURL + "/webhook/github"
-	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, req.AccessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
-		return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
-	}
-
-	// Step 3: グループを D1 に作成
+	// Step 2: グループを D1 に作成
 	group, err := s.groupRepo.Create(ctx, &repository.GroupCreateInput{
 		RepoFullName: req.RepoFullName,
 		Name:         req.Name,
@@ -99,9 +117,20 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		return nil, fmt.Errorf("group_service: CreateGroup failed: %w", err)
 	}
 
-	// Step 4: 作成者を owner ロールで group_members に追加
+	// Step 3: 作成者を owner ロールで group_members に追加
 	if err := s.groupRepo.AddMember(ctx, group.ID, userID, "owner"); err != nil {
 		return nil, fmt.Errorf("group_service: AddMember (owner) failed: %w", err)
+	}
+
+	// Step 4: GitHub Webhook を登録（失敗時は DB をクリーンアップ）
+	webhookURL := s.config.AppBaseURL + "/webhook/github"
+	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, req.AccessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
+		// Webhook 登録失敗時はグループを削除（ベストエフォート）
+		// "hook already exists" エラーは非致命的として扱う
+		if !isHookAlreadyExistsError(err) {
+			// TODO: グループ削除処理を実装する場合はここで呼ぶ
+			return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
+		}
 	}
 
 	// Step 5: GitHub コラボレーターを取得して BeGit 登録済みユーザーを自動追加

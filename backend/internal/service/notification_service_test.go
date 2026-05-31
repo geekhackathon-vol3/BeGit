@@ -14,6 +14,7 @@ import (
 type mockSprintRepository struct {
 	getOrCreateFunc    func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error)
 	getCurrentFunc     func(ctx context.Context, groupID int64) (*model.Sprint, error)
+	getByIDFunc        func(ctx context.Context, sprintID int64) (*model.Sprint, error)
 }
 
 func (m *mockSprintRepository) GetOrCreateCurrentSprint(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error) {
@@ -28,6 +29,13 @@ func (m *mockSprintRepository) GetCurrentSprint(ctx context.Context, groupID int
 		return m.getCurrentFunc(ctx, groupID)
 	}
 	return &model.Sprint{ID: 1, GroupID: groupID}, nil
+}
+
+func (m *mockSprintRepository) GetByID(ctx context.Context, sprintID int64) (*model.Sprint, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, sprintID)
+	}
+	return &model.Sprint{ID: sprintID, GroupID: 1}, nil
 }
 
 // mockNotificationRepository はテスト用の通知リポジトリモック

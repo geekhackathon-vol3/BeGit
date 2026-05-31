@@ -16,6 +16,8 @@ type SprintRepository interface {
 	GetOrCreateCurrentSprint(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error)
 	// GetCurrentSprint は現在アクティブなスプリントを取得する。なければ ErrNotFound を返す
 	GetCurrentSprint(ctx context.Context, groupID int64) (*model.Sprint, error)
+	// GetByID は sprint ID でスプリントを取得する
+	GetByID(ctx context.Context, sprintID int64) (*model.Sprint, error)
 }
 
 // sprintRepository は SprintRepository インターフェースの実装
@@ -73,6 +75,25 @@ func (r *sprintRepository) GetCurrentSprint(ctx context.Context, groupID int64) 
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("sprint_repository: GetCurrentSprint failed: %w", err)
+	}
+
+	return scanSprint(rows[0])
+}
+
+// GetByID は sprint ID でスプリントを取得する
+func (r *sprintRepository) GetByID(ctx context.Context, sprintID int64) (*model.Sprint, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, group_id, index_num, started_at, ends_at
+		 FROM sprints
+		 WHERE id = ?
+		 LIMIT 1`,
+		[]interface{}{sprintID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("sprint_repository: GetByID failed: %w", err)
 	}
 
 	return scanSprint(rows[0])

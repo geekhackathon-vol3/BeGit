@@ -111,7 +111,6 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 type server struct {
 	cfg     *Config
 	handler http.Handler
-	once    sync.Once
 	mu      sync.RWMutex
 }
 
@@ -149,28 +148,29 @@ func main() {
 
 // ServeHTTP はリクエストを処理する（初回は X-Internal-* ヘッダーから設定を補完してからハンドラーを初期化）
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// X-Internal-* ヘッダーから設定を更新（最初のリクエストのみ）
-	s.once.Do(func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		configFromHeaders(r, s.cfg)
-
-		h, err := s.buildHandler()
-		if err != nil {
-			log.Printf("Failed to build handler: %v", err)
-			return
-		}
-		s.handler = h
-		log.Printf("Handler initialized successfully")
-	})
-
 	s.mu.RLock()
 	h := s.handler
 	s.mu.RUnlock()
 
 	if h == nil {
-		http.Error(w, `{"error":"server not initialized"}`, http.StatusInternalServerError)
-		return
+		// 初回リクエスト時にハンドラーを初期化
+		s.mu.Lock()
+		// ダブルチェック
+		if s.handler == nil {
+			configFromHeaders(r, s.cfg)
+
+			handler, err := s.buildHandler()
+			if err != nil {
+				s.mu.Unlock()
+				log.Printf("Failed to build handler: %v", err)
+				http.Error(w, `{"error":"server not initialized"}`, http.StatusInternalServerError)
+				return
+			}
+			s.handler = handler
+			log.Printf("Handler initialized successfully")
+		}
+		h = s.handler
+		s.mu.Unlock()
 	}
 
 	h.ServeHTTP(w, r)

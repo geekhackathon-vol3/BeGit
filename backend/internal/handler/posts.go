@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/irj0927/begit/internal/service"
 )
@@ -111,7 +112,7 @@ func (h *postHandler) createPost(w http.ResponseWriter, r *http.Request, groupID
 		Deletions:           post.Deletions,
 		LatestCommitMessage: post.LatestCommitMessage,
 		Status:              post.Status,
-		CreatedAt:           post.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:           post.CreatedAt.UTC().Format(time.RFC3339),
 	})
 }
 

@@ -93,12 +93,21 @@ func (c *fcmClient) SendToTokens(ctx context.Context, tokens []string, notificat
 		return nil
 	}
 
+	// ベストエフォートで全トークンに送信を試みる
+	var lastErr error
+	successCount := 0
 	for _, token := range tokens {
 		if err := c.sendToToken(ctx, token, notification); err != nil {
-			// 個別トークンの失敗はログに記録するが続行する（ベストエフォート）
-			// ハッカソンスコープでは部分失敗を許容
-			return fmt.Errorf("fcm: failed to send to token: %w", err)
+			// 個別トークンの失敗はログに記録するが続行する
+			lastErr = err
+			continue
 		}
+		successCount++
+	}
+
+	// 全て失敗した場合のみエラーを返す
+	if successCount == 0 && lastErr != nil {
+		return fmt.Errorf("fcm: all tokens failed, last error: %w", lastErr)
 	}
 
 	return nil
