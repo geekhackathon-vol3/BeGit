@@ -143,7 +143,7 @@
   - 無効 Bearer トークンのリクエストが 401 を返すことを確認できる
   - _Requirements: 1.7, 2.6, 4.7_
 
-- [ ] 5.2 (P) AuthHandler と GroupHandler を実装する
+- [x] 5.2 (P) AuthHandler と GroupHandler を実装する
   - `AuthHandler.ServeHTTP` で JSON ボディから `code` を取得し `AuthService.ExchangeCode` を呼んで `{"user": ..., "token": ...}` を返す
   - `GroupHandler` で `GET /groups`, `POST /groups`, `GET /groups/:id` の各メソッドを実装し GroupService に委譲する
   - 全レスポンスに `Content-Type: application/json` ヘッダーを付与する
