@@ -103,7 +103,7 @@ struct AddRepositoryView: View {
     private var repositoryURLSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle(
-                "■ ︎GitHub Repository URL",
+                "■ GitHub Repository URL",
                 size: 20,
                 weight: .regular,
                 color: Color(red: 0.980, green: 0.973, blue: 0.780)
@@ -129,7 +129,7 @@ struct AddRepositoryView: View {
     private var membersSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle(
-                "■ ︎Team Members",
+                "■ Team Members",
                 size: 20,
                 weight: .regular,
                 color: Color(red: 0.929, green: 0.784, blue: 0.827)
