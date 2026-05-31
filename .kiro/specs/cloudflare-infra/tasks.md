@@ -74,9 +74,9 @@
   - _Requirements: 3.2, 3.3, 3.4, 9.3_
   - _Boundary: D1 Migrations_
 
-- [ ] 4. Makefile デプロイ自動化を実装する
+- [x] 4. Makefile デプロイ自動化を実装する
 
-- [ ] 4.1 terraform-apply ターゲットを Makefile に追加する
+- [x] 4.1 terraform-apply ターゲットを Makefile に追加する
   - 既存 `Makefile` に `terraform-apply` ターゲットを追記する
   - `terraform -chdir=infra/terraform apply` を実行する
   - apply 完了後、`terraform -chdir=infra/terraform output -raw d1_database_id` で D1 ID を取得する
@@ -84,14 +84,14 @@
   - `make terraform-apply` 実行後、`backend/wrangler.toml` の `database_id` が実際の Cloudflare D1 ID で更新されている
   - _Requirements: 8.3_
 
-- [ ] 4.2 deploy ターゲットを Makefile に追加する
+- [x] 4.2 deploy ターゲットを Makefile に追加する
   - 既存 `Makefile` に `deploy` ターゲットを追記する
   - `docker build --platform linux/amd64 -t begit-api ./backend` → `cd backend && wrangler deploy` → `wrangler d1 migrations apply begit-db` の順で実行する
   - Makefile の `&&` チェーンにより各ステップが exit code 非ゼロの場合に後続を中断する
   - `make deploy` の実行でイメージビルド・Workers デプロイ・DB マイグレーションの全工程が完了する
   - _Requirements: 2.2, 9.1, 9.2, 9.5_
 
-- [ ] 4.3 secrets-init と warmup ターゲットを Makefile に追加する
+- [x] 4.3 secrets-init と warmup ターゲットを Makefile に追加する
   - 既存 `Makefile` に `secrets-init` ターゲットを追記する
   - `GITHUB_CLIENT_SECRET`・`GITHUB_WEBHOOK_SECRET`・`FIREBASE_SERVICE_ACCOUNT_JSON`・`DB_ENCRYPTION_KEY` の `wrangler secret put` コマンド手順を `@echo` で表示する
   - シークレット値はスクリプト内に記載しない（管理者が各コマンドを手動実行するガイドのみ出力）
