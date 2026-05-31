@@ -110,7 +110,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.8_
   - _Boundary: GroupService_
 
-- [ ] 4.3 (P) BeGit Time 通知サービスを実装する
+- [x] 4.3 (P) BeGit Time 通知サービスを実装する
   - `NotificationService.SendNotification` に現スプリント取得（または作成）→ 通知 INSERT → FCM 送信の処理を実装する
   - `SprintRepository.GetOrCreate` → `NotificationRepository.Create`（UNIQUE 違反で 409 Conflict を返す）
   - `FCMTokenRepository.GetTokensByGroupID` で全メンバーのトークンを取得し `pkg/fcm.SendToTokens` を呼ぶ
