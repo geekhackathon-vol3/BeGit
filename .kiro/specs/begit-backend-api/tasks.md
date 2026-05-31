@@ -7,7 +7,7 @@
   - マイグレーション適用後に D1 の groups テーブルが name / avatar_url カラムを持つことを確認できる
   - _Requirements: 2.1, 2.2_
 
-- [ ] 1.2 golang.org/x/oauth2 依存と環境変数スキーマを追加する
+- [x] 1.2 golang.org/x/oauth2 依存と環境変数スキーマを追加する
   - `go get golang.org/x/oauth2` を実行して `go.mod` / `go.sum` を更新する
   - `cmd/server/main.go` に必要な環境変数一覧（`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `DB_ENCRYPTION_KEY`, `CF_ACCOUNT_ID`, `D1_DATABASE_ID`, `CF_API_TOKEN`, `APP_BASE_URL`）を構造体 `Config` として定義する
   - 起動時に必須環境変数が未設定の場合はエラーログを出力して終了する
