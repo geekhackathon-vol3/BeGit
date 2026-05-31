@@ -15,6 +15,9 @@ node_modules/
 # Wrangler local state
 backend/.wrangler/
 
+# Go build artifacts
+backend/server
+
 # AI logs
 ai_log/
 
