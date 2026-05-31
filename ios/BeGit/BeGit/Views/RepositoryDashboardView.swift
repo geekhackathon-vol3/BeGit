@@ -106,13 +106,9 @@ struct RepositoryDashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    //  BeGit投稿達成済みmember ID一覧
+    //  Timelineにactivityがあるmember ID一覧
     private var achievedMemberIDs: Set<UUID> {
-        Set(
-            viewModel.activities
-                .filter { $0.reaction == .check }
-                .map(\.author.id)
-        )
+        Set(viewModel.activities.map(\.author.id))
     }
 
     //  下部固定エリア背景

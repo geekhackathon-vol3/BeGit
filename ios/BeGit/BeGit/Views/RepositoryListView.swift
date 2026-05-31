@@ -36,6 +36,9 @@ struct RepositoryListView: View {
                                 .font(.custom("Bitcount", size: 34))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                            //  ログイン中ユーザー情報
+                            loggedInUserSummary
                                 .padding(.bottom, 2)
 
                             //  Repository一覧表示
@@ -93,6 +96,61 @@ struct RepositoryListView: View {
     private var addRepositoryButton: some View {
         PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
             .accessibilityIdentifier("add_repository_button")
+    }
+
+    //  ログイン中ユーザー情報表示
+    private var loggedInUserSummary: some View {
+        let user = displayedGitHubUser
+        let userIDText = displayedGitHubUserIDText
+
+        return HStack(alignment: .center, spacing: 10) {
+            AvatarView(
+                member: RepositoryMember(
+                    login: user.login,
+                    avatarURL: user.avatarURL
+                ),
+                size: 34
+            )
+            .background(
+                Circle()
+                    .fill(AppTheme.background.opacity(0.82))
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(user.login)
+                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Text("ID: \(userIDText)")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.64))
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    //  API未接続時のRepository Home表示用ユーザー
+    private var displayedGitHubUser: GitHubUser {
+        authState.githubUser ?? GitHubUser(
+            id: 168710387,
+            login: "Palm",
+            avatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4"),
+            email: nil
+        )
+    }
+
+    private var displayedGitHubUserIDText: String {
+        if let githubUser = authState.githubUser {
+            return "\(githubUser.id)"
+        }
+
+        return "Palm7710"
     }
 
     //  下部固定エリア背景
