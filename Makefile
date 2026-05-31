@@ -17,17 +17,17 @@ terraform-apply:
 # Task 4.2: Docker build → wrangler deploy → D1 migration
 deploy:
 	docker build --platform linux/amd64 -t begit-api ./backend && \
-	cd backend && wrangler deploy && \
-	wrangler d1 migrations apply begit-db
+	cd backend && npx wrangler deploy && \
+	npx wrangler d1 migrations apply begit-db
 
 # Task 4.3: シークレット登録手順表示 + コンテナウォームアップ
 secrets-init:
 	@echo "以下のコマンドを順番に実行してシークレットを登録してください:"
 	@echo ""
-	@echo "  wrangler secret put GITHUB_CLIENT_SECRET"
-	@echo "  wrangler secret put GITHUB_WEBHOOK_SECRET"
-	@echo "  wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON"
-	@echo "  wrangler secret put DB_ENCRYPTION_KEY"
+	@echo "  npx wrangler secret put GITHUB_CLIENT_SECRET"
+	@echo "  npx wrangler secret put GITHUB_WEBHOOK_SECRET"
+	@echo "  npx wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON"
+	@echo "  npx wrangler secret put DB_ENCRYPTION_KEY"
 	@echo ""
 	@echo "各コマンド実行後、プロンプトに値を入力してください。"
 
