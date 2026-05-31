@@ -136,7 +136,7 @@
   - _Boundary: WebhookService, FCMTokenService_
 
 - [ ] 5. Handler 層・ミドルウェア — HTTP インターフェース
-- [ ] 5.1 Bearer 認証ミドルウェアとグループメンバー確認ミドルウェアを実装する
+- [x] 5.1 Bearer 認証ミドルウェアとグループメンバー確認ミドルウェアを実装する
   - `BearerAuthMiddleware` で `Authorization: Bearer <token>` を抽出し `pkg/crypto.Encrypt(token)` → `UserRepository.GetByEncryptedToken` でユーザーを取得してコンテキストに `userID` を注入する
   - トークン不正・未設定の場合は `{"error": "unauthorized"}` と 401 を返す
   - `GroupMemberMiddleware` で URL パラメータの groupID と contextの userID から `GroupRepository.IsMember` を呼び、非メンバーに 403 を返す
