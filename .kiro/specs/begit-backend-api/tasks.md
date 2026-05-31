@@ -152,7 +152,7 @@
   - _Requirements: 1.5, 1.6, 2.1, 2.2, 2.5, 2.7, 7.3, 7.4, 7.5_
   - _Boundary: AuthHandler, GroupHandler_
 
-- [ ] 5.3 (P) PostHandler・WebhookHandler・NotificationHandler・FCMTokenHandler を実装する
+- [x] 5.3 (P) PostHandler・WebhookHandler・NotificationHandler・FCMTokenHandler を実装する
   - `NotificationHandler` で `POST /groups/:id/notifications` と `GET /groups/:id/notifications/:nid` を実装し NotificationService に委譲する
   - `PostHandler` で `POST/GET /groups/:id/posts` を実装し PostService に委譲する
   - `WebhookHandler` で `X-Hub-Signature-256` を `hmac.Equal` で検証し失敗時は 403 を返す（Bearer 認証ミドルウェアを除外）、`WebhookRepository.InsertDelivery` で冪等性を確保してから `WebhookService.ProcessWebhook` を呼ぶ
