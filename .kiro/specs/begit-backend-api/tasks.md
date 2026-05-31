@@ -169,7 +169,7 @@
   - `go build ./...` が成功し `go run ./cmd/server` でサーバーが起動することを確認できる
   - _Requirements: 7.6, 7.7_
 
-- [ ] 6.2 Cloudflare Workers 側のシークレット転送設定を行う（隣接変更）
+- [x] 6.2 Cloudflare Workers 側のシークレット転送設定を行う（隣接変更）
   - `src/index.ts` の `fetch` ハンドラーで Workers Secrets と `[vars]` の値を `X-Internal-*` ヘッダーとして Container へのリクエストに追加する
   - Go Container の `main.go` で起動時に `os.Getenv("X_INTERNAL_*")` ではなく、最初のリクエストヘッダーから読む構成を取るか、または `wrangler.toml` の `[vars]` + シークレット binding を通じて環境変数として受け取る方法を採用する
   - `wrangler.toml` に `CF_ACCOUNT_ID`, `D1_DATABASE_ID`, `APP_BASE_URL` を `[vars]` セクションとして追加する

@@ -76,8 +76,9 @@ func loadConfig() (*Config, error) {
 }
 
 // configFromHeaders は X-Internal-* ヘッダーから Config を更新する（最初のリクエスト時に呼ぶ）
+// Workers Secrets は src/index.ts から X-Internal-* ヘッダーとして転送される
 func configFromHeaders(r *http.Request, cfg *Config) {
-	if v := r.Header.Get("X-Internal-Db-Encryption-Key"); v != "" {
+	if v := r.Header.Get("X-Internal-DB-Encryption-Key"); v != "" {
 		cfg.DBEncryptionKey = v
 	}
 	if v := r.Header.Get("X-Internal-Github-Client-Id"); v != "" {
@@ -91,6 +92,18 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	}
 	if v := r.Header.Get("X-Internal-Firebase-Service-Account"); v != "" {
 		cfg.FirebaseServiceAccountJSON = v
+	}
+	if v := r.Header.Get("X-Internal-CF-Account-Id"); v != "" {
+		cfg.CFAccountID = v
+	}
+	if v := r.Header.Get("X-Internal-D1-Database-Id"); v != "" {
+		cfg.D1DatabaseID = v
+	}
+	if v := r.Header.Get("X-Internal-CF-Api-Token"); v != "" {
+		cfg.CFAPIToken = v
+	}
+	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
+		cfg.AppBaseURL = v
 	}
 }
 
