@@ -69,7 +69,7 @@
   - _Requirements: 2.1, 2.2, 2.4, 2.5, 2.6, 2.7_
   - _Boundary: GroupRepository_
 
-- [ ] 3.3 (P) SprintRepository を実装する
+- [x] 3.3 (P) SprintRepository を実装する
   - `GetOrCreateCurrentSprint` を実装する（`started_at <= now AND ends_at > now` で検索し存在しなければ INSERT）
   - `GetCurrentSprint` は現在アクティブなスプリントを返し、なければ `ErrNotFound` を返す
   - 同じ groupID に対して `GetOrCreate` を連続呼び出しした場合に1件のみ作成されることを確認できる
