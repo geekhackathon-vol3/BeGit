@@ -84,7 +84,7 @@
   - _Requirements: 3.3, 3.8, 5.3_
   - _Boundary: NotificationRepository, WebhookRepository_
 
-- [ ] 3.5 (P) PostRepository と FCMTokenRepository を実装する
+- [x] 3.5 (P) PostRepository と FCMTokenRepository を実装する
   - `PostRepository` に `Create`, `ListByGroupID`, `HasPostedInSprint`, `GetByUserAndNotification` を実装する
   - `FCMTokenRepository` に `Upsert`（`INSERT OR REPLACE INTO fcm_tokens`）と `GetTokensByGroupID` を実装する
   - `HasPostedInSprint` が posts テーブルの存在確認クエリで true/false を返すことを確認できる
