@@ -63,10 +63,7 @@ struct AddRepositoryView: View {
                 }
 
                 ToolbarItem(placement: .topBarLeading) {
-                    //  Sheetを閉じる
-                    Button(action: dismiss.callAsFunction) {
-                        Label("Back", systemImage: "chevron.left")
-                    }
+                    BeGitBackButton()
                 }
             }
         }

@@ -38,10 +38,8 @@ struct RepositoryListView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             //  ログイン中ユーザー情報
-                            if displayedGitHubUser != nil {
-                                loggedInUserSummary
-                                    .padding(.bottom, 2)
-                            }
+                            loggedInUserSummary
+                                .padding(.bottom, 2)
 
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
@@ -101,45 +99,47 @@ struct RepositoryListView: View {
     }
 
     //  ログイン中ユーザー情報表示
-    @ViewBuilder
     private var loggedInUserSummary: some View {
-        if let user = displayedGitHubUser {
-            HStack(alignment: .center, spacing: 10) {
-                AvatarView(
-                    member: RepositoryMember(
-                        login: user.login,
-                        avatarURL: user.avatarURL
-                    ),
-                    size: 34
-                )
-                .background(
-                    Circle()
-                        .fill(AppTheme.background.opacity(0.82))
-                )
-                .overlay(
-                    Circle()
-                        .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
-                )
+        HStack(alignment: .center, spacing: 10) {
+            AvatarView(
+                member: RepositoryMember(
+                    login: displayedGitHubUser.login,
+                    avatarURL: displayedGitHubUser.avatarURL
+                ),
+                size: 34
+            )
+            .background(
+                Circle()
+                    .fill(AppTheme.background.opacity(0.82))
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
+            )
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(user.login)
-                        .font(.system(size: 13, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayedGitHubUser.login)
+                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
 
-                    Text(displayedGitHubUserIDText)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.64))
-                }
-
-                Spacer()
+                Text(displayedGitHubUserIDText)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.64))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    //  API接続済み時のみ表示するユーザー
-    private var displayedGitHubUser: GitHubUser? {
-        authState.githubUser
+    //  表示用ユーザー
+    private var displayedGitHubUser: GitHubUser {
+        authState.githubUser ?? GitHubUser(
+            id: 0,
+            login: "Guest",
+            avatarURL: nil,
+            email: nil
+        )
     }
 
     private var displayedGitHubUserIDText: String {
