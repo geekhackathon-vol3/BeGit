@@ -177,21 +177,21 @@
   - _Requirements: 7.2_
 
 - [ ] 7. テスト — ユニットテスト・インテグレーションテスト
-- [ ] 7.1 (P) pkg/crypto の暗号化ユーティリティと BearerAuthMiddleware のユニットテストを書く
+- [x] 7.1 (P) pkg/crypto の暗号化ユーティリティと BearerAuthMiddleware のユニットテストを書く
   - `pkg/crypto` のテスト: 暗号化の決定性（同一入力 → 同一出力）・可逆性（Encrypt→Decrypt）・異なる入力が異なる出力になることを検証する
   - `BearerAuthMiddleware` のテスト: 有効トークン/無効トークン/Authorization ヘッダー欠損の3ケースを検証する
   - `go test ./pkg/crypto/... ./internal/handler/...` がすべて PASS することを確認できる
   - _Requirements: 1.7, 7.1_
   - _Boundary: pkg/crypto, BearerAuthMiddleware_
 
-- [ ] 7.2 (P) 通知ステータス算出とぼかし制御ロジックのユニットテストを書く
+- [x] 7.2 (P) 通知ステータス算出とぼかし制御ロジックのユニットテストを書く
   - `NotificationService.GetNotificationStatus` のテスト: On Time（通知後 59 分）/ Late（通知後 61 分）/ Missed（投稿なし）の境界値を検証する
   - `PostService.ListPosts` のぼかし制御テスト: 自分が未投稿 → 他メンバーの sensitive フィールドが nil、自分が投稿済み → 全フィールド公開 を検証する
   - `go test ./internal/service/...` がすべて PASS することを確認できる
   - _Requirements: 3.5, 3.6, 3.7, 4.4, 4.5_
   - _Boundary: NotificationService, PostService_
 
-- [ ] 7.3 Webhook Handler の HMAC 検証・冪等性インテグレーションテストを書く
+- [x] 7.3 Webhook Handler の HMAC 検証・冪等性インテグレーションテストを書く
   - `POST /webhook/github` に正しい `X-Hub-Signature-256` を付与したリクエストが 200 を返すことを検証する
   - 誤った署名が 403 を返すことを検証する
   - 同じ `X-GitHub-Delivery` 値で2回リクエストを送ると2回目も 200 を返して処理がスキップされることを検証する（5.3 冪等性）
