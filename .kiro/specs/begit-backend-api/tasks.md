@@ -119,7 +119,7 @@
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
   - _Boundary: NotificationService_
 
-- [ ] 4.4 (P) 投稿・フィードサービスを実装する（ぼかし制御含む）
+- [x] 4.4 (P) 投稿・フィードサービスを実装する（ぼかし制御含む）
   - `PostService.CreatePost` に `pkg/github.GetRecentCommits` → posts INSERT の処理を実装する（GitHub API 失敗時は `ErrExternalAPI` を返す）
   - `ListPosts` で `SprintRepository.GetCurrentSprint` → `PostRepository.HasPostedInSprint` → 投稿リスト取得 → ぼかし制御を順に実行する
   - ぼかし制御: リクエストユーザーが未投稿の場合、他メンバーの `body`, `repo_full_name`, `latest_commit_message` フィールドを `nil` に設定する
