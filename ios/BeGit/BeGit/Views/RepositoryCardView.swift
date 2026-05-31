@@ -105,13 +105,8 @@ struct AvatarView: View {
 
     //  avatar placeholder
     private var placeholder: some View {
-        Circle()
-            .fill(AppTheme.accent.opacity(0.20))    //  placeholder背景
-            .overlay(
-                //  login頭文字表示
-                Text(String(member.login.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.42, weight: .black, design: .monospaced))
-                    .foregroundStyle(AppTheme.accent)
-            )
+        Image("github_default_icon")
+            .resizable()
+            .scaledToFill()
     }
 }

@@ -10,10 +10,21 @@ final class AddRepositoryViewModel: ObservableObject {
     @Published var memberLoginText = ""                             //  member login入力値
     @Published private(set) var members: [RepositoryMember] = []    //  追加済みmember一覧
     @Published var isMemberInputVisible = false                     //  member入力欄の表示状態
+    let invitedMembers: [RepositoryMember] = [                      //  招待済みmember候補一覧
+        RepositoryMember(login: "ayaka"),
+        RepositoryMember(login: "begit"),
+        RepositoryMember(login: "ios-dev"),
+        RepositoryMember(login: "repo-admin")
+    ]
 
     //  Repository作成可能か
     var canComplete: Bool {
         repositoryName != nil
+    }
+
+    //  Repository preview表示名
+    var repositoryPreviewName: String? {
+        repositoryName
     }
 
     //  member追加可能か
@@ -22,11 +33,18 @@ final class AddRepositoryViewModel: ObservableObject {
             && members.contains { $0.login.caseInsensitiveCompare(normalizedMemberLogin) == .orderedSame } == false
     }
 
+    //  未追加の招待済みmember
+    var selectableInvitedMembers: [RepositoryMember] {
+        invitedMembers.filter { invitedMember in
+            members.contains { $0.login.caseInsensitiveCompare(invitedMember.login) == .orderedSame } == false
+        }
+    }
+
     // MARK: - Actions
 
-    //  member入力欄を表示
+    //  member選択リスト表示を切り替え
     func showMemberInput() {
-        isMemberInputVisible = true
+        isMemberInputVisible.toggle()
     }
 
     //  member追加
@@ -36,6 +54,15 @@ final class AddRepositoryViewModel: ObservableObject {
         members.append(RepositoryMember(login: normalizedMemberLogin))
         memberLoginText = ""
         isMemberInputVisible = false
+    }
+
+    //  招待済みmember追加
+    func addInvitedMember(_ member: RepositoryMember) {
+        guard members.contains(where: { $0.login.caseInsensitiveCompare(member.login) == .orderedSame }) == false else {
+            return
+        }
+
+        members.append(member)
     }
 
     //  member削除
