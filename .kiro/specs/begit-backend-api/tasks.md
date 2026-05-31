@@ -92,7 +92,7 @@
   - _Boundary: PostRepository, FCMTokenRepository_
 
 - [ ] 4. Service 層 — ビジネスロジック実装
-- [ ] 4.1 (P) GitHub OAuth 認証サービスを実装する
+- [x] 4.1 (P) GitHub OAuth 認証サービスを実装する
   - `AuthService.ExchangeCode` に GitHub コード交換 → ユーザー情報取得 → DB UPSERT → access_token 返却の一連のフローを実装する
   - `pkg/github.ExchangeCode` でアクセストークンを取得し、`pkg/github.GetUser` でユーザー情報を取得する
   - `pkg/crypto.Encrypt` でアクセストークンを暗号化してから `UserRepository.UpsertUser` を呼ぶ
