@@ -46,9 +46,9 @@
   - `wrangler dev` コマンドが起動エラーなく実行できる（ローカル開発環境が起動する）
   - _Requirements: 1.1, 2.4, 3.5, 4.2, 4.3, 5.2, 9.2, 9.4_
 
-- [ ] 3. コアコンポーネントを実装する
+- [x] 3. コアコンポーネントを実装する
 
-- [ ] 3.1 (P) Workers TypeScript エントリーポイントを実装する
+- [x] 3.1 (P) Workers TypeScript エントリーポイントを実装する
   - `backend/src/index.ts` を作成する
   - `BeGitAPI extends Container` クラスを定義: `defaultPort = 8080`・`sleepAfter = "10m"`
   - `Env` インターフェースを定義: `BEGIT_API`（DurableObjectNamespace）・`DB`（D1Database）・`PHOTOS`（R2Bucket）・4 シークレット（文字列型）
@@ -57,7 +57,7 @@
   - _Requirements: 1.3, 1.5, 2.3, 4.5, 5.4, 7.4_
   - _Boundary: Workers Entry Point_
 
-- [ ] 3.2 (P) Go API の linux/amd64 Dockerfile を作成する
+- [x] 3.2 (P) Go API の linux/amd64 Dockerfile を作成する
   - `backend/Dockerfile` を作成し、`--platform=linux/amd64` 指定の multi-stage ビルドを定義する
   - Stage 1（ビルダー）: `golang:alpine` ベースで Go ソースをコンパイルする
   - Stage 2（ランタイム）: `alpine` ベース、`adduser -D appuser` で非 root ユーザーを作成し `USER appuser` で実行する
