@@ -127,7 +127,7 @@
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
   - _Boundary: PostService_
 
-- [ ] 4.5 (P) Webhook イベント処理と FCM トークン管理サービスを実装する
+- [x] 4.5 (P) Webhook イベント処理と FCM トークン管理サービスを実装する
   - `WebhookService.ProcessWebhook` で `push` / `pull_request_review` イベントのリポジトリ名からグループを特定し、スプリント情報を更新する
   - 対応グループが見つからない場合は 200 OK で処理を終了する（エラーにしない）
   - `FCMTokenService.UpsertFCMToken` で `FCMTokenRepository.Upsert` を呼ぶ
