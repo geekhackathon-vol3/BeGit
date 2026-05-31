@@ -63,7 +63,7 @@ struct BeGitBackButton: View {
                     .frame(width: 22, height: 22)
 
                 Text(titleKey)
-                    .font(.system(size: 21, weight: .bold, design: .monospaced))
+                    .font(.system(size: 21, weight: .regular, design: .monospaced))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
