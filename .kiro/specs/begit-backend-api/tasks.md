@@ -20,7 +20,7 @@
   - `go build ./internal/model/...` が成功する
   - _Requirements: 7.6, 7.7_
 
-- [ ] 1.4 導出ノンス AES-GCM 暗号化・復号ユーティリティを実装する
+- [x] 1.4 導出ノンス AES-GCM 暗号化・復号ユーティリティを実装する
   - `pkg/crypto/aes.go` に `Encryptor` インターフェースと実装を作成する
   - ノンス生成: `nonce = SHA-256(encryptionKey || plaintext)[:12]` （決定的）
   - 出力フォーマット: `hex(nonce) + ":" + hex(ciphertext)`
