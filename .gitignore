@@ -1,0 +1,12 @@
+# Terraform
+infra/terraform/terraform.tfstate
+infra/terraform/terraform.tfstate.backup
+infra/terraform/terraform.tfvars
+infra/terraform/.terraform/
+
+# Environment variables
+.env
+.env.local
+
+# macOS
+.DS_Store
