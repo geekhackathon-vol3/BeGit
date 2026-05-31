@@ -32,7 +32,14 @@ struct AddRepositoryView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        headerSection           //  Header
+                        Text("Repo Setting")
+                            .font(.custom("Bitcount", size: 34))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.bottom, 2)
+
+                        repositoryPreview
+
                         repositoryURLSection    //  Repository URL入力
                         membersSection          //  Team member設定
 
@@ -57,9 +64,9 @@ struct AddRepositoryView: View {
 
                 ToolbarItem(placement: .topBarLeading) {
                     //  Sheetを閉じる
-                    Button("Cancel", action: dismiss.callAsFunction)
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.72))
+                    Button(action: dismiss.callAsFunction) {
+                        Label("Back", systemImage: "chevron.left")
+                    }
                 }
             }
         }
@@ -68,26 +75,39 @@ struct AddRepositoryView: View {
 
     // MARK: - Components
 
-    //  Header表示
-    private var headerSection: some View {
-        VStack(alignment: .center, spacing: 10) {
-            Text("CONNECT A REPO")
-                .font(.system(size: 13, weight: .black, design: .monospaced))
-                .foregroundStyle(AppTheme.accent)
+    //  Repository入力状態preview
+    private var repositoryPreview: some View {
+        HStack(spacing: 12) {
+            if viewModel.repositoryPreviewName == nil {
+                Image(systemName: "shippingbox")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.50))
+            } else {
+                Image("github_default_icon")
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 18, height: 18)
+                    .clipShape(Circle())
+            }
 
-            Text("Paste a GitHub URL and add the teammates you want to track.")
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.62))
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
+            Text(viewModel.repositoryPreviewName ?? "Repository not selected")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(viewModel.repositoryPreviewName == nil ? 0.42 : 0.62))
+                .lineLimit(1)
+
+            Spacer()
         }
-        .frame(maxWidth: .infinity)
     }
 
     //  Repository URL入力Section
     private var repositoryURLSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("GitHub Repository URL")
+            sectionTitle(
+                "■ GitHub Repository URL",
+                size: 20,
+                weight: .regular,
+                color: Color(red: 0.980, green: 0.973, blue: 0.780)
+            )
 
             TextField("https://github.com/apple/swift", text: $viewModel.repositoryURLText)
                 .textInputAutocapitalization(.never)
@@ -96,11 +116,11 @@ struct AddRepositoryView: View {
                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white)
                 .padding(16)
-                .background(AppTheme.fieldBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(Color(red: 0.247, green: 0.247, blue: 0.286))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
                 )
         }
     }
@@ -108,74 +128,149 @@ struct AddRepositoryView: View {
     //  Team member設定Section
     private var membersSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                sectionTitle("Team Members")
+            sectionTitle(
+                "■ Team Members",
+                size: 20,
+                weight: .regular,
+                color: Color(red: 0.929, green: 0.784, blue: 0.827)
+            )
 
-                Spacer()
+            memberListBox
+        }
+    }
 
-                Button(action: viewModel.showMemberInput) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(.black)
-                        .frame(width: 34, height: 34)
-                        .background(AppTheme.accent)
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("メンバー追加")
-            }
-
-            if viewModel.isMemberInputVisible {
-                memberInput
-            }
+    //  member選択リスト
+    private var memberListBox: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            memberListHeader
 
             if viewModel.members.isEmpty {
-                Text("No members yet. Add GitHub login names locally for now.")
-                    .font(.system(size: 13, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.46))
-                    .padding(.vertical, 8)
+                emptyMemberState
             } else {
-                FlowLayout(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(viewModel.members) { member in
-                        MemberChipView(member: member) {
-                            viewModel.removeMember(member)
-                        }
+                        selectedMemberRow(member)
+                    }
+                }
+            }
+
+            if viewModel.isMemberInputVisible && viewModel.selectableInvitedMembers.isEmpty == false {
+                Divider()
+                    .background(Color.white.opacity(0.16))
+
+                memberListSubheader("Invited members")
+
+                VStack(spacing: 10) {
+                    ForEach(viewModel.selectableInvitedMembers) { member in
+                        invitedMemberRow(member)
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+        .padding(14)
+        .background(Color(red: 0.247, green: 0.247, blue: 0.286))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
+        )
     }
 
-    //  member追加入力欄
-    private var memberInput: some View {
-        HStack(spacing: 10) {
-            TextField("github-login", text: $viewModel.memberLoginText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
-                .padding(14)
-                .background(AppTheme.fieldBackground)
-                .clipShape(Capsule())
+    //  memberリスト内header
+    private var memberListHeader: some View {
+        HStack(spacing: 12) {
+            memberListSubheader("Selected members")
 
-            Button(action: viewModel.addMember) {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .black))
+            Spacer()
+
+            Button(action: viewModel.showMemberInput) {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .black))
                     .foregroundStyle(.black)
-                    .frame(width: 46, height: 46)
-                    .background(AppTheme.accent.opacity(viewModel.canAddMember ? 1 : 0.45))
-                    .clipShape(Circle())
+                    .frame(width: 34, height: 34)
+                    .background(Color(red: 0.725, green: 0.976, blue: 0.902))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.canAddMember == false)
+            .accessibilityLabel("メンバー追加")
         }
     }
 
-    //  Section title共通View
-    private func sectionTitle(_ title: String) -> some View {
+    //  member未選択表示
+    private var emptyMemberState: some View {
+        Text("No members selected")
+            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.42))
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+    }
+
+    //  memberリスト内小見出し
+    private func memberListSubheader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 15, weight: .bold, design: .monospaced))
-            .foregroundStyle(.white)
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.54))
+            .textCase(.uppercase)
+    }
+
+    //  選択済みmember行
+    private func selectedMemberRow(_ member: RepositoryMember) -> some View {
+        HStack(spacing: 12) {
+            AvatarView(member: member, size: 34)
+
+            Text(member.login)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                viewModel.removeMember(member)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(.black)
+                    .frame(width: 30, height: 30)
+                    .background(Color(red: 0.969, green: 0.749, blue: 0.761))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(member.login)を削除")
+        }
+    }
+
+    //  招待済みmember候補行
+    private func invitedMemberRow(_ member: RepositoryMember) -> some View {
+        Button {
+            viewModel.addInvitedMember(member)
+        } label: {
+            HStack(spacing: 12) {
+                AvatarView(member: member, size: 34)
+
+                Text(member.login)
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(member.login)を追加")
+    }
+
+    //  Section title共通View
+    private func sectionTitle(
+        _ title: String,
+        size: CGFloat = 15,
+        weight: Font.Weight = .bold,
+        color: Color = .white
+    ) -> some View {
+        Text(title)
+            .font(.system(size: size, weight: weight, design: .monospaced))
+            .foregroundStyle(color)
     }
 
     //  Repository生成後に一覧へ追加
