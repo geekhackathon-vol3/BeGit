@@ -76,7 +76,7 @@
   - _Requirements: 3.1_
   - _Boundary: SprintRepository_
 
-- [ ] 3.4 (P) NotificationRepository と WebhookRepository を実装する
+- [x] 3.4 (P) NotificationRepository と WebhookRepository を実装する
   - `NotificationRepository` に `Create` / `GetByID` を実装する
   - `Create` は `UNIQUE(sprint_id, sent_by)` 違反時に `ErrConstraintViolation` を返す
   - `WebhookRepository.InsertDelivery` は `INSERT INTO github_webhook_deliveries` を試みて UNIQUE 違反なら `isDuplicate=true, err=nil` を返す
