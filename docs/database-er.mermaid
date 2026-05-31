@@ -1,0 +1,110 @@
+erDiagram
+    users {
+        TEXT id PK
+        INTEGER github_id UK
+        TEXT github_login UK
+        TEXT username
+        TEXT access_token_encrypted
+    }
+
+    fcm_tokens {
+        TEXT id PK
+        TEXT user_id FK
+        TEXT registration_token UK
+    }
+
+    groups {
+        TEXT id PK
+        TEXT name
+        TEXT repo_full_name
+        INTEGER sprint_duration_days
+        TEXT created_by FK
+    }
+
+    group_members {
+        TEXT group_id PK_FK
+        TEXT user_id PK_FK
+        TEXT role
+        TEXT left_at
+    }
+
+    sprints {
+        TEXT id PK
+        TEXT group_id FK
+        INTEGER index_num
+        TEXT started_at
+        TEXT ends_at
+    }
+
+    be_time_notifications {
+        TEXT id PK
+        TEXT group_id FK
+        TEXT sprint_id FK
+        TEXT sent_by FK
+        TEXT message
+        TEXT sent_at
+    }
+
+    posts {
+        TEXT id PK
+        TEXT notification_id FK
+        TEXT user_id FK
+        TEXT group_id FK
+        TEXT status
+        TEXT privacy_level
+    }
+
+    tags {
+        TEXT id PK
+        TEXT name UK
+    }
+
+    post_tags {
+        TEXT post_id PK_FK
+        TEXT tag_id PK_FK
+    }
+
+    photos {
+        TEXT id PK
+        TEXT post_id FK
+        TEXT r2_key
+        TEXT type
+    }
+
+    reactions {
+        TEXT id PK
+        TEXT post_id FK
+        TEXT user_id FK
+        TEXT type
+    }
+
+    comments {
+        TEXT id PK
+        TEXT post_id FK
+        TEXT user_id FK
+        TEXT body
+    }
+
+    github_webhook_deliveries {
+        TEXT delivery_id PK
+        TEXT event_type
+    }
+
+    users ||--o{ fcm_tokens : has
+    users ||--o{ groups : creates
+    users ||--o{ group_members : joins
+    groups ||--o{ group_members : has
+    groups ||--o{ sprints : has
+    groups ||--o{ be_time_notifications : has
+    groups ||--o{ posts : contains
+    sprints ||--o{ be_time_notifications : contains
+    users ||--o{ be_time_notifications : sends
+    be_time_notifications ||--o{ posts : triggers
+    users ||--o{ posts : writes
+    posts ||--o{ photos : has
+    posts ||--o{ reactions : receives
+    users ||--o{ reactions : gives
+    posts ||--o{ comments : has
+    users ||--o{ comments : writes
+    posts ||--o{ post_tags : tagged
+    tags ||--o{ post_tags : used_in

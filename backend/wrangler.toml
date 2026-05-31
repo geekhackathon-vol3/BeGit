@@ -1,0 +1,11 @@
+name = "begit-api"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+# D1 database binding — replace database_id after: wrangler d1 create begit-db
+[[d1_databases]]
+binding = "DB"
+database_name = "begit-db"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
+migrations_table = "d1_migrations"

@@ -395,97 +395,204 @@ if !hmac.Equal([]byte(expected), []byte(signature)) {
 
 #### 投稿範囲
 
-| 範囲 | 説明 |
-|------|------|
-| 全体公開 | BeGit全ユーザーに公開 |
-| フォロワーのみ | フォロワーに限定 |
-| チームのみ | グループメンバーのみ |
-| 自分だけ（ログ） | 自分のみ閲覧可（記録用） |
+| 範囲 | 説明 | MVP |
+|------|------|-----|
+| 全体公開 | BeGit全ユーザーに公開 | ✅ |
+| フォロワーのみ | フォロワーに限定 | ❌（将来） |
+| チームのみ | グループメンバーのみ | ✅ |
+| 自分だけ（ログ） | 自分のみ閲覧可（記録用） | ✅ |
 
 ---
 
-## 6. データモデル（概要）
+## 6. データモデル
 
-```
-User
-  - id
-  - github_id
-  - username
-  - avatar_url
-  - access_token (encrypted)
-  - created_at
+**DB:** Cloudflare D1（SQLite 互換）  
+**ID:** `TEXT` UUID（アプリ側生成）  
+**時刻:** `TEXT` ISO8601 UTC
 
-FCMToken
-  - id
-  - user_id
-  - registration_token
-  - updated_at
+> MVP では 1 Group : 1 GitHub リポジトリ（`groups.repo_full_name` に直接保持）。  
+> `privacy_level` の `followers` は将来拡張（[11. 将来拡張](#11-将来拡張)）— MVP では `public | group | private` のみ。
 
-Group
-  - id
-  - name
-  - sprint_duration_days
-  - created_by (User.id)
-  - created_at
+### 6.1 エンティティ一覧
 
-GroupRepository          ← グループに紐付くGitHubリポジトリ
-  - group_id
-  - repo_full_name       (例: "owner/repo-name")
-  - added_at
+#### User
 
-GroupMember
-  - group_id
-  - user_id
-  - role (owner / member)
-  - joined_at
-  - auto_joined (boolean)  ← リポジトリ連携で自動参加したか
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `github_id` | INTEGER | NOT NULL, UNIQUE | GitHub ユーザー ID |
+| `github_login` | TEXT | NOT NULL, UNIQUE | GitHub login（コラボレーター自動参加のマッチング用） |
+| `username` | TEXT | NOT NULL | 表示名 |
+| `avatar_url` | TEXT | | アバター URL |
+| `access_token_encrypted` | TEXT | NOT NULL | 暗号化 GitHub アクセストークン |
+| `token_expires_at` | TEXT | | トークン有効期限 |
+| `created_at` | TEXT | NOT NULL | 作成日時 |
 
-Notification (通知発行)
-  - id
-  - group_id
-  - sent_by (User.id)
-  - message
-  - sent_at
-  - sprint_index
+#### FCMToken
 
-Post (投稿)
-  - id
-  - notification_id
-  - user_id
-  - group_id
-  - repo_name
-  - branch_name
-  - commit_count
-  - diff_add
-  - diff_remove
-  - latest_commit_message
-  - custom_alt (ユーザー上書きメッセージ)
-  - memo
-  - tags []
-  - privacy_level (public / followers / group / private)
-  - status (on_time / late / missed)
-  - created_at
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `user_id` | TEXT | NOT NULL, FK → users | 所有者 |
+| `registration_token` | TEXT | NOT NULL, UNIQUE | FCM デバイストークン |
+| `platform` | TEXT | NOT NULL, CHECK `ios` | プラットフォーム |
+| `updated_at` | TEXT | NOT NULL | 最終更新 |
 
-Photo
-  - id
-  - post_id
-  - url
-  - type (code_screenshot / desk / environment)
-  - blur (boolean)
+#### Group
 
-Reaction
-  - id
-  - post_id
-  - user_id
-  - type (lgtm / watching / grass / strong / review / merge)
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `name` | TEXT | NOT NULL | グループ名 |
+| `repo_full_name` | TEXT | NOT NULL | 紐付け GitHub リポジトリ（例: `owner/repo`） |
+| `sprint_duration_days` | INTEGER | NOT NULL, CHECK > 0 | スプリント期間（日） |
+| `created_by` | TEXT | NOT NULL, FK → users | 作成者 |
+| `created_at` | TEXT | NOT NULL | 作成日時 |
 
-Comment
-  - id
-  - post_id
-  - user_id
-  - body
-  - created_at
-```
+#### GroupMember
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `group_id` | TEXT | PK, FK → groups | |
+| `user_id` | TEXT | PK, FK → users | |
+| `role` | TEXT | NOT NULL, CHECK `owner\|member` | 役割 |
+| `auto_joined` | INTEGER | NOT NULL, CHECK 0\|1 | リポジトリ連携による自動参加か |
+| `joined_at` | TEXT | NOT NULL | 参加日時 |
+| `left_at` | TEXT | | NULL = 在籍中（ソフトデリート） |
+
+#### Sprint
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `group_id` | TEXT | NOT NULL, FK → groups | |
+| `index_num` | INTEGER | NOT NULL, CHECK ≥ 1, UNIQUE(group_id, index_num) | スプリント番号 |
+| `started_at` | TEXT | NOT NULL | 開始日時 |
+| `ends_at` | TEXT | NOT NULL | 終了日時 |
+
+#### BeTimeNotification（BeGit Time 通知発行）
+
+> Push 通知（FCM）と区別するため、ドメイン概念は `BeTimeNotification` と呼ぶ。DB テーブル名: `be_time_notifications`。
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `group_id` | TEXT | NOT NULL, FK → groups | |
+| `sprint_id` | TEXT | NOT NULL, FK → sprints | |
+| `sent_by` | TEXT | NOT NULL, FK → users | 発行者 |
+| `message` | TEXT | NOT NULL | 通知メッセージ |
+| `sent_at` | TEXT | NOT NULL | 発行日時 |
+
+**ビジネス制約:** `UNIQUE(sprint_id, sent_by)` — 1 スプリントにつき 1 人 1 回のみ発行可。
+
+#### Post
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `notification_id` | TEXT | NOT NULL, FK → be_time_notifications | |
+| `user_id` | TEXT | NOT NULL, FK → users | |
+| `group_id` | TEXT | NOT NULL, FK → groups | フィード取得用（非正規化） |
+| `repo_name` | TEXT | | リポジトリ名 |
+| `branch_name` | TEXT | | ブランチ名 |
+| `commit_count` | INTEGER | DEFAULT 0 | 今日のコミット数 |
+| `diff_add` | INTEGER | DEFAULT 0 | 追加行数 |
+| `diff_remove` | INTEGER | DEFAULT 0 | 削除行数 |
+| `commit_message` | TEXT | | 最新コミットメッセージ（ユーザー上書き可） |
+| `memo` | TEXT | | ひとことメモ |
+| `privacy_level` | TEXT | NOT NULL, CHECK `public\|group\|private` | 投稿範囲 |
+| `status` | TEXT | NOT NULL, CHECK `on_time\|late\|missed` | 投稿期限ステータス |
+| `created_at` | TEXT | NOT NULL | 投稿日時 |
+
+**ビジネス制約:** `UNIQUE(notification_id, user_id)` — 1 通知 × 1 ユーザー = 最大 1 投稿。
+
+**status 算出ルール:**
+
+| status | 条件 |
+|--------|------|
+| `on_time` | `created_at` ≤ `sent_at` + 1 時間（INSERT 時に算出） |
+| `late` | `created_at` > `sent_at` + 1 時間（INSERT 時に算出） |
+| `missed` | 投稿なし — スプリント終了バッチで `status='missed'` の Post を upsert |
+
+#### Tag / PostTag
+
+| テーブル | カラム | 制約 |
+|---------|--------|------|
+| `tags` | `id` TEXT PK, `name` TEXT NOT NULL UNIQUE | 技術タグマスタ |
+| `post_tags` | `post_id` FK, `tag_id` FK, PK(post_id, tag_id) | 投稿 ↔ タグ |
+
+#### Photo
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `post_id` | TEXT | NOT NULL, FK → posts | |
+| `r2_key` | TEXT | NOT NULL | R2 オブジェクトキー（URL は API 層で署名生成） |
+| `type` | TEXT | NOT NULL, CHECK `code_screenshot\|desk\|environment` | 写真種別 |
+| `blur` | INTEGER | NOT NULL, CHECK 0\|1 | ぼかし適用 |
+
+#### Reaction
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `post_id` | TEXT | NOT NULL, FK → posts | |
+| `user_id` | TEXT | NOT NULL, FK → users | |
+| `type` | TEXT | NOT NULL, CHECK `lgtm\|watching\|grass\|strong\|review\|merge` | リアクション種別 |
+
+**ビジネス制約:** `UNIQUE(post_id, user_id, type)` — 種別ごとに 1 つ。
+
+#### Comment
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `id` | TEXT | PK | UUID |
+| `post_id` | TEXT | NOT NULL, FK → posts | |
+| `user_id` | TEXT | NOT NULL, FK → users | |
+| `body` | TEXT | NOT NULL | コメント本文 |
+| `created_at` | TEXT | NOT NULL | 作成日時 |
+
+#### GitHubWebhookDelivery（冪等性）
+
+| カラム | 型 | 制約 | 説明 |
+|--------|-----|------|------|
+| `delivery_id` | TEXT | PK | GitHub `X-GitHub-Delivery` ヘッダー |
+| `event_type` | TEXT | NOT NULL | イベント種別 |
+| `received_at` | TEXT | NOT NULL | 受信日時 |
+
+### 6.2 ER 図
+
+ER 図・ドメイン構造・データフローは [docs/database-er.md](docs/database-er.md) を参照。
+
+### 6.3 主要インデックス
+
+| インデックス | 対象 | 用途 |
+|-------------|------|------|
+| `idx_fcm_tokens_user_id` | fcm_tokens(user_id) | FCM 送信 |
+| `idx_groups_created_by` | groups(created_by) | ユーザー作成グループ |
+| `idx_groups_repo_full_name` | groups(repo_full_name) | リポジトリ名検索 |
+| `idx_group_members_user_id` | group_members(user_id) | ユーザー所属グループ |
+| `idx_group_members_group_active` | group_members(group_id, left_at) | 在籍メンバー一覧 |
+| `idx_sprints_group_active` | sprints(group_id, ends_at) | 現行スプリント特定 |
+| `idx_be_time_notifications_group` | be_time_notifications(group_id, sent_at DESC) | 通知履歴 |
+| `idx_be_time_notifications_sprint_id` | be_time_notifications(sprint_id) | スプリント内通知 |
+| `idx_posts_group_feed` | posts(group_id, created_at DESC) | フィード取得 |
+| `idx_posts_user` | posts(user_id) | ユーザー投稿一覧 |
+| `idx_posts_notification_id` | posts(notification_id) | Missed バッチ / 通知別投稿 |
+| `idx_post_tags_tag_id` | post_tags(tag_id) | タグ別投稿 |
+| `idx_photos_post_id` | photos(post_id) | 写真取得 |
+| `idx_reactions_post_id` | reactions(post_id) | リアクション取得 |
+| `idx_comments_post_id` | comments(post_id, created_at) | コメント取得 |
+
+> **Note:** DB 上のテーブル名 `groups` は SQL 予約語のため、クエリでは `"groups"` とクォートする。
+
+### 6.4 マイグレーション
+
+- 配置: `backend/migrations/0001_initial.sql`
+- 検証: `make db-validate` または `cd backend && npm run db:validate`
+- ローカル適用: `make db-migrate-local` または `cd backend && npm run db:migrate:local`
+- 本番適用: `wrangler d1 migrations apply begit-db --remote`（`database_id` 設定後）
+- 命名規則: `{seq}_{action}_{object}`（例: `0002_add_follows_table.sql`）
 
 ---
 

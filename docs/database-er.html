@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BeGit Database ER Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8f9fb;
+      --card: #ffffff;
+      --text: #1a1a2e;
+      --muted: #5c6370;
+      --border: #e2e6ed;
+      --accent: #6b5ce7;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1117;
+        --card: #171a22;
+        --text: #eef0f4;
+        --muted: #9aa3b2;
+        --border: #2a3140;
+        --accent: #cdbbff;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    header {
+      padding: 2rem 1.5rem 1rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.75rem;
+    }
+
+    header p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0 1.5rem 1rem;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    nav a {
+      color: var(--accent);
+      text-decoration: none;
+      padding: 0.35rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--card);
+      font-size: 0.875rem;
+    }
+
+    nav a:hover { border-color: var(--accent); }
+
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 1.5rem 3rem;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.25rem 1.5rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    section h2 {
+      margin: 0 0 0.25rem;
+      font-size: 1.125rem;
+    }
+
+    section .caption {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    .mermaid {
+      overflow-x: auto;
+      display: flex;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>BeGit Database ER Diagram</h1>
+    <p>Cloudflare D1（SQLite）— スキーマ: backend/migrations/0001_initial.sql</p>
+  </header>
+
+  <nav>
+    <a href="#er">全体 ER 図</a>
+    <a href="#auth">認証・デバイス</a>
+    <a href="#group">グループ・スプリント</a>
+    <a href="#social">投稿・ソーシャル</a>
+    <a href="#flow">データフロー</a>
+  </nav>
+
+  <main>
+    <section id="er">
+      <h2>全体 ER 図</h2>
+      <p class="caption">13 テーブル。github_webhook_deliveries は FK なしの独立テーブル。</p>
+      <pre class="mermaid">
+erDiagram
+    users {
+        TEXT id PK
+        INTEGER github_id UK
+        TEXT github_login UK
+        TEXT username
+        TEXT access_token_encrypted
+    }
+
+    fcm_tokens {
+        TEXT id PK
+        TEXT user_id FK
+        TEXT registration_token UK
+    }
+
+    groups {
+        TEXT id PK
+        TEXT name
+        TEXT repo_full_name
+        INTEGER sprint_duration_days
+        TEXT created_by FK
+    }
+
+    group_members {
+        TEXT group_id PK_FK
+        TEXT user_id PK_FK
+        TEXT role
+        TEXT left_at
+    }
+
+    sprints {
+        TEXT id PK
+        TEXT group_id FK
+        INTEGER index_num
+        TEXT started_at
+        TEXT ends_at
+    }
+
+    be_time_notifications {
+        TEXT id PK
+        TEXT group_id FK
+        TEXT sprint_id FK
+        TEXT sent_by FK
+        TEXT message
+        TEXT sent_at
+    }
+
+    posts {
+        TEXT id PK
+        TEXT notification_id FK
+        TEXT user_id FK
+        TEXT group_id FK
+        TEXT status
+        TEXT privacy_level
+    }
+
+    tags {
+        TEXT id PK
+        TEXT name UK
+    }
+
+    post_tags {
+        TEXT post_id PK_FK
+        TEXT tag_id PK_FK
+    }
+
+    photos {
+        TEXT id PK
+        TEXT post_id FK
+        TEXT r2_key
+        TEXT type
+    }
+
+    reactions {
+        TEXT id PK
+        TEXT post_id FK
+        TEXT user_id FK
+        TEXT type
+    }
+
+    comments {
+        TEXT id PK
+        TEXT post_id FK
+        TEXT user_id FK
+        TEXT body
+    }
+
+    github_webhook_deliveries {
+        TEXT delivery_id PK
+        TEXT event_type
+    }
+
+    users ||--o{ fcm_tokens : has
+    users ||--o{ groups : creates
+    users ||--o{ group_members : joins
+    groups ||--o{ group_members : has
+    groups ||--o{ sprints : has
+    groups ||--o{ be_time_notifications : has
+    groups ||--o{ posts : contains
+    sprints ||--o{ be_time_notifications : contains
+    users ||--o{ be_time_notifications : sends
+    be_time_notifications ||--o{ posts : triggers
+    users ||--o{ posts : writes
+    posts ||--o{ photos : has
+    posts ||--o{ reactions : receives
+    users ||--o{ reactions : gives
+    posts ||--o{ comments : has
+    users ||--o{ comments : writes
+    posts ||--o{ post_tags : tagged
+    tags ||--o{ post_tags : used_in
+      </pre>
+    </section>
+
+    <section id="auth">
+      <h2>認証・デバイス</h2>
+      <p class="caption">users.github_login で GitHub コラボレーター自動参加をマッチング。</p>
+      <pre class="mermaid">
+flowchart LR
+    User[users] -->|1:N| FCM[fcm_tokens]
+    User -->|github_login| GitHub[GitHub Collaborators]
+      </pre>
+    </section>
+
+    <section id="group">
+      <h2>グループ・スプリント</h2>
+      <p class="caption">MVP: Group : GitHub Repo = 1:1（groups.repo_full_name）。</p>
+      <pre class="mermaid">
+flowchart TB
+    User[users] -->|creates| Group[groups]
+    User -->|N:M via group_members| Group
+    Group -->|1:N| Sprint[sprints]
+    Sprint -->|1:N| Notif[be_time_notifications]
+    Notif -->|1:N| Post[posts]
+    Group -->|1:N| Post
+    User -->|writes| Post
+    User -->|sends| Notif
+      </pre>
+    </section>
+
+    <section id="social">
+      <h2>投稿・ソーシャル</h2>
+      <p class="caption">Post を中心に Photo / Reaction / Comment / Tag が接続。</p>
+      <pre class="mermaid">
+flowchart TB
+    Post[posts] -->|1:N| Photo[photos]
+    Post -->|1:N| Reaction[reactions]
+    Post -->|1:N| Comment[comments]
+    Post -->|N:M via post_tags| Tag[tags]
+    User[users] --> Reaction
+    User --> Comment
+      </pre>
+    </section>
+
+    <section id="flow">
+      <h2>データフロー</h2>
+      <p class="caption">グループ作成 → 通知発行 → 投稿 → Missed バッチ。</p>
+      <pre class="mermaid">
+sequenceDiagram
+    participant App
+    participant API
+    participant D1
+
+    App->>API: POST /groups
+    API->>D1: INSERT groups, group_members, sprints
+
+    App->>API: POST /groups/:id/notifications
+    API->>D1: SELECT sprint WHERE group_id AND ends_at > now
+    API->>D1: INSERT be_time_notifications
+    Note over D1: UNIQUE(sprint_id, sent_by)
+
+    App->>API: POST /posts
+    API->>D1: SELECT sent_at FROM be_time_notifications
+    API->>API: status = on_time or late
+    API->>D1: INSERT posts
+    Note over D1: UNIQUE(notification_id, user_id)
+
+    Note over API,D1: Sprint 終了 Cron
+    API->>D1: INSERT posts status=missed for members without post
+      </pre>
+    </section>
+  </main>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default",
+      er: { layoutDirection: "TB" },
+      securityLevel: "loose"
+    });
+  </script>
+</body>
+</html>

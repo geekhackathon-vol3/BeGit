@@ -1,0 +1,13 @@
+{
+  "name": "begit-backend",
+  "private": true,
+  "scripts": {
+    "db:migrate:local": "wrangler d1 migrations apply begit-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply begit-db --remote",
+    "db:migrations:list": "wrangler d1 migrations list begit-db --local",
+    "db:validate": "bash scripts/validate-schema.sh"
+  },
+  "devDependencies": {
+    "wrangler": "^3.99.0"
+  }
+}
