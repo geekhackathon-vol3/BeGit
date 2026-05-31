@@ -7,10 +7,11 @@ struct RepositoryCardView: View {
     let repository: Repository           //  表示対象のRepository
 
     private let visibleAvatarLimit = 4  //  表示するavatar最大数
+    private let cornerRadius: CGFloat = 10
 
     var body: some View {
         //  Repository card本体
-        HStack(spacing: 14) {
+        HStack(alignment: .bottom, spacing: 14) {
             VStack(alignment: .leading, spacing: 14) {
                 //  Repository名
                 Text(repository.name)
@@ -34,19 +35,17 @@ struct RepositoryCardView: View {
             Spacer(minLength: 8)
 
             //  詳細画面遷移アイコン
-            Image(systemName: "arrow.up.right")
+            Image(systemName: "arrow.right")
                 .font(.system(size: 15, weight: .black))
                 .foregroundStyle(AppTheme.accent)
                 .frame(width: 38, height: 38)
-                .background(AppTheme.accent.opacity(0.12))  //  icon背景
-                .clipShape(Circle())                        //  Circle shape
         }
         .padding(18)                //  card padding
         .background(cardBackground) //  card背景
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))  //  card shape
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))  //  card shape
         //  card border
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .stroke(Color.white.opacity(0.10), lineWidth: 1)
         )
     }
@@ -62,22 +61,15 @@ struct RepositoryCardView: View {
                     //  avatar境界線
                     .overlay(
                         Circle()
-                            .stroke(AppTheme.cardBackground, lineWidth: 2)
+                            .stroke(AppTheme.repositoryCardBackground, lineWidth: 2)
                     )
             }
         }
     }
 
-    //  card背景Gradient
-    private var cardBackground: some View {
-        LinearGradient(
-            colors: [
-                AppTheme.cardBackground,
-                Color(red: 0.10, green: 0.08, blue: 0.16)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    //  card背景
+    private var cardBackground: some ShapeStyle {
+        AppTheme.repositoryCardBackground
     }
 }
 
@@ -123,4 +115,3 @@ struct AvatarView: View {
             )
     }
 }
-
