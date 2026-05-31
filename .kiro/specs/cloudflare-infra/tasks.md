@@ -34,7 +34,7 @@
   - `terraform plan` を実行すると `begit-db` D1 リソースと `begit-photos` R2 バケットが作成対象として表示される
   - _Requirements: 1.2, 1.4, 3.1, 4.1, 4.4, 8.2, 8.6_
 
-- [ ] 2. wrangler.toml と依存パッケージを設定する
+- [x] 2. wrangler.toml と依存パッケージを設定する
   - `backend/package.json` を作成し、`wrangler` と `@cloudflare/containers` を devDependencies に追加する
   - `backend/wrangler.toml` を作成し、`name`・`main = "src/index.ts"`・`compatibility_date` を設定する
   - `[[containers]]`: `class_name = "BeGitAPI"`・`image = "./Dockerfile"`・`max_instances = 1` を定義する
