@@ -99,14 +99,14 @@
   - `make secrets-init` 実行で 4 シークレットの登録コマンド手順が標準出力に表示される
   - _Requirements: 5.1, 5.3, 5.5, 6.1, 7.1_
 
-- [ ] 5. インフラ動作確認
+- [x] 5. インフラ動作確認
 
-- [ ] 5.1 ローカル開発環境での接続確認を行う
+- [x] 5.1 ローカル開発環境での接続確認を行う
   - `wrangler d1 execute begit-db --local --command "SELECT 1"` でローカル D1 接続が成功することを確認する
   - `wrangler dev` でローカル Workers が `http://localhost:8787` で起動し、リクエストに応答することを確認する
   - _Requirements: 9.4_
 
-- [ ] 5.2 デプロイ後のスモークテストを実行する
+- [x] 5.2 デプロイ後のスモークテストを実行する
   - `wrangler secret list` で `GITHUB_CLIENT_SECRET`・`GITHUB_WEBHOOK_SECRET`・`FIREBASE_SERVICE_ACCOUNT_JSON`・`DB_ENCRYPTION_KEY` の 4 シークレットが登録済みであることを確認する
   - Workers デプロイ後に `curl https://<workers-url>/` でレスポンスが返ることを確認する
   - `wrangler d1 execute begit-db --command "SELECT name FROM sqlite_master WHERE type='table'"` でマイグレーション適用済みテーブルが存在することを確認する

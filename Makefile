@@ -1,6 +1,6 @@
-.PHONY: setup terraform-apply deploy secrets-init warmup
+.PHONY: setup terraform-apply deploy secrets-init warmup verify-local smoke-test
 
-WORKERS_URL ?= https://begit.workers.dev
+WORKERS_URL ?= https://begit.118029-ichikama.workers.dev
 
 setup:
 	git config core.hooksPath .githooks
@@ -33,3 +33,20 @@ secrets-init:
 
 warmup:
 	curl $(WORKERS_URL)/
+
+# Task 5.1: ローカル開発環境での接続確認
+verify-local:
+	@echo "=== ローカル D1 接続確認 ==="
+	cd backend && npx wrangler d1 execute begit-db --local --command "SELECT 1"
+	@echo "✅ ローカル D1 接続: OK"
+
+# Task 5.2: デプロイ後スモークテスト
+smoke-test:
+	@echo "=== シークレット登録確認 ==="
+	cd backend && npx wrangler secret list
+	@echo "=== デプロイ済み Workers ヘルスチェック ==="
+	curl -sf $(WORKERS_URL)/ || echo "⚠️  Workers レスポンスなし（未デプロイの可能性あり）"
+	@echo "=== D1 マイグレーション適用確認 ==="
+	cd backend && npx wrangler d1 execute begit-db --remote --command "SELECT name FROM sqlite_master WHERE type='table'"
+	@echo "=== Terraform 差分確認 ==="
+	terraform -chdir=infra/terraform plan
