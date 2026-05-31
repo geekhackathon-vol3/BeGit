@@ -1,0 +1,2 @@
+# Cloudflare Terraform
+export TF_VAR_cloudflare_api_token="your-api-token-here"
