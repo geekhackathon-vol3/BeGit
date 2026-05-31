@@ -62,7 +62,7 @@
   - _Requirements: 1.3, 1.4, 1.7_
   - _Boundary: UserRepository_
 
-- [ ] 3.2 (P) GroupRepository を実装する
+- [x] 3.2 (P) GroupRepository を実装する
   - `ListByUserID`, `Create`, `GetByID`, `GetByRepoFullName`, `AddMember`, `BatchAddMembers`, `IsMember`, `GetMembers` を実装する
   - `ListByUserID` は `group_members JOIN groups` クエリで1回の D1 呼び出しで取得する
   - `GetByID` が存在しない group_id に対して `ErrNotFound` を返すことを確認できる
