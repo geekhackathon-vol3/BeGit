@@ -1,0 +1,25 @@
+name = "begit"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[[containers]]
+class_name = "BeGitAPI"
+image = "./Dockerfile"
+max_instances = 1
+
+[[durable_objects.bindings]]
+name = "BEGIT_API"
+class_name = "BeGitAPI"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BeGitAPI"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "begit-db"
+database_id = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
+
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "begit-photos"
