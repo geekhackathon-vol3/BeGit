@@ -66,7 +66,7 @@
   - _Requirements: 2.1, 2.5_
   - _Boundary: Dockerfile_
 
-- [ ] 3.3 (P) D1 マイグレーション初期 SQL ファイルを作成する
+- [x] 3.3 (P) D1 マイグレーション初期 SQL ファイルを作成する
   - `backend/migrations/0001_initial.sql` を作成する
   - SQLite 方言のプレースホルダースキーマを記述する（`INTEGER PRIMARY KEY AUTOINCREMENT`・`TEXT`・`INTEGER` のみ使用）
   - `SERIAL`・`BOOLEAN`・`DATETIME` 等 PostgreSQL 固有の型は使用しない
