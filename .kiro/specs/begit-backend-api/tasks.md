@@ -45,7 +45,7 @@
   - _Requirements: 1.1, 1.2, 2.3, 2.4, 4.1_
   - _Boundary: pkg/github_
 
-- [ ] 2.2 (P) FCM HTTP v1 クライアントを実装する
+- [x] 2.2 (P) FCM HTTP v1 クライアントを実装する
   - `pkg/fcm/client.go` に `SendToTokens(ctx, tokens []string, notification Notification) error` を実装する
   - `golang.org/x/oauth2/google` の `JWTConfigFromJSON` で Service Account JSON からアクセストークンを取得する
   - `POST https://fcm.googleapis.com/v1/projects/{project_id}/messages:send` を tokens 数分呼び出す
