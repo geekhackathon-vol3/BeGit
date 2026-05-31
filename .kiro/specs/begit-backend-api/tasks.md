@@ -101,7 +101,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
   - _Boundary: AuthService_
 
-- [ ] 4.2 (P) グループ管理サービスを実装する
+- [x] 4.2 (P) グループ管理サービスを実装する
   - `GroupService.CreateGroup` に Webhook 先行登録 → groups INSERT → group_members（owner）INSERT → コラボレーター自動追加の処理を実装する
   - `pkg/github.GetRepoInfo` でリポジトリオーナーの `avatar_url` を取得して groups に保存する
   - Webhook URL は `APP_BASE_URL + "/webhook/github"` で生成する

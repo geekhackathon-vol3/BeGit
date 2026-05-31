@@ -10,8 +10,8 @@ import (
 	"github.com/irj0927/begit/pkg/d1"
 )
 
-// groupCreateInput は GroupRepository.Create の入力型（テスト用に公開）
-type groupCreateInput struct {
+// GroupCreateInput は GroupRepository.Create の入力型（テスト用に公開）
+type GroupCreateInput struct {
 	RepoFullName string
 	Name         string
 	AvatarURL    string
@@ -21,7 +21,7 @@ type groupCreateInput struct {
 // GroupRepository は groups / group_members テーブルへのアクセスインターフェース
 type GroupRepository interface {
 	ListByUserID(ctx context.Context, userID int64) ([]model.Group, error)
-	Create(ctx context.Context, input *groupCreateInput) (*model.Group, error)
+	Create(ctx context.Context, input *GroupCreateInput) (*model.Group, error)
 	GetByID(ctx context.Context, groupID int64) (*model.Group, error)
 	GetByRepoFullName(ctx context.Context, repoFullName string) (*model.Group, error)
 	AddMember(ctx context.Context, groupID, userID int64, role string) error
@@ -125,7 +125,7 @@ func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]mod
 }
 
 // Create はグループを作成する
-func (r *groupRepository) Create(ctx context.Context, input *groupCreateInput) (*model.Group, error) {
+func (r *groupRepository) Create(ctx context.Context, input *GroupCreateInput) (*model.Group, error) {
 	_, err := r.db.Exec(ctx,
 		`INSERT INTO groups (repo_full_name, name, avatar_url, owner_user_id)
 		 VALUES (?, ?, ?, ?)`,

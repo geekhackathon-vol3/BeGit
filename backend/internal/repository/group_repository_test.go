@@ -86,7 +86,7 @@ func TestGroupRepository_Create(t *testing.T) {
 	}
 
 	repo := NewGroupRepository(mock)
-	group, err := repo.Create(context.Background(), &groupCreateInput{
+	group, err := repo.Create(context.Background(), &GroupCreateInput{
 		RepoFullName: "owner/repo",
 		Name:         "My Team",
 		AvatarURL:    "https://example.com/avatar.png",
