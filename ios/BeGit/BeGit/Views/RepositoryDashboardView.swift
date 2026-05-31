@@ -34,9 +34,7 @@ struct RepositoryDashboardView: View {
                         memberStrip
 
                         //  activity card一覧
-                        ForEach(viewModel.activities) { activity in
-                            RepositoryActivityCardView(activity: activity)
-                        }
+                        RepositoryActivityTimelineView(activities: viewModel.activities)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)

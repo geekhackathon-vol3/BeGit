@@ -63,8 +63,12 @@ struct BeGitBackButton: View {
 
                 Text("Back")
                     .font(.system(size: 21, weight: .bold, design: .monospaced))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundStyle(AppTheme.softPink)
+            .frame(width: 82, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
