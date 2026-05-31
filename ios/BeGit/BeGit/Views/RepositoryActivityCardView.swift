@@ -165,7 +165,7 @@ struct RepositoryActivityCardView: View {
                         .clipped()
                 } else {
                     //  画像がないactivityの背景icon
-                    Image(systemName: activity.imageName ?? activity.type.systemImage)
+                    Image(systemName: activity.type.systemImage)
                         .font(.system(size: 86, weight: .black))
                         .foregroundStyle(activity.type.tint.opacity(0.30))
                 }

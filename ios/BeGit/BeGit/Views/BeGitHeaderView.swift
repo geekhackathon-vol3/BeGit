@@ -52,6 +52,7 @@ struct BeGitToolbarLogoView: View {
 
 struct BeGitBackButton: View {
     @Environment(\.dismiss) private var dismiss
+    private let titleKey = LocalizedStringKey("Back")
 
     var body: some View {
         Button(action: dismiss.callAsFunction) {
@@ -61,15 +62,15 @@ struct BeGitBackButton: View {
                     .scaledToFit()
                     .frame(width: 22, height: 22)
 
-                Text("Back")
+                Text(titleKey)
                     .font(.system(size: 21, weight: .bold, design: .monospaced))
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundStyle(AppTheme.softPink)
-            .frame(width: 82, alignment: .leading)
-            .contentShape(Rectangle())
+            .frame(minWidth: 82, minHeight: 44, alignment: .leading)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(titleKey))
     }
 }
