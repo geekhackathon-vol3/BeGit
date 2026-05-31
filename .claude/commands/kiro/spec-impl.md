@@ -61,8 +61,11 @@ For each selected task, follow Kent Beck's TDD cycle:
    - No regressions in existing functionality
    - Code coverage maintained or improved
 
-5. **MARK COMPLETE**:
+5. **MARK COMPLETE & COMMIT**:
    - Update checkbox from `- [ ]` to `- [x]` in tasks.md
+   - Run `git add` for all files changed in this sub-task (including tasks.md)
+   - Run `git commit` with message: `feat(<feature-name>): task X.Y — <one-line summary>`
+   - One commit per sub-task (decimal unit: 1.1, 1.2, 2.1 ...); never batch multiple sub-tasks into one commit
 
 ## Critical Constraints
 - **TDD Mandatory**: Tests MUST be written before implementation code
