@@ -13,12 +13,12 @@ class_name = "BeGitAPI"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["BeGitAPI"]
+new_sqlite_classes = ["BeGitAPI"]
 
 [[d1_databases]]
 binding = "DB"
 database_name = "begit-db"
-database_id = "<REPLACE_WITH_TERRAFORM_OUTPUT>"
+database_id = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 
 [[r2_buckets]]
 binding = "PHOTOS"
