@@ -56,9 +56,8 @@ struct BeGitBackButton: View {
     var body: some View {
         Button(action: dismiss.callAsFunction) {
             HStack(spacing: 5) {
-                Image("begit_back_arrow")
-                    .resizable()
-                    .scaledToFit()
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .bold))
                     .frame(width: 22, height: 22)
 
                 Text(titleKey)
