@@ -55,7 +55,7 @@
   - _Boundary: pkg/fcm_
 
 - [ ] 3. Repository 層 — 全 D1 テーブルへのアクセス実装
-- [ ] 3.1 (P) UserRepository を実装する
+- [x] 3.1 (P) UserRepository を実装する
   - `GetByEncryptedToken`, `UpsertUser`, `GetByGitHubLogin` を D1 クライアント経由で実装する
   - `UpsertUser` は `INSERT OR REPLACE INTO users` で新規作成・既存更新の両方を処理する
   - `GetByEncryptedToken` が正しい `encrypted_access_token` に対してユーザーを返すことを確認できる
