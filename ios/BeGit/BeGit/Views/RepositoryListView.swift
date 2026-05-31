@@ -36,7 +36,12 @@ struct RepositoryListView: View {
                                 .font(.custom("Bitcount", size: 34))
                                 .foregroundStyle(.white)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.bottom, 2)
+
+                            //  ログイン中ユーザー情報
+                            if displayedGitHubUser != nil {
+                                loggedInUserSummary
+                                    .padding(.bottom, 2)
+                            }
 
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
@@ -93,6 +98,56 @@ struct RepositoryListView: View {
     private var addRepositoryButton: some View {
         PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
             .accessibilityIdentifier("add_repository_button")
+    }
+
+    //  ログイン中ユーザー情報表示
+    @ViewBuilder
+    private var loggedInUserSummary: some View {
+        if let user = displayedGitHubUser {
+            HStack(alignment: .center, spacing: 10) {
+                AvatarView(
+                    member: RepositoryMember(
+                        login: user.login,
+                        avatarURL: user.avatarURL
+                    ),
+                    size: 34
+                )
+                .background(
+                    Circle()
+                        .fill(AppTheme.background.opacity(0.82))
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
+                )
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(user.login)
+                        .font(.system(size: 13, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+
+                    Text(displayedGitHubUserIDText)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.64))
+                }
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    //  API接続済み時のみ表示するユーザー
+    private var displayedGitHubUser: GitHubUser? {
+        authState.githubUser
+    }
+
+    private var displayedGitHubUserIDText: String {
+        guard let githubUser = authState.githubUser else {
+            return "ID: -"
+        }
+
+        return "ID: \(githubUser.id)"
     }
 
     //  下部固定エリア背景

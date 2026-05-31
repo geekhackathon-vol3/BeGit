@@ -40,9 +40,7 @@ struct NotificationResultView: View {
                         SectionTitleView("Timeline", caption: "mock completion activity")
 
                         //  Mock activity一覧
-                        ForEach(viewModel.activities) { activity in
-                            RepositoryActivityCardView(activity: activity)
-                        }
+                        RepositoryActivityTimelineView(activities: viewModel.activities)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
@@ -58,7 +56,12 @@ struct NotificationResultView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BeGitBackButton()
+            }
+
             ToolbarItem(placement: .principal) {
                 BeGitToolbarLogoView()
             }

@@ -27,19 +27,14 @@ struct RepositoryDashboardView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        //  共通Header
-                        BeGitHeaderView(title: "Timeline", subtitle: viewModel.repository.name)
+                        //  Timeline Header
+                        timelineHeader
 
                         //  Repository member一覧
                         memberStrip
 
-                        //  Timeline Section title
-                        SectionTitleView("Timeline", caption: "commit / PR / sorry activity")
-
                         //  activity card一覧
-                        ForEach(viewModel.activities) { activity in
-                            RepositoryActivityCardView(activity: activity)
-                        }
+                        RepositoryActivityTimelineView(activities: viewModel.activities)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
@@ -62,7 +57,12 @@ struct RepositoryDashboardView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BeGitBackButton()
+            }
+
             ToolbarItem(placement: .principal) {
                 BeGitToolbarLogoView()
             }
@@ -73,26 +73,42 @@ struct RepositoryDashboardView: View {
 
     // MARK: - Components
 
+    //  Timeline画面Header
+    private var timelineHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Timeline")
+                .font(.custom("Bitcount", size: 34))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(viewModel.repository.name)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.50))
+                .lineLimit(1)
+        }
+    }
+
     //  Repository member表示エリア
     private var memberStrip: some View {
-        HStack {
+        HStack(spacing: 10) {
             //  member avatar一覧
-            MemberAvatarRowView(members: viewModel.repository.members)
-
-            Spacer()
+            MemberAvatarRowView(
+                members: viewModel.repository.members,
+                avatarSpacing: 6,
+                achievedMemberIDs: achievedMemberIDs
+            )
 
             //  member数表示
             Text("\(viewModel.repository.memberCount) members")
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(AppTheme.softPink)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(AppTheme.softPink.opacity(0.10))
-                .clipShape(Capsule())
         }
-        .padding(14)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    //  Timelineにactivityがあるmember ID一覧
+    private var achievedMemberIDs: Set<UUID> {
+        Set(viewModel.activities.map(\.author.id))
     }
 
     //  下部固定エリア背景

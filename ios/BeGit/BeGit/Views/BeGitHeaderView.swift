@@ -49,3 +49,28 @@ struct BeGitToolbarLogoView: View {
         .frame(width: 118, height: 34)
     }
 }
+
+struct BeGitBackButton: View {
+    @Environment(\.dismiss) private var dismiss
+    private let titleKey = LocalizedStringKey("Back")
+
+    var body: some View {
+        Button(action: dismiss.callAsFunction) {
+            HStack(spacing: 5) {
+                Image("begit_back_arrow")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+
+                Text(titleKey)
+                    .font(.system(size: 21, weight: .bold, design: .monospaced))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .foregroundStyle(AppTheme.softPink)
+            .frame(minWidth: 82, minHeight: 44, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(titleKey))
+    }
+}
