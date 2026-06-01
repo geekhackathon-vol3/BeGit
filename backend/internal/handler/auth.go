@@ -1,12 +1,18 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/irj0927/begit/internal/service"
 )
+
+// AuthRequest は POST /auth/github のリクエストボディ
+type AuthRequest struct {
+	Code string `json:"code" example:"abcdef123456"`
+}
 
 // AuthResponse は POST /auth/github のレスポンス
 type AuthResponse struct {
@@ -22,49 +28,53 @@ type UserJSON struct {
 	Name      string `json:"name"`
 }
 
-// authHandler は AuthHandler の実装
-type authHandler struct {
+// AuthHandler は認証エンドポイントのハンドラ
+type AuthHandler struct {
 	authService service.AuthService
 }
 
 // NewAuthHandler は AuthHandler を作成する
-func NewAuthHandler(authService service.AuthService) http.Handler {
-	return &authHandler{authService: authService}
+func NewAuthHandler(authService service.AuthService) *AuthHandler {
+	return &AuthHandler{authService: authService}
 }
 
-// ServeHTTP は POST /auth/github を処理する
-func (h *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var req struct {
-		Code string `json:"code"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+// GitHub は GitHub OAuth ログインを処理する
+//
+//	@Summary		GitHub OAuth ログイン
+//	@Description	GitHub OAuth 認可コードをアクセストークンへ交換し、ユーザーを作成/更新してトークンを発行する
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		AuthRequest	true	"GitHub 認可コード"
+//	@Success		200		{object}	AuthResponse
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Failure		422		{object}	ErrorResponse
+//	@Failure		500		{object}	ErrorResponse
+//	@Router			/auth/github [post]
+func (h *AuthHandler) GitHub(c *gin.Context) {
+	var req AuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.Code == "" {
-		writeError(w, http.StatusUnprocessableEntity, "code: required")
+		respondError(c, http.StatusUnprocessableEntity, "code: required")
 		return
 	}
 
-	result, err := h.authService.ExchangeCode(r.Context(), req.Code)
+	result, err := h.authService.ExchangeCode(c.Request.Context(), req.Code)
 	if err != nil {
 		if errors.Is(err, service.ErrUnauthorized) {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
+			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	resp := AuthResponse{
+	c.JSON(http.StatusOK, AuthResponse{
 		User: UserJSON{
 			ID:        result.User.ID,
 			Login:     result.User.GitHubLogin,
@@ -72,8 +82,5 @@ func (h *authHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Name:      result.User.GitHubName,
 		},
 		Token: result.Token,
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	})
 }

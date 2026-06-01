@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
 )
@@ -69,25 +71,24 @@ func TestBearerAuthMiddleware_ValidToken(t *testing.T) {
 	}
 	crypto := &mockEncryptorForHandler{}
 
-	// テスト用ハンドラー（userID が注入されているかチェック）
 	handlerCalled := false
 	var capturedUserID int64
-	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/groups", BearerAuth(userRepo, crypto), func(c *gin.Context) {
 		handlerCalled = true
-		if id, ok := r.Context().Value(UserIDKey).(int64); ok {
+		if id, ok := userIDFromContext(c); ok {
 			capturedUserID = id
 		}
-		w.WriteHeader(http.StatusOK)
+		c.Status(http.StatusOK)
 	})
-
-	middleware := BearerAuthMiddleware(userRepo, crypto)
-	handler := middleware(innerHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "/groups", nil)
 	req.Header.Set("Authorization", "Bearer valid_token_abc123")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	r.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
@@ -109,16 +110,17 @@ func TestBearerAuthMiddleware_InvalidToken(t *testing.T) {
 	}
 	crypto := &mockEncryptorForHandler{}
 
-	middleware := BearerAuthMiddleware(userRepo, crypto)
-	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/groups", BearerAuth(userRepo, crypto), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/groups", nil)
 	req.Header.Set("Authorization", "Bearer invalid_token")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	r.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401, got %d", rr.Code)
@@ -130,16 +132,17 @@ func TestBearerAuthMiddleware_MissingHeader(t *testing.T) {
 	userRepo := &mockUserRepoForHandler{}
 	crypto := &mockEncryptorForHandler{}
 
-	middleware := BearerAuthMiddleware(userRepo, crypto)
-	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/groups", BearerAuth(userRepo, crypto), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/groups", nil)
 	// Authorization ヘッダーなし
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	r.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401 for missing header, got %d", rr.Code)
