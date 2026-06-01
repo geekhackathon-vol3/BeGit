@@ -14,6 +14,8 @@ type FCMTokenRepository interface {
 	Upsert(ctx context.Context, userID int64, token string) error
 	// GetTokensByGroupID はグループ内の全メンバーの FCM トークン一覧を取得する
 	GetTokensByGroupID(ctx context.Context, groupID int64) ([]string, error)
+	// DeleteByUserID はユーザーの FCM トークンを全て削除する（ログアウト用）
+	DeleteByUserID(ctx context.Context, userID int64) error
 }
 
 // fcmTokenRepository は FCMTokenRepository インターフェースの実装
@@ -35,6 +37,18 @@ func (r *fcmTokenRepository) Upsert(ctx context.Context, userID int64, token str
 	)
 	if err != nil {
 		return fmt.Errorf("fcm_token_repository: Upsert failed: %w", err)
+	}
+	return nil
+}
+
+// DeleteByUserID はユーザーの FCM トークンを全て削除する
+func (r *fcmTokenRepository) DeleteByUserID(ctx context.Context, userID int64) error {
+	_, err := r.db.Exec(ctx,
+		`DELETE FROM fcm_tokens WHERE user_id = ?`,
+		[]interface{}{userID},
+	)
+	if err != nil {
+		return fmt.Errorf("fcm_token_repository: DeleteByUserID failed: %w", err)
 	}
 	return nil
 }

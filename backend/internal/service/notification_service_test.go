@@ -109,6 +109,7 @@ func (m *mockPostRepository) GetByID(ctx context.Context, postID int64) (*model.
 type mockFCMTokenRepository struct {
 	upsertFunc             func(ctx context.Context, userID int64, token string) error
 	getTokensByGroupIDFunc func(ctx context.Context, groupID int64) ([]string, error)
+	deleteByUserIDFunc     func(ctx context.Context, userID int64) error
 }
 
 func (m *mockFCMTokenRepository) Upsert(ctx context.Context, userID int64, token string) error {
@@ -123,6 +124,13 @@ func (m *mockFCMTokenRepository) GetTokensByGroupID(ctx context.Context, groupID
 		return m.getTokensByGroupIDFunc(ctx, groupID)
 	}
 	return []string{}, nil
+}
+
+func (m *mockFCMTokenRepository) DeleteByUserID(ctx context.Context, userID int64) error {
+	if m.deleteByUserIDFunc != nil {
+		return m.deleteByUserIDFunc(ctx, userID)
+	}
+	return nil
 }
 
 // mockFCMClient はテスト用の FCM クライアントモック
