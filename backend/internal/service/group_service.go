@@ -34,6 +34,7 @@ type GroupService interface {
 	ListGroups(ctx context.Context, userID int64) ([]model.Group, error)
 	CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error)
 	GetGroup(ctx context.Context, groupID, userID int64) (*GroupDetail, error)
+	SyncMembers(ctx context.Context, groupID int64, accessToken string) ([]model.GroupMember, error)
 }
 
 // groupService は GroupService インターフェースの実装
@@ -154,6 +155,53 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	return group, nil
+}
+
+// SyncMembers は GitHub コラボレーターを取得し、BeGit 登録済みユーザーを
+// group_members に追加（加算的 upsert）して、更新後のメンバー一覧を返す。
+//
+// 方針: 加算のみ。GitHub から外れたコラボレーターは自動削除しない
+// （オーナーの誤削除や履歴の喪失を避けるため）。既存メンバーの role は
+// AddMember の INSERT OR IGNORE により維持される（owner が member に降格しない）。
+func (s *groupService) SyncMembers(ctx context.Context, groupID int64, accessToken string) ([]model.GroupMember, error) {
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("group_service: SyncMembers GetByID failed: %w", err)
+	}
+
+	collaborators, err := s.githubClient.GetCollaborators(ctx, group.RepoFullName, accessToken)
+	if err != nil {
+		if errors.Is(err, githubpkg.ErrUnauthorized) {
+			return nil, ErrUnauthorized
+		}
+		return nil, fmt.Errorf("%w: get collaborators failed: %v", ErrExternalAPI, err)
+	}
+
+	var memberIDs []int64
+	for _, collab := range collaborators {
+		if collab.Login == "" {
+			continue
+		}
+		u, err := s.userRepo.GetByGitHubLogin(ctx, collab.Login)
+		if err != nil {
+			continue // BeGit 未登録ユーザーはスキップ
+		}
+		memberIDs = append(memberIDs, u.ID)
+	}
+	if len(memberIDs) > 0 {
+		if err := s.groupRepo.BatchAddMembers(ctx, groupID, memberIDs, "member"); err != nil {
+			return nil, fmt.Errorf("group_service: SyncMembers BatchAddMembers failed: %w", err)
+		}
+	}
+
+	members, err := s.groupRepo.GetMembers(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("group_service: SyncMembers GetMembers failed: %w", err)
+	}
+	return members, nil
 }
 
 // GetGroup はグループ詳細とメンバー一覧を返す

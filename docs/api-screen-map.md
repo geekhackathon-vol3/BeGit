@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.0 |
-| 最終更新日 | 2026-06-01 |
+| バージョン | v1.1 |
+| 最終更新日 | 2026-06-01 22:34 |
 | 対象ブランチ | `feat/backend-api` |
 
 実装済み API は `backend/cmd/server/main.go` のルーティング登録を真実のソースとする。
@@ -21,7 +21,17 @@
 | GET | `/groups/{id}/notifications/{nid}` | 通知の達成ステータス（OnTime/Late/Missed） | Bearer + メンバー |
 | POST | `/groups/{id}/posts` | 投稿作成 | Bearer + メンバー |
 | GET | `/groups/{id}/posts` | フィード取得 | Bearer + メンバー |
+| POST | `/groups/{id}/posts/{postId}/reactions` | リアクション追加（冪等） | Bearer + メンバー |
+| DELETE | `/groups/{id}/posts/{postId}/reactions/{reactionType}` | リアクション削除（トグル） | Bearer + メンバー |
+| GET | `/groups/{id}/posts/{postId}/reactions` | リアクション一覧 | Bearer + メンバー |
+| POST | `/groups/{id}/posts/{postId}/comments` | コメント投稿 | Bearer + メンバー |
+| GET | `/groups/{id}/posts/{postId}/comments` | コメント一覧（昇順） | Bearer + メンバー |
+| DELETE | `/groups/{id}/posts/{postId}/comments/{commentId}` | コメント削除（本人のみ） | Bearer + メンバー |
+| GET | `/groups/{id}/commits` | コミット履歴取得（GitHub プロキシ） | Bearer + メンバー |
+| POST | `/groups/{id}/sync-members` | メンバー同期（コラボレーター加算） | Bearer + メンバー |
+| GET | `/github/repos` | GitHub リポジトリ一覧（push/admin のみ） | Bearer |
 | PUT | `/me/fcm-token` | FCM トークン登録 / 更新 | Bearer |
+| POST | `/auth/logout` | ログアウト（FCM トークン削除・ステートレス） | Bearer |
 
 ## 画面 ↔ API 対応図
 

@@ -9,8 +9,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // エラー型定義
@@ -44,6 +48,36 @@ type CommitSummary struct {
 	RepoFullName        string
 }
 
+// Commit は GitHub のコミット情報（コミット一覧用）
+type Commit struct {
+	SHA         string `json:"sha"`
+	Message     string `json:"message"`
+	AuthorName  string `json:"author_name"`
+	AuthorLogin string `json:"author_login"`
+	Date        string `json:"date"`
+	Additions   int    `json:"additions"`
+	Deletions   int    `json:"deletions"`
+}
+
+// CommitListOptions はコミット一覧取得のクエリオプション
+type CommitListOptions struct {
+	Author  string // author でフィルタ（login or email）
+	Since   string // ISO8601 これ以降
+	Until   string // ISO8601 これ以前
+	PerPage int    // 取得件数（1件ごとに詳細を取得して差分統計を含める）
+}
+
+// Repo は GitHub リポジトリ情報（リポジトリ一覧用）
+type Repo struct {
+	FullName   string `json:"full_name"`
+	Name       string `json:"name"`
+	Private    bool   `json:"private"`
+	OwnerLogin string `json:"owner_login"`
+	AvatarURL  string `json:"avatar_url"`
+	CanPush    bool   `json:"can_push"`
+	CanAdmin   bool   `json:"can_admin"`
+}
+
 // Client は GitHub REST API v3 インターフェース
 type Client interface {
 	ExchangeCode(ctx context.Context, clientID, clientSecret, code string) (accessToken string, err error)
@@ -52,6 +86,8 @@ type Client interface {
 	GetCollaborators(ctx context.Context, repoFullName, accessToken string) ([]User, error)
 	RegisterWebhook(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
 	GetRecentCommits(ctx context.Context, repoFullName, login, accessToken string) (*CommitSummary, error)
+	ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error)
+	ListCommits(ctx context.Context, repoFullName, accessToken string, opts CommitListOptions) ([]Commit, error)
 }
 
 // githubClient は Client インターフェースの実装
@@ -311,4 +347,159 @@ func (c *githubClient) GetRecentCommits(ctx context.Context, repoFullName, login
 	}
 
 	return summary, nil
+}
+
+// ListUserRepos は認証ユーザーがアクセスできるリポジトリ一覧を取得する。
+// GET /user/repos?affiliation=owner,collaborator&sort=updated&per_page=100 のプロキシ。
+// グループ作成では Webhook 登録のため push / admin 権限が要るので、その権限のあるものに絞る。
+func (c *githubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		"/user/repos?affiliation=owner,collaborator&sort=updated&per_page=100",
+		accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list user repos: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var raw []struct {
+		FullName string `json:"full_name"`
+		Name     string `json:"name"`
+		Private  bool   `json:"private"`
+		Owner    struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"owner"`
+		Permissions struct {
+			Admin bool `json:"admin"`
+			Push  bool `json:"push"`
+		} `json:"permissions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("github: failed to decode user repos: %w", err)
+	}
+
+	repos := make([]Repo, 0, len(raw))
+	for _, r := range raw {
+		// push / admin 権限がないリポジトリは Webhook 登録できないため除外する
+		if !r.Permissions.Push && !r.Permissions.Admin {
+			continue
+		}
+		repos = append(repos, Repo{
+			FullName:   r.FullName,
+			Name:       r.Name,
+			Private:    r.Private,
+			OwnerLogin: r.Owner.Login,
+			AvatarURL:  r.Owner.AvatarURL,
+			CanPush:    r.Permissions.Push,
+			CanAdmin:   r.Permissions.Admin,
+		})
+	}
+	return repos, nil
+}
+
+// ListCommits はリポジトリのコミット一覧を取得する。
+// GET /repos/{owner}/{repo}/commits のプロキシ。一覧レスポンスには差分統計が
+// 含まれないため、各コミットの詳細 (GET .../commits/{sha}) を取得して
+// additions/deletions を埋める。PerPage が取得・詳細取得の件数上限になる。
+func (c *githubClient) ListCommits(ctx context.Context, repoFullName, accessToken string, opts CommitListOptions) ([]Commit, error) {
+	perPage := opts.PerPage
+	if perPage <= 0 {
+		perPage = 20
+	}
+	if perPage > 50 {
+		perPage = 50
+	}
+
+	q := url.Values{}
+	q.Set("per_page", strconv.Itoa(perPage))
+	if opts.Author != "" {
+		q.Set("author", opts.Author)
+	}
+	if opts.Since != "" {
+		q.Set("since", opts.Since)
+	}
+	if opts.Until != "" {
+		q.Set("until", opts.Until)
+	}
+
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		"/repos/"+repoFullName+"/commits?"+q.Encode(), accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list commits: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var raw []struct {
+		SHA    string `json:"sha"`
+		Commit struct {
+			Message string `json:"message"`
+			Author  struct {
+				Name string `json:"name"`
+				Date string `json:"date"`
+			} `json:"author"`
+		} `json:"commit"`
+		Author struct {
+			Login string `json:"login"`
+		} `json:"author"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("github: failed to decode commits list: %w", err)
+	}
+
+	commits := make([]Commit, len(raw))
+	for i, r := range raw {
+		commits[i] = Commit{
+			SHA:         r.SHA,
+			Message:     r.Commit.Message,
+			AuthorName:  r.Commit.Author.Name,
+			AuthorLogin: r.Author.Login,
+			Date:        r.Commit.Author.Date,
+		}
+	}
+
+	// 差分統計を並列取得（最大5並列）
+	g, gCtx := errgroup.WithContext(ctx)
+	sem := make(chan struct{}, 5)
+	for i := range commits {
+		i := i // ループ変数をキャプチャ
+		g.Go(func() error {
+			sem <- struct{}{}        // セマフォを取得
+			defer func() { <-sem }() // セマフォを解放
+
+			add, del, err := c.commitStats(gCtx, repoFullName, commits[i].SHA, accessToken)
+			if err != nil {
+				return err
+			}
+			commits[i].Additions = add
+			commits[i].Deletions = del
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("%w: failed to fetch commit stats: %v", ErrExternalAPI, err)
+	}
+
+	return commits, nil
+}
+
+// commitStats は単一コミットの additions/deletions を取得する。
+func (c *githubClient) commitStats(ctx context.Context, repoFullName, sha, accessToken string) (additions, deletions int, err error) {
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		"/repos/"+repoFullName+"/commits/"+sha, accessToken, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+
+	var detail struct {
+		Stats struct {
+			Additions int `json:"additions"`
+			Deletions int `json:"deletions"`
+		} `json:"stats"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return 0, 0, err
+	}
+	return detail.Stats.Additions, detail.Stats.Deletions, nil
 }

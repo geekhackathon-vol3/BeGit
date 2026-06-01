@@ -233,6 +233,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 	postRepo := repository.NewPostRepository(d1Client)
 	webhookRepo := repository.NewWebhookRepository(d1Client)
 	fcmTokenRepo := repository.NewFCMTokenRepository(d1Client)
+	reactionRepo := repository.NewReactionRepository(d1Client)
+	commentRepo := repository.NewCommentRepository(d1Client)
 
 	// Service 層の初期化
 	authSvc := service.NewAuthService(
@@ -270,6 +272,12 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	fcmTokenSvc := service.NewFCMTokenService(fcmTokenRepo)
 
+	reactionSvc := service.NewReactionService(reactionRepo, postRepo)
+
+	commentSvc := service.NewCommentService(commentRepo, postRepo)
+
+	githubSvc := service.NewGitHubService(githubClient, groupRepo)
+
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
 	groupHandler := handler.NewGroupHandler(groupSvc)
@@ -277,6 +285,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	postHandler := handler.NewPostHandler(postSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, webhookRepo, cfg.GitHubWebhookSecret)
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc)
+	reactionHandler := handler.NewReactionHandler(reactionSvc)
+	commentHandler := handler.NewCommentHandler(commentSvc)
+	githubHandler := handler.NewGitHubHandler(githubSvc)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -322,13 +333,23 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups", bearerAuth, groupHandler.List)
 	r.POST("/groups", bearerAuth, groupHandler.Create)
 	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)
+	r.POST("/auth/logout", bearerAuth, fcmTokenHandler.Logout)
+	r.GET("/github/repos", bearerAuth, githubHandler.ListRepos)
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
+	r.POST("/groups/:id/sync-members", bearerAuth, groupMember, groupHandler.SyncMembers)
 	r.POST("/groups/:id/notifications", bearerAuth, groupMember, notifHandler.Send)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.POST("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.Create)
+	r.DELETE("/groups/:id/posts/:postId/reactions/:reactionType", bearerAuth, groupMember, reactionHandler.Delete)
+	r.GET("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.List)
+	r.POST("/groups/:id/posts/:postId/comments", bearerAuth, groupMember, commentHandler.Create)
+	r.GET("/groups/:id/posts/:postId/comments", bearerAuth, groupMember, commentHandler.List)
+	r.DELETE("/groups/:id/posts/:postId/comments/:commentId", bearerAuth, groupMember, commentHandler.Delete)
+	r.GET("/groups/:id/commits", bearerAuth, groupMember, githubHandler.ListCommits)
 
 	return r, nil
 }

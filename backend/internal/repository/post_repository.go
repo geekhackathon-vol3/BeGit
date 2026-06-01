@@ -16,6 +16,7 @@ type PostRepository interface {
 	ListByGroupID(ctx context.Context, groupID int64) ([]model.Post, error)
 	HasPostedInSprint(ctx context.Context, userID, sprintID int64) (bool, error)
 	GetByUserAndNotification(ctx context.Context, userID, notifID int64) (*model.Post, error)
+	GetByID(ctx context.Context, postID int64) (*model.Post, error)
 }
 
 // postRepository は PostRepository インターフェースの実装
@@ -143,6 +144,27 @@ func (r *postRepository) ListByGroupID(ctx context.Context, groupID int64) ([]mo
 		posts = append(posts, *p)
 	}
 	return posts, nil
+}
+
+// GetByID は postID で投稿を取得する
+func (r *postRepository) GetByID(ctx context.Context, postID int64) (*model.Post, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, created_at
+		 FROM posts WHERE id = ? LIMIT 1`,
+		[]interface{}{postID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("post_repository: GetByID failed: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+
+	return scanPost(rows[0])
 }
 
 // HasPostedInSprint は userID が sprintID のスプリントで投稿済みかどうかを確認する

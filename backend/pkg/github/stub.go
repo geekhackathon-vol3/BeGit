@@ -61,3 +61,19 @@ func (c *stubClient) GetRecentCommits(ctx context.Context, repoFullName, login, 
 		RepoFullName:        repoFullName,
 	}, nil
 }
+
+// ListUserRepos は固定のダミーリポジトリ一覧を返す。
+func (c *stubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	return []Repo{
+		{FullName: "dev-stub-user/sample-repo", Name: "sample-repo", Private: false, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: true},
+		{FullName: "dev-stub-user/private-repo", Name: "private-repo", Private: true, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: false},
+	}, nil
+}
+
+// ListCommits は固定のダミーコミット一覧を返す。
+func (c *stubClient) ListCommits(ctx context.Context, repoFullName, accessToken string, opts CommitListOptions) ([]Commit, error) {
+	return []Commit{
+		{SHA: "abc1234", Message: "feat: dev stub commit", AuthorName: "Dev Stub User", AuthorLogin: "dev-stub-user", Date: "2026-06-01T10:00:00Z", Additions: 120, Deletions: 30},
+		{SHA: "def5678", Message: "fix: dev stub fix", AuthorName: "Dev Stub User", AuthorLogin: "dev-stub-user", Date: "2026-06-01T09:00:00Z", Additions: 10, Deletions: 5},
+	}, nil
+}

@@ -66,6 +66,7 @@ type mockPostRepository struct {
 	listByGroupIDFunc          func(ctx context.Context, groupID int64) ([]model.Post, error)
 	hasPostedInSprintFunc      func(ctx context.Context, userID, sprintID int64) (bool, error)
 	getByUserAndNotifFunc      func(ctx context.Context, userID, notifID int64) (*model.Post, error)
+	getByIDFunc                func(ctx context.Context, postID int64) (*model.Post, error)
 }
 
 func (m *mockPostRepository) Create(ctx context.Context, post *model.Post) (*model.Post, error) {
@@ -97,10 +98,18 @@ func (m *mockPostRepository) GetByUserAndNotification(ctx context.Context, userI
 	return nil, repository.ErrNotFound
 }
 
+func (m *mockPostRepository) GetByID(ctx context.Context, postID int64) (*model.Post, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, postID)
+	}
+	return nil, repository.ErrNotFound
+}
+
 // mockFCMTokenRepository はテスト用の FCM トークンリポジトリモック
 type mockFCMTokenRepository struct {
 	upsertFunc             func(ctx context.Context, userID int64, token string) error
 	getTokensByGroupIDFunc func(ctx context.Context, groupID int64) ([]string, error)
+	deleteByUserIDFunc     func(ctx context.Context, userID int64) error
 }
 
 func (m *mockFCMTokenRepository) Upsert(ctx context.Context, userID int64, token string) error {
@@ -115,6 +124,13 @@ func (m *mockFCMTokenRepository) GetTokensByGroupID(ctx context.Context, groupID
 		return m.getTokensByGroupIDFunc(ctx, groupID)
 	}
 	return []string{}, nil
+}
+
+func (m *mockFCMTokenRepository) DeleteByUserID(ctx context.Context, userID int64) error {
+	if m.deleteByUserIDFunc != nil {
+		return m.deleteByUserIDFunc(ctx, userID)
+	}
+	return nil
 }
 
 // mockFCMClient はテスト用の FCM クライアントモック

@@ -18,6 +18,8 @@ type mockGitHubClient struct {
 	getCollaboratorsFunc func(ctx context.Context, repoFullName, accessToken string) ([]githubpkg.User, error)
 	registerWebhookFunc  func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
 	getRecentCommitsFunc func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.CommitSummary, error)
+	listUserReposFunc    func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
+	listCommitsFunc      func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
 }
 
 func (m *mockGitHubClient) ExchangeCode(ctx context.Context, clientID, clientSecret, code string) (string, error) {
@@ -60,6 +62,20 @@ func (m *mockGitHubClient) GetRecentCommits(ctx context.Context, repoFullName, l
 		return m.getRecentCommitsFunc(ctx, repoFullName, login, accessToken)
 	}
 	return &githubpkg.CommitSummary{CommitCount: 3, Additions: 100, Deletions: 50, LatestCommitMessage: "Test commit"}, nil
+}
+
+func (m *mockGitHubClient) ListUserRepos(ctx context.Context, accessToken string) ([]githubpkg.Repo, error) {
+	if m.listUserReposFunc != nil {
+		return m.listUserReposFunc(ctx, accessToken)
+	}
+	return []githubpkg.Repo{}, nil
+}
+
+func (m *mockGitHubClient) ListCommits(ctx context.Context, repoFullName, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error) {
+	if m.listCommitsFunc != nil {
+		return m.listCommitsFunc(ctx, repoFullName, accessToken, opts)
+	}
+	return []githubpkg.Commit{}, nil
 }
 
 // mockUserRepository はテスト用のユーザーリポジトリモック

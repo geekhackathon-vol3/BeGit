@@ -61,3 +61,33 @@ func (h *FCMTokenHandler) Upsert(c *gin.Context) {
 
 	c.JSON(http.StatusOK, map[string]string{})
 }
+
+// Logout はログアウト処理を行う。
+//
+// 認証は GitHub アクセストークンを暗号化して DB 照合するステートレス方式のため、
+// サーバー側でのトークン失効は不要（クライアントが Keychain からトークンを破棄する）。
+// 本エンドポイントは端末への Push 通知が継続しないよう FCM トークンを削除する。
+//
+//	@Summary		ログアウト
+//	@Description	FCM トークンを削除する。認証はステートレス（GitHub アクセストークン）のためサーバー側のトークン失効は行わない。
+//	@Tags			auth
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		204
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/auth/logout [post]
+func (h *FCMTokenHandler) Logout(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.fcmTokenService.DeleteFCMTokens(c.Request.Context(), userID); err != nil {
+		respondError(c, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}

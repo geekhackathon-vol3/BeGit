@@ -1,6 +1,7 @@
 # BeGit; 5日間開発フロー
 
 > 作成日: 2026-05-31  
+> 最終更新日: 2026-06-01 22:34  
 > ハッカソン: 技育CAMP ハッカソン2026 vol.3
 
 ---
@@ -15,21 +16,21 @@
 | wrangler.toml & package.json | ✅ 完了 | wrangler.toml に未コミット変更あり |
 | Workers TypeScript エントリーポイント | ✅ 完了 | |
 | Go API Dockerfile | ✅ 完了 | |
-| D1 マイグレーション SQL | ⚠️ ファイルは存在するが tasks.md 未チェック | `0001_initial.sql` 実体あり |
+| D1 マイグレーション SQL | ✅ 完了 | `0001_initial.sql` に users/groups/group_members/sprints/notifications/posts/photos/reactions/comments/fcm_tokens 等を定義 |
 | Makefile（deploy/secrets-init/warmup） | ✅ 完了 | |
 | インフラ動作確認（ローカル + デプロイ後） | ❌ 未実施 | |
 
 ### Go バックエンド
 
-`backend/cmd/server/main.go` のみ存在（全リクエストに `"BeGit API"` を返すだけ）。  
-**ビジネスロジック・ハンドラー・サービス・リポジトリ層ゼロ。最大のボトルネック。**
+`handler` / `service` / `repository` の 3 層 + `pkg/{github,fcm,crypto,d1}` を実装済み。  
+**主要 API は出揃った**（認証・グループ・通知・投稿/フィード・リアクション・コメント・コミット・リポジトリ一覧・メンバー同期・ログアウト）。OpenAPI 3.1 仕様は swag で自動生成し `backend/docs/` に同期。
 
-D1 スキーマも spec.md のデータモデルより不足（Notification・Photo・Reaction・Comment・GroupRepository テーブルが未定義）。
+D1 スキーマは spec.md のデータモデルに追従済み（reactions・comments・photos テーブルを含む）。
 
 ### iOS アプリ
 
 - 実装済み画面: Login / RepositoryList（グループ一覧） / RepositoryDashboard / AddRepository / MakeNotification / NotificationResult
-- **全て MockData / MockAuthAPI 接続** — バックエンドと未接続
+- **`BeGitBackendAPI` で一部バックエンド接続済み**: 認証（`exchangeCode`）・グループ一覧（`listRepositories`）・通知発行（`sendNotification`）。残りの ViewModel は順次接続中。
 - 未実装画面: **フィード（ぼかし解放）/ 投稿作成（GitHub 情報自動取得）/ リアクション / コメント**
 
 ---
@@ -64,7 +65,7 @@ GitHub OAuth ログイン
 
 #### Go バックエンド — 骨格
 
-- [ ] ディレクトリ構造を作成
+- [x] ディレクトリ構造を作成
 
 ```
 backend/
@@ -79,9 +80,9 @@ backend/
     crypto/                   # トークン暗号化（DB_ENCRYPTION_KEY）
 ```
 
-- [ ] `0001_initial.sql` を iOS モデル対応スキーマに書き直し済み（詳細は下記「DB スキーマと iOS モデルの対応」参照）
+- [x] `0001_initial.sql` を iOS モデル対応スキーマに書き直し済み（詳細は下記「DB スキーマと iOS モデルの対応」参照）
 
-- [ ] `POST /auth/github` 実装（GitHub OAuth code → access token 交換 → users テーブル upsert → JWT セッショントークン返却）
+- [x] `POST /auth/github` 実装（GitHub OAuth code → access token 交換 → users テーブル upsert → アクセストークンを暗号化保存しステートレス認証）
 
 ---
 
@@ -91,36 +92,36 @@ backend/
 
 #### API 実装
 
-- [ ] `pkg/github/` — GitHub API クライアント
+- [x] `pkg/github/` — GitHub API クライアント
   - `GET /user` — ユーザー情報取得
   - `GET /repos/{owner}/{repo}/collaborators` — コラボレーター一覧
-  - `GET /users/{username}` — ユーザー検索
-  - `GET /repos/{username}/repos` + commits — 最近のリポジトリ & コミット
+  - `GET /user/repos` — リポジトリ一覧（push/admin 権限のみ）
+  - `GET /repos/{owner}/{repo}/commits` — コミット & 差分統計
 
-- [ ] `POST /groups` — グループ作成
-  - `groups` + `group_repositories` に INSERT
-  - GitHub API でコラボレーター一覧を取得
+- [x] `POST /groups` — グループ作成
+  - `groups` に INSERT
+  - GitHub API でコラボレーター一覧を取得 + Webhook 登録
   - BeGit; 連携済みユーザー（users テーブルに存在）を `group_members` に自動 INSERT
 
-- [ ] `GET /groups/:id` — グループ情報 + メンバー一覧取得
+- [x] `GET /groups/:id` — グループ情報 + メンバー一覧取得
 
-- [ ] `POST /groups/:id/sync-members` — コラボレーター再同期
+- [x] `POST /groups/:id/sync-members` — コラボレーター再同期（加算的 upsert）
 
-- [ ] `DELETE /groups/:id/members/me` — グループ脱退
+- [ ] `DELETE /groups/:id/members/me` — グループ脱退（未実装）
 
-- [ ] `POST /devices` — FCM token 登録（`fcm_tokens` upsert）
+- [x] FCM token 登録（`fcm_tokens` upsert）※実装は `PUT /me/fcm-token`
 
-- [ ] `DELETE /devices/:token` — デバイストークン削除
+- [x] デバイストークン削除 ※実装は `POST /auth/logout`（ユーザーの FCM トークンを全削除）
 
-- [ ] `POST /groups/:id/notifications` — 通知発行
+- [x] `POST /groups/:id/notifications` — 通知発行
   - 1スプリント1人1回チェック（`notifications` テーブルで検証）
   - `notifications` テーブルに INSERT
-  - グループメンバー全員の FCM token を取得 → Day 3 以降で FCM 送信
+  - グループメンバー全員の FCM token を取得して FCM 送信
 
 #### iOS（並行作業）
 
-- [ ] `BackendAuthAPI` を実装（MockAuthAPI を本物の HTTP 呼び出しに差し替え）
-- [ ] `APIClient` 基盤クラス作成（ベース URL・認証ヘッダー・エラーハンドリング）
+- [x] `BeGitBackendAPI` を実装（Mock を本物の HTTP 呼び出しに差し替え）
+- [x] `APIClient` 基盤（`BeGitBackendAPI`: ベース URL・認証ヘッダー・JSON エンコード/デコード・エラーハンドリング）
 
 ---
 
@@ -130,28 +131,29 @@ backend/
 
 #### API 実装
 
-- [ ] `GET /github/repos` — 最近のリポジトリ一覧（投稿画面のサジェスト用）
-- [ ] `GET /github/commits?repo={repo}&branch={branch}` — コミット情報（件数・diff・最新メッセージ）
+- [x] `GET /github/repos` — リポジトリ一覧（投稿画面のサジェスト/グループ作成用、push/admin のみ）
+- [x] コミット情報（件数・diff・最新メッセージ）※実装は `GET /groups/:id/commits`
 
-- [ ] `POST /posts` — 投稿作成
+- [x] 投稿作成 ※実装は `POST /groups/:id/posts`
   - `posts` テーブルに INSERT
-  - `photos` テーブルに INSERT（R2 presigned URL または Worker R2 binding で直接アップロード）
-  - `notification_id` から経過時間を計算し `status`（on_time / late）を自動セット
+  - GitHub からコミット情報（件数・additions/deletions・最新メッセージ）を自動取得
+  - ※写真（`photos` / R2 アップロード）は未実装
+  - ※`status`（on_time / late）の自動セットは未実装
 
-- [ ] `GET /groups/:id/feed` — フィード取得（**ぼかし制御がコア**）
-  - リクエストユーザーが通知後未投稿の場合: `photo_key` / `memo` / `latest_commit_message` を null にして返す
+- [x] フィード取得（**ぼかし制御がコア**）※実装は `GET /groups/:id/posts`
+  - リクエストユーザーが通知後未投稿の場合: `body` / `repo_full_name` / `latest_commit_message` を null にして返す
   - 投稿済みの場合: 全フィールドを返す
   - 通知がない通常時: 全て返す
 
-- [ ] `GET /posts/:id` — 投稿詳細
+- [ ] `GET /posts/:id` — 投稿詳細（未実装）
 
-- [ ] `POST /posts/:id/reactions` — リアクション追加/削除（トグル）
+- [x] リアクション追加/削除（トグル）※実装は `POST` / `DELETE` / `GET /groups/:id/posts/:postId/reactions`
 
 #### iOS（並行作業）
 
-- [ ] `RepositoryListViewModel` のモックを実 API に接続（グループ一覧）
-- [ ] `AddRepositoryViewModel` → `POST /groups` に接続
-- [ ] `MakeNotificationViewModel` → `POST /groups/:id/notifications` に接続
+- [x] `RepositoryListViewModel` のモックを実 API に接続（`listRepositories`）
+- [ ] `AddRepositoryViewModel` → グループ作成（`createRepository`）に接続（GitHub リポジトリ選択は接続済み・作成連携は確認中）
+- [x] `MakeNotificationViewModel` → 通知発行（`sendNotification`）に接続
 
 ---
 
@@ -161,21 +163,20 @@ backend/
 
 #### Go バックエンド
 
-- [ ] `pkg/fcm/` — FCM HTTP API クライアント
+- [x] `pkg/fcm/` — FCM HTTP API クライアント
   - `FIREBASE_SERVICE_ACCOUNT_JSON` から JWT アクセストークン生成
-  - `POST https://fcm.googleapis.com/v1/projects/{project}/messages:send` 呼び出し
+  - `POST https://fcm.googleapis.com/v1/projects/{project}/messages:send` 呼び出し（`SendToTokens`）
 
-- [ ] `POST /github/webhook` — GitHub Webhook ハンドラー
+- [x] GitHub Webhook ハンドラー ※実装は `POST /webhook/github`
   - `X-Hub-Signature-256` HMAC-SHA256 検証（失敗 → 403）
-  - `push` event: pusher の github_login → users テーブルで検索 → FCM 通知送信
-  - `pull_request_review` event: 同様に通知送信
-  - 通知ペイロード: `type: "commit_detected"` / `"pr_review_detected"`
+  - `X-GitHub-Delivery` で冪等性を担保
+  - `push` / `pull_request_review` event を処理
 
-- [ ] 通知発行時（`POST /groups/:id/notifications`）の FCM 送信を実装
+- [x] 通知発行時（`POST /groups/:id/notifications`）の FCM 送信を実装
   - グループメンバー全員に「今なに作ってる？」通知
 
-- [ ] `POST /posts/:id/comments` — コメント追加
-- [ ] `GET /posts/:id/comments` — コメント一覧
+- [x] コメント追加 ※実装は `POST /groups/:id/posts/:postId/comments`
+- [x] コメント一覧 ※実装は `GET /groups/:id/posts/:postId/comments`（削除 `DELETE .../comments/:commentId` も実装）
 
 #### iOS
 
@@ -235,20 +236,20 @@ backend/
 
 ```
 P0（デモで絶対必要）
-  ├── GitHub OAuth ログイン（完成度: iOS 80%, Go 0%）
-  ├── グループ作成・参加（iOS 70%, Go 0%）
-  ├── 通知発行（iOS 70%, Go 0%）
-  ├── 投稿作成 + GitHub 情報自動取得（iOS 20%, Go 0%）
-  └── フィード + ぼかし解放（iOS 0%, Go 0%）
+  ├── GitHub OAuth ログイン（完成度: iOS 80%, Go ✅）
+  ├── グループ作成・参加（iOS 70%, Go ✅）
+  ├── 通知発行（iOS 70%, Go ✅）
+  ├── 投稿作成 + GitHub 情報自動取得（iOS 20%, Go ✅ ※写真/R2 除く）
+  └── フィード + ぼかし解放（iOS 0%, Go ✅）
 
 P1（デモでできると強い）
-  ├── Push 通知 commit → iPhone（Go 0%, iOS 30%）
-  ├── リアクション（iOS 0%, Go 0%）
+  ├── Push 通知 commit → iPhone（Go ✅ Webhook+FCM, iOS 30%）
+  ├── リアクション（iOS 0%, Go ✅）
   └── On Time / Late バッジ（Go ロジック 0%, iOS 0%）
 
 P2（余力があれば）
-  ├── コメント
-  └── プライバシー設定
+  ├── コメント（Go ✅, iOS 0%）
+  └── プライバシー設定（未実装）
 ```
 
 ---
