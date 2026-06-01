@@ -1,6 +1,7 @@
-.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test
+.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev
 
 WORKERS_URL ?= https://begit.118029-ichikama.workers.dev
+DEV_URL ?= https://begit-dev.118029-ichikama.workers.dev
 
 setup:
 	git config core.hooksPath .githooks
@@ -38,6 +39,25 @@ deploy:
 	docker build --platform linux/amd64 -t begit-api ./backend && \
 	cd backend && npx wrangler deploy && \
 	npx wrangler d1 migrations apply begit-db
+
+# ── dev 環境（フロント共有用）─────────────────────────────────────────
+# dev D1 を作成（初回のみ）。出力された database_id を
+# backend/wrangler.toml の REPLACE_WITH_DEV_D1_ID 2箇所に貼り付ける。
+dev-db-create:
+	cd backend && npx wrangler d1 create begit-db-dev
+	@echo ""
+	@echo "👉 出力された database_id を backend/wrangler.toml の REPLACE_WITH_DEV_D1_ID（[env.dev.vars] と [[env.dev.d1_databases]] の2箇所）に貼り付けてください"
+	@echo "👉 次に: npx wrangler secret put CF_API_TOKEN --env dev （cd backend で実行）"
+
+# dev Worker(begit-dev) をデプロイ（DEV_MODE=true）。Docker build → deploy → dev D1 migration
+deploy-dev:
+	docker build --platform linux/amd64 -t begit-api ./backend && \
+	cd backend && npx wrangler deploy --env dev && \
+	npx wrangler d1 migrations apply begit-db-dev --env dev --remote
+
+# dev API にシードデータを投入（公開 API 経由で作成。スモークテスト兼用）
+seed-dev:
+	DEV_URL="$(DEV_URL)" ./scripts/seed-dev.sh
 
 # Task 4.3: シークレット登録手順表示 + コンテナウォームアップ
 secrets-init:
