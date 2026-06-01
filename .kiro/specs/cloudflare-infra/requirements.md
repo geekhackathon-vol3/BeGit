@@ -2,7 +2,7 @@
 
 ## プロジェクト概要入力
 
-BeGit のインフラ構築。Cloudflare Workers をエントリーポイントに、Workers Containers (Go, linux/amd64) でAPIを動かす。DB は Cloudflare D1 (SQLite互換)、写真ストレージは Cloudflare R2、シークレット管理は Workers Secrets。Push通知は FCM (Firebase Cloud Messaging) 経由で APNs に配信するため、Firebase プロジェクトのサービスアカウントキーをシークレットとして登録する（Firebase プロジェクト自体は Firebase コンソールで作成）。IaC は Terraform (cloudflare provider) でリソース作成、Wrangler でデプロイ・DBマイグレーション。詳細は infra/infra.md を参照。
+BeGit; のインフラ構築。Cloudflare Workers をエントリーポイントに、Workers Containers (Go, linux/amd64) でAPIを動かす。DB は Cloudflare D1 (SQLite互換)、写真ストレージは Cloudflare R2、シークレット管理は Workers Secrets。Push通知は FCM (Firebase Cloud Messaging) 経由で APNs に配信するため、Firebase プロジェクトのサービスアカウントキーをシークレットとして登録する（Firebase プロジェクト自体は Firebase コンソールで作成）。IaC は Terraform (cloudflare provider) でリソース作成、Wrangler でデプロイ・DBマイグレーション。詳細は infra/infra.md を参照。
 
 ## スコープ
 

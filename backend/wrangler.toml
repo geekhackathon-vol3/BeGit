@@ -28,3 +28,48 @@ database_id = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 [[r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "begit-photos"
+
+# ── dev 環境（フロント共有用・DEV_MODE=true）────────────────────────────
+# 本番（デフォルト env）とは別 Worker(begit-dev) + 別 D1(begit-db-dev) に隔離する。
+# DEV_MODE はこの env にのみ存在するため、本番デプロイには絶対に乗らない。
+# デプロイ: make deploy-dev / シード: make seed-dev
+[env.dev]
+name = "begit-dev"
+
+[env.dev.vars]
+DEV_MODE = "true"
+CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
+D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
+APP_BASE_URL = "https://begit-dev.118029-ichikama.workers.dev"
+# dev 用ダミー値（スタブ GitHub を使うため実値は不要）
+DB_ENCRYPTION_KEY = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+GITHUB_CLIENT_ID = "dev-dummy"
+GITHUB_CLIENT_SECRET = "dev-dummy"
+GITHUB_WEBHOOK_SECRET = "dev-webhook-secret"
+FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account","project_id":"dummy"}'
+# CF_API_TOKEN のみ secret（Container が D1 REST を叩くのに必要）:
+#   cd backend && npx wrangler secret put CF_API_TOKEN --env dev
+
+[[env.dev.containers]]
+class_name = "BeGitAPI"
+image = "./Dockerfile"
+max_instances = 1
+
+[[env.dev.durable_objects.bindings]]
+name = "BEGIT_API"
+class_name = "BeGitAPI"
+
+[[env.dev.migrations]]
+tag = "v1"
+new_sqlite_classes = ["BeGitAPI"]
+
+[[env.dev.d1_databases]]
+binding = "DB"
+database_name = "begit-db-dev"
+database_id = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
+
+# dev は R2 を本番と共有（シードは写真を作らないため低リスク）。
+# 分離したい場合は begit-photos-dev を作成して bucket_name を変更する。
+[[env.dev.r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "begit-photos"

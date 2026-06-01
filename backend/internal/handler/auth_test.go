@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/service"
@@ -28,6 +30,14 @@ func (m *mockAuthService) ExchangeCode(ctx context.Context, code string) (*servi
 	}, nil
 }
 
+// newAuthRouter は /auth/github を登録したテスト用 gin エンジンを作る
+func newAuthRouter(svc service.AuthService) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/auth/github", NewAuthHandler(svc).GitHub)
+	return r
+}
+
 // TestAuthHandler_ExchangeCode は有効コードで 200 と token フィールドを返すことを確認する
 func TestAuthHandler_ExchangeCode(t *testing.T) {
 	authSvc := &mockAuthService{
@@ -39,20 +49,18 @@ func TestAuthHandler_ExchangeCode(t *testing.T) {
 		},
 	}
 
-	handler := NewAuthHandler(authSvc)
-
 	body, _ := json.Marshal(map[string]string{"code": "valid_auth_code"})
 	req := httptest.NewRequest(http.MethodPost, "/auth/github", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	newAuthRouter(authSvc).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d. body: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
@@ -73,14 +81,12 @@ func TestAuthHandler_InvalidCode(t *testing.T) {
 		},
 	}
 
-	handler := NewAuthHandler(authSvc)
-
 	body, _ := json.Marshal(map[string]string{"code": "invalid_code"})
 	req := httptest.NewRequest(http.MethodPost, "/auth/github", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	newAuthRouter(authSvc).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401, got %d", rr.Code)
@@ -91,37 +97,30 @@ func TestAuthHandler_InvalidCode(t *testing.T) {
 func TestAuthHandler_MissingCode(t *testing.T) {
 	authSvc := &mockAuthService{}
 
-	handler := NewAuthHandler(authSvc)
-
 	body, _ := json.Marshal(map[string]string{})
 	req := httptest.NewRequest(http.MethodPost, "/auth/github", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	newAuthRouter(authSvc).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnprocessableEntity {
 		t.Errorf("expected status 422, got %d", rr.Code)
 	}
 }
 
-// TestAuthHandler_ContentTypeJSON は全レスポンスに Content-Type: application/json が付与されることを確認する
+// TestAuthHandler_ContentTypeJSON は全レスポンスに JSON Content-Type が付与されることを確認する
 func TestAuthHandler_ContentTypeJSON(t *testing.T) {
 	authSvc := &mockAuthService{}
-
-	handler := NewAuthHandler(authSvc)
 
 	body, _ := json.Marshal(map[string]string{"code": "test_code"})
 	req := httptest.NewRequest(http.MethodPost, "/auth/github", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	newAuthRouter(authSvc).ServeHTTP(rr, req)
 
 	contentType := rr.Header().Get("Content-Type")
-	if contentType != "application/json" {
-		t.Errorf("expected Content-Type=application/json, got %s", contentType)
+	if !strings.HasPrefix(contentType, "application/json") {
+		t.Errorf("expected Content-Type application/json, got %s", contentType)
 	}
 }
-
-// Ensure errors package is used
-var _ = errors.New

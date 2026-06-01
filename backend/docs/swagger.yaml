@@ -1,0 +1,711 @@
+components:
+  schemas:
+    handler.AuthRequest:
+      properties:
+        code:
+          example: abcdef123456
+          type: string
+      type: object
+    handler.AuthResponse:
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/handler.UserJSON'
+      type: object
+    handler.CreateGroupRequest:
+      properties:
+        name:
+          example: My Repo
+          type: string
+        repo_full_name:
+          example: owner/repo
+          type: string
+      type: object
+    handler.CreatePostRequest:
+      properties:
+        body:
+          type: string
+        github_login:
+          type: string
+        notification_id:
+          type: integer
+        repo_full_name:
+          type: string
+      type: object
+    handler.DevLoginRequest:
+      properties:
+        login:
+          example: alice
+          type: string
+      type: object
+    handler.ErrorResponse:
+      properties:
+        error:
+          type: string
+      type: object
+    handler.GroupDetailJSON:
+      properties:
+        avatar_url:
+          type: string
+        id:
+          type: integer
+        members:
+          items:
+            $ref: '#/components/schemas/handler.GroupMemberJSON'
+          type: array
+          uniqueItems: false
+        name:
+          type: string
+        repo_full_name:
+          type: string
+      type: object
+    handler.GroupJSON:
+      properties:
+        avatar_url:
+          type: string
+        id:
+          type: integer
+        name:
+          type: string
+        repo_full_name:
+          type: string
+      type: object
+    handler.GroupListResponse:
+      properties:
+        groups:
+          items:
+            $ref: '#/components/schemas/handler.GroupJSON'
+          type: array
+          uniqueItems: false
+      type: object
+    handler.GroupMemberJSON:
+      properties:
+        avatar_url:
+          type: string
+        login:
+          type: string
+        role:
+          type: string
+        user_id:
+          type: integer
+      type: object
+    handler.MemberStatusJSON:
+      properties:
+        avatar_url:
+          type: string
+        login:
+          type: string
+        status:
+          description: '"On Time" | "Late" | "Missed"'
+          example: On Time
+          type: string
+        user_id:
+          type: integer
+      type: object
+    handler.NotificationJSON:
+      properties:
+        id:
+          type: integer
+        sent_at:
+          type: string
+        sprint_id:
+          type: integer
+      type: object
+    handler.NotificationStatusJSON:
+      properties:
+        members:
+          items:
+            $ref: '#/components/schemas/handler.MemberStatusJSON'
+          type: array
+          uniqueItems: false
+        notification_id:
+          type: integer
+      type: object
+    handler.PostFeedJSON:
+      properties:
+        additions:
+          type: integer
+        avatar_url:
+          type: string
+        body:
+          type: string
+        commit_count:
+          type: integer
+        created_at:
+          type: string
+        deletions:
+          type: integer
+        id:
+          type: integer
+        latest_commit_message:
+          type: string
+        login:
+          type: string
+        post_type:
+          type: string
+        repo_full_name:
+          type: string
+        status:
+          type: string
+        user_id:
+          type: integer
+      type: object
+    handler.PostJSON:
+      properties:
+        additions:
+          type: integer
+        body:
+          type: string
+        commit_count:
+          type: integer
+        created_at:
+          type: string
+        deletions:
+          type: integer
+        id:
+          type: integer
+        latest_commit_message:
+          type: string
+        post_type:
+          type: string
+        repo_full_name:
+          type: string
+        status:
+          type: string
+        user_id:
+          type: integer
+      type: object
+    handler.PostListResponse:
+      properties:
+        posts:
+          items:
+            $ref: '#/components/schemas/handler.PostFeedJSON'
+          type: array
+          uniqueItems: false
+      type: object
+    handler.UpdateFCMTokenRequest:
+      properties:
+        fcm_token:
+          example: fcm-device-token
+          type: string
+      type: object
+    handler.UserJSON:
+      properties:
+        avatar_url:
+          type: string
+        id:
+          type: integer
+        login:
+          type: string
+        name:
+          type: string
+      type: object
+  securitySchemes:
+    BearerAuth:
+      description: '`Authorization: Bearer <token>` 形式でアクセストークンを付与する。'
+      in: header
+      name: Authorization
+      type: apiKey
+externalDocs:
+  description: ""
+  url: ""
+info:
+  description: BeGit バックエンド API。GitHub と連携したリポジトリ単位のグループ・通知・投稿機能を提供する。
+  title: BeGit API
+  version: "1.0"
+openapi: 3.1.0
+paths:
+  /auth/dev:
+    post:
+      description: GitHub OAuth を通さず固定トークン dev_<login> を発行する。DEV_MODE=true のときのみ有効。body
+        省略時は alice。
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.DevLoginRequest'
+                description: ログイン名（省略時 alice）
+                summary: request
+        description: ログイン名（省略時 alice）
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.AuthResponse'
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      summary: dev 専用ログイン（DEV_MODE 限定）
+      tags:
+      - auth
+  /auth/github:
+    post:
+      description: GitHub OAuth 認可コードをアクセストークンへ交換し、ユーザーを作成/更新してトークンを発行する
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.AuthRequest'
+                description: GitHub 認可コード
+                summary: request
+        description: GitHub 認可コード
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.AuthResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      summary: GitHub OAuth ログイン
+      tags:
+      - auth
+  /groups:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.GroupListResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 参加グループ（リポジトリ）一覧
+      tags:
+      - groups
+    post:
+      description: GitHub リポジトリを登録し Webhook を設定する
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateGroupRequest'
+                description: 作成するリポジトリ
+                summary: request
+        description: 作成するリポジトリ
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.GroupJSON'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: グループ作成
+      tags:
+      - groups
+  /groups/{id}:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.GroupDetailJSON'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: グループ詳細 + メンバー
+      tags:
+      - groups
+  /groups/{id}/notifications:
+    post:
+      description: 1 スプリント 1 人 1 回まで
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.NotificationJSON'
+          description: Created
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: BeGit Time 通知発行
+      tags:
+      - notifications
+  /groups/{id}/notifications/{nid}:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 通知 ID
+        in: path
+        name: nid
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.NotificationStatusJSON'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 通知の達成ステータス（On Time / Late / Missed）
+      tags:
+      - notifications
+  /groups/{id}/posts:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.PostListResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: フィード取得
+      tags:
+      - posts
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreatePostRequest'
+                description: 投稿内容
+                summary: request
+        description: 投稿内容
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.PostJSON'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: 投稿作成
+      tags:
+      - posts
+  /me/fcm-token:
+    put:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.UpdateFCMTokenRequest'
+                description: FCM トークン
+                summary: request
+        description: FCM トークン
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: FCM トークン登録 / 更新
+      tags:
+      - me
+  /webhook/github:
+    post:
+      description: X-Hub-Signature-256 で HMAC 検証し、X-GitHub-Delivery で冪等性を担保する
+      parameters:
+      - description: HMAC-SHA256 署名
+        in: header
+        name: X-Hub-Signature-256
+        required: true
+        schema:
+          type: string
+      - description: イベント種別
+        in: header
+        name: X-GitHub-Event
+        required: true
+        schema:
+          type: string
+      - description: 配信 ID（冪等性キー）
+        in: header
+        name: X-GitHub-Delivery
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      summary: GitHub Webhook 受信（サーバ間）
+      tags:
+      - webhook
+servers:
+- url: /
