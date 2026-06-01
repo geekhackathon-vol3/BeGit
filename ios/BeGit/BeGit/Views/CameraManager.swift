@@ -17,8 +17,6 @@ class CameraManager: NSObject, ObservableObject {
 
     private let output = AVCapturePhotoOutput()
 
-    private let sessionQueue = DispatchQueue(label: "com.begit.sessionQueue")
-
     // MARK: - State
 
     @Published var capturedImage: UIImage?
@@ -27,8 +25,8 @@ class CameraManager: NSObject, ObservableObject {
     @Published var useFrontCamera = true
 
     private var currentPosition: AVCaptureDevice.Position = .back
-    private var pendingPhotoPositions: [Int64: AVCaptureDevice.Position] = [:]
-
+    private var capturePositions:
+        [Int64: AVCaptureDevice.Position] = [:]
     // MARK: - Init
 
     override init() {
@@ -83,11 +81,11 @@ class CameraManager: NSObject, ObservableObject {
 
     func startSession() {
 
-        sessionQueue.async {
+        guard !session.isRunning else {
+            return
+        }
 
-            guard !self.session.isRunning else {
-                return
-            }
+        DispatchQueue.global(qos: .userInitiated).async {
 
             self.session.startRunning()
         }
@@ -95,86 +93,71 @@ class CameraManager: NSObject, ObservableObject {
 
     func stopSession() {
 
-        sessionQueue.async {
-
-            guard self.session.isRunning else {
-                return
-            }
-
-            self.session.stopRunning()
+        guard session.isRunning else {
+            return
         }
+
+        session.stopRunning()
     }
 
     // MARK: - Camera Switch
 
     func switchCamera(position: AVCaptureDevice.Position) {
 
-        sessionQueue.async {
+        session.beginConfiguration()
 
-            self.session.beginConfiguration()
+        // 現在のInput取得
+        guard let currentInput = session.inputs.first as? AVCaptureDeviceInput else {
 
-            // 現在のInput取得
-            guard let currentInput = self.session.inputs.first as? AVCaptureDeviceInput else {
-
-                self.session.commitConfiguration()
-                return
-            }
-
-            // 新しいカメラ取得
-            guard let newDevice = AVCaptureDevice.default(
-                .builtInWideAngleCamera,
-                for: .video,
-                position: position
-            ) else {
-
-                self.session.commitConfiguration()
-                return
-            }
-
-            do {
-
-                let newInput = try AVCaptureDeviceInput(device: newDevice)
-
-                guard self.session.canAddInput(newInput) else {
-
-                    self.session.commitConfiguration()
-                    return
-                }
-
-                // Input削除
-                self.session.removeInput(currentInput)
-
-                self.session.addInput(newInput)
-
-            } catch {
-
-                print("Switch camera error:", error)
-                self.session.commitConfiguration()
-                return
-            }
-
-            self.currentPosition = position
-
-            self.session.commitConfiguration()
+            session.commitConfiguration()
+            return
         }
+
+        // Input削除
+        session.removeInput(currentInput)
+
+        // 新しいカメラ取得
+        guard let newDevice = AVCaptureDevice.default(
+            .builtInWideAngleCamera,
+            for: .video,
+            position: position
+        ) else {
+
+            session.commitConfiguration()
+            return
+        }
+
+        do {
+
+            let newInput = try AVCaptureDeviceInput(device: newDevice)
+
+            if session.canAddInput(newInput) {
+
+                session.addInput(newInput)
+            }
+
+        } catch {
+
+            print("Switch camera error:", error)
+        }
+
+        currentPosition = position
+
+        session.commitConfiguration()
     }
 
     // MARK: - Single Photo
 
     func takePhoto() {
 
-        sessionQueue.async {
+        let settings = AVCapturePhotoSettings()
 
-            let settings = AVCapturePhotoSettings()
+        capturePositions[settings.uniqueID] = currentPosition
 
-            // 撮影時のカメラ位置保存
-            self.pendingPhotoPositions[settings.uniqueID] = self.currentPosition
-
-            self.output.capturePhoto(
-                with: settings,
-                delegate: self
-            )
-        }
+        output.capturePhoto(
+            with: settings,
+            delegate: self
+        )
     }
 
     // MARK: - BeReal Style Photo
@@ -235,21 +218,24 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         }
 
         guard let data = photo.fileDataRepresentation(),
-              let image = UIImage(data: data)
+        let image = UIImage(data: data)
         else {
 
             print("Image conversion failed")
             return
         }
 
-        let pos = sessionQueue.sync {
-            self.pendingPhotoPositions.removeValue(forKey: photo.resolvedSettings.uniqueID) ?? .back
+        guard let position =
+            capturePositions.removeValue(forKey: photo.uniqueID)
+        else {
+
+            print("Capture position not found")
+            return
         }
 
         DispatchQueue.main.async {
 
-            // 撮影時のカメラ位置で保存先を分岐
-            if pos == .back {
+            if position == .back {
 
                 self.capturedImage = image
 
