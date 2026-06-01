@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/irj0927/begit/docs"
 	"github.com/irj0927/begit/internal/handler"
 	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/internal/service"
@@ -294,6 +295,17 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// ヘルスチェック（疎通確認・warmup 用、常時有効）
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	// API ドキュメント（OpenAPI 3.1 仕様の配信 + Swagger UI）
+	r.GET("/openapi.json", func(c *gin.Context) {
+		c.Data(http.StatusOK, "application/json; charset=utf-8", docs.SwaggerJSON)
+	})
+	r.GET("/openapi.yaml", func(c *gin.Context) {
+		c.Data(http.StatusOK, "application/yaml; charset=utf-8", docs.SwaggerYAML)
+	})
+	r.GET("/docs", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(docs.SwaggerUIHTML))
 	})
 
 	// 認証不要エンドポイント

@@ -42,6 +42,8 @@ curl $BASE/groups -H "Authorization: Bearer dev_alice"
 | メソッド | パス | 認証 | 説明 |
 |---|---|---|---|
 | GET  | `/healthz` | 不要 | 疎通確認（`{"status":"ok"}`） |
+| GET  | `/docs` | 不要 | Swagger UI（API ドキュメント閲覧） |
+| GET  | `/openapi.json`, `/openapi.yaml` | 不要 | OpenAPI 3.1 仕様（ツール連携・iOS 生成用） |
 | POST | `/auth/dev` | 不要 | **dev 専用**ログイン → トークン発行 |
 | GET  | `/groups` | Bearer | 所属グループ一覧 |
 | POST | `/groups` | Bearer | グループ作成（collaborator 自動参加） |
