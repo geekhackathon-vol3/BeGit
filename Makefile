@@ -1,4 +1,4 @@
-.PHONY: setup terraform-apply deploy secrets-init warmup verify-local smoke-test
+.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test
 
 WORKERS_URL ?= https://begit.118029-ichikama.workers.dev
 
@@ -6,6 +6,24 @@ setup:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/post-commit
 	@echo "✅ git hooks の設定が完了しました"
+
+# ローカル開発サーバー起動（.envrc の変数を使用）
+# 必要な環境変数: TF_VAR_cloudflare_api_token, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
+dev:
+	@[ -n "$$TF_VAR_cloudflare_api_token" ] || { echo "❌ TF_VAR_cloudflare_api_token が未設定です（.envrc を確認）"; exit 1; }
+	@[ -n "$$GITHUB_CLIENT_ID" ]            || { echo "❌ GITHUB_CLIENT_ID が未設定です（.envrc を確認）"; exit 1; }
+	@[ -n "$$GITHUB_CLIENT_SECRET" ]        || { echo "❌ GITHUB_CLIENT_SECRET が未設定です（.envrc を確認）"; exit 1; }
+	@echo "🚀 BeGit API 起動中 → http://localhost:8080"
+	CF_API_TOKEN="$$TF_VAR_cloudflare_api_token" \
+	CF_ACCOUNT_ID="c53d3c6ca02ae31a86aa3bf8fcbe5e55" \
+	D1_DATABASE_ID="9629cd07-59c2-4b35-a795-d91a6b43fd02" \
+	DB_ENCRYPTION_KEY="0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20" \
+	APP_BASE_URL="http://localhost:8080" \
+	GITHUB_CLIENT_ID="$$GITHUB_CLIENT_ID" \
+	GITHUB_CLIENT_SECRET="$$GITHUB_CLIENT_SECRET" \
+	GITHUB_WEBHOOK_SECRET="dev-webhook-secret" \
+	FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"dummy"}' \
+	go run ./backend/cmd/server
 
 # Task 4.1: Terraform apply + wrangler.toml database_id 自動更新
 terraform-apply:

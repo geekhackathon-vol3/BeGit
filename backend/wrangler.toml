@@ -2,6 +2,11 @@ name = "begit"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
+[vars]
+CF_ACCOUNT_ID = ""
+D1_DATABASE_ID = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
+APP_BASE_URL = ""
+
 [[containers]]
 class_name = "BeGitAPI"
 image = "./Dockerfile"
