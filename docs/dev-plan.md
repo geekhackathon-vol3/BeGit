@@ -398,4 +398,4 @@ iOS RepositoryNotification  → DB notifications
 
 ---
 
-*BeGit; — あなたの開発を、チームのワクワクに。*
+*BeGit; — 今、なに作ってる？*
