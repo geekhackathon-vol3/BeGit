@@ -88,3 +88,15 @@ type Reaction struct {
 	Login        string
 	AvatarURL    string
 }
+
+// Comment は投稿へのコメント。
+// Login / AvatarURL は users テーブルとの JOIN で付与する表示用フィールド。
+type Comment struct {
+	ID        int64
+	PostID    int64
+	UserID    int64
+	Body      string
+	CreatedAt time.Time
+	Login     string
+	AvatarURL string
+}
