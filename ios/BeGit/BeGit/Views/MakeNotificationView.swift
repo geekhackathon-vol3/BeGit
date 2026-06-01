@@ -178,6 +178,7 @@ struct MakeNotificationView_Previews: PreviewProvider {
         NavigationStack {
             MakeNotificationView(repository: Repository.mockRepositories[0])
         }
+        .environmentObject(AuthState.shared)
         .previewDevice("iPhone SE (3rd generation)")
     }
 }

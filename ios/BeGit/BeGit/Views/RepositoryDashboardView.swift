@@ -147,6 +147,7 @@ struct RepositoryDashboardView_Previews: PreviewProvider {
         NavigationStack {
             RepositoryDashboardView(repository: Repository.mockRepositories[0])
         }
+        .environmentObject(AuthState.shared)
         .previewDevice("iPhone 16 Pro Max")
     }
 }

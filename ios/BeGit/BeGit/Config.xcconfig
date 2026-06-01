@@ -1,1 +1,2 @@
-API_BASE_URL = https:/$()/begit-dev.118029-ichikama.workers.dev
+SLASH = /
+API_BASE_URL = https:$(SLASH)/begit-dev.118029-ichikama.workers.dev

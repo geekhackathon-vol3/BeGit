@@ -26,6 +26,8 @@ final class RepositoryListViewModel: ObservableObject {
     func loadRepositories(accessToken: String?) async {
         guard let accessToken else {
             repositories = []
+            errorMessage = nil
+            isLoading = false
             return
         }
 

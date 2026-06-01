@@ -21,17 +21,25 @@ final class AuthState: ObservableObject {
 
     //  前回ログイン情報を復元する
     func restoreSession() {
+        let restoredSavedSession = restoreSavedSession()
+
 #if DEBUG
-        applyDevSession()
-#else
+        if devSessionEnabled || !restoredSavedSession {
+            applyDevSession()
+        }
+#endif
+    }
+
+    private func restoreSavedSession() -> Bool {
         do {
             accessToken = try keychainManager.readAccessToken()
             isLoggedIn = accessToken != nil
+            return isLoggedIn
         } catch {
             accessToken = nil
             isLoggedIn = false
+            return false
         }
-#endif
     }
 
     //  ログイン成功処理
@@ -63,5 +71,10 @@ final class AuthState: ObservableObject {
             email: nil
         )
         isLoggedIn = true
+    }
+
+    private var devSessionEnabled: Bool {
+        let environmentValue = ProcessInfo.processInfo.environment["BEGIT_DEV_SESSION_ENABLED"]
+        return environmentValue == "1" || UserDefaults.standard.bool(forKey: "devSessionEnabled")
     }
 }

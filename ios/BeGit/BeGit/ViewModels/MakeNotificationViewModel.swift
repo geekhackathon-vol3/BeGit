@@ -78,7 +78,12 @@ final class MakeNotificationViewModel: ObservableObject {
     }
 
     func sendNotification(accessToken: String?) async -> RepositoryNotification? {
-        guard let accessToken, let backendID = repository.backendID else {
+        guard isSending == false else { return nil }
+        guard let accessToken else {
+            errorMessage = "アクセストークンが見つかりません。"
+            return nil
+        }
+        guard let backendID = repository.backendID else {
             errorMessage = "Repository IDが見つかりません。"
             return nil
         }

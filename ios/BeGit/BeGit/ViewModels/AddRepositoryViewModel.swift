@@ -152,6 +152,7 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  入力値からRepository生成
     func createRepository(accessToken: String?) async -> Repository? {
+        guard isSaving == false else { return nil }
         guard let repositoryName, let accessToken else { return nil }
 
         isSaving = true

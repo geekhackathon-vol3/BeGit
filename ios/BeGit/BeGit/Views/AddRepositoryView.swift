@@ -274,7 +274,7 @@ struct AddRepositoryView: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(isSelected ? AppTheme.accent.opacity(0.8) : Color.white.opacity(0.06), lineWidth: 1)
             )
-            .contentShape(Rectangle())
+            .contentShFape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(repository.fullName)を選択")
@@ -554,11 +554,6 @@ private struct FlowElement {
 
 struct AddRepositoryView_Previews: PreviewProvider {
     static var previews: some View {
-        AddRepositoryView(
-            viewModel: AddRepositoryViewModel(
-                accessToken: "mock_access_token_preview",
-                repositoryAPI: MockGitHubRepositoryAPI()
-            )
-        ) { _ in }
+        AddRepositoryView { _ in }
     }
 }
