@@ -1,4 +1,6 @@
-.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev
+.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev openapi
+
+SWAG_VERSION ?= v2.0.0-rc5
 
 WORKERS_URL ?= https://begit.118029-ichikama.workers.dev
 DEV_URL ?= https://begit-dev.118029-ichikama.workers.dev
@@ -7,6 +9,14 @@ setup:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/post-commit
 	@echo "✅ git hooks の設定が完了しました"
+
+# swag (gin のアノテーション) から OpenAPI 3.1 仕様を再生成する。
+# 生成物: backend/docs/swagger.json, backend/docs/swagger.yaml
+# swag が未インストールなら自動で取得する。
+openapi:
+	@command -v swag >/dev/null 2>&1 || go install github.com/swaggo/swag/v2/cmd/swag@$(SWAG_VERSION)
+	cd backend && swag init -g cmd/server/main.go -o docs --ot json,yaml --parseInternal --v3.1
+	@echo "✅ OpenAPI 3.1 仕様を backend/docs/ に生成しました"
 
 # ローカル開発サーバー起動（.envrc の変数を使用）
 # 必要な環境変数: TF_VAR_cloudflare_api_token, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
