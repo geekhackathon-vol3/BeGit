@@ -21,12 +21,6 @@ final class AddRepositoryViewModel: ObservableObject {
     @Published private(set) var isSaving = false                                // Repository作成API実行中
     @Published var errorMessage: String?                                        // エラーメッセージ
 
-    private let repositoryAPI: any RepositoryAPI                                // Repository関連API
-
-    init(repositoryAPI: any RepositoryAPI = BeGitBackendAPI()) {
-        self.repositoryAPI = repositoryAPI
-    }
-
     let invitedMembers: [RepositoryMember] = [                                  // 招待済みmember候補一覧
         RepositoryMember(login: "ayaka"),
         RepositoryMember(login: "begit"),
@@ -35,20 +29,23 @@ final class AddRepositoryViewModel: ObservableObject {
     ]
 
     private let accessToken: String?
-    private let repositoryAPI: any GitHubRepositoryAPI
+    private let backendRepositoryAPI: any RepositoryAPI                         // BeGit Repository関連API
+    private let githubRepositoryAPI: any GitHubRepositoryAPI                    // GitHub Repository一覧API
 
     init(
         accessToken: String? = nil,
-        repositoryAPI: (any GitHubRepositoryAPI)? = nil
+        backendRepositoryAPI: any RepositoryAPI = BeGitBackendAPI(),
+        githubRepositoryAPI: (any GitHubRepositoryAPI)? = nil
     ) {
         self.accessToken = accessToken
+        self.backendRepositoryAPI = backendRepositoryAPI
 
-        if let repositoryAPI {
-            self.repositoryAPI = repositoryAPI
+        if let githubRepositoryAPI {
+            self.githubRepositoryAPI = githubRepositoryAPI
         } else if accessToken?.hasPrefix("mock_access_token_") == true {
-            self.repositoryAPI = MockGitHubRepositoryAPI()
+            self.githubRepositoryAPI = MockGitHubRepositoryAPI()
         } else {
-            self.repositoryAPI = GitHubRepositoryClient()
+            self.githubRepositoryAPI = GitHubRepositoryClient()
         }
     }
 
@@ -102,7 +99,7 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryListErrorMessage = nil
 
         do {
-            availableRepositories = try await repositoryAPI.listRepositories(accessToken: accessToken)
+            availableRepositories = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
             visibleRepositoryCount = min(3, availableRepositories.count)
         } catch {
             repositoryListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -160,7 +157,7 @@ final class AddRepositoryViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
-            return try await repositoryAPI.createRepository(
+            return try await backendRepositoryAPI.createRepository(
                 repoFullName: repositoryName,
                 name: repositoryName,
                 accessToken: accessToken

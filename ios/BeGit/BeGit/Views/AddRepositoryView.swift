@@ -274,7 +274,7 @@ struct AddRepositoryView: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(isSelected ? AppTheme.accent.opacity(0.8) : Color.white.opacity(0.06), lineWidth: 1)
             )
-            .contentShFape(Rectangle())
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(repository.fullName)を選択")
