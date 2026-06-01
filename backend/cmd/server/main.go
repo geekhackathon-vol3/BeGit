@@ -36,6 +36,10 @@ type Config struct {
 
 	// Application
 	AppBaseURL string
+
+	// DevMode が true のとき dev 認証バイパス（POST /auth/dev）と
+	// スタブ GitHub クライアントを有効化する。本番では未設定＝false。
+	DevMode bool
 }
 
 // loadConfig は環境変数から Config を読み込む
@@ -51,6 +55,7 @@ func loadConfig() (*Config, error) {
 		D1DatabaseID:               os.Getenv("D1_DATABASE_ID"),
 		CFAPIToken:                 os.Getenv("CF_API_TOKEN"),
 		AppBaseURL:                 os.Getenv("APP_BASE_URL"),
+		DevMode:                    os.Getenv("DEV_MODE") == "true",
 	}
 
 	// 必須環境変数の検証
@@ -104,6 +109,9 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	}
 	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
 		cfg.AppBaseURL = v
+	}
+	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
+		cfg.DevMode = v == "true"
 	}
 }
 
@@ -188,7 +196,15 @@ func (s *server) buildHandler() (http.Handler, error) {
 		return nil, fmt.Errorf("failed to create encryptor: %w", err)
 	}
 
-	githubClient := githubpkg.NewClient()
+	// DEV_MODE 時は実 GitHub API の代わりにスタブを注入する。
+	// これにより auth/group/post の各 service が GitHub 設定・実トークンなしで動作する。
+	var githubClient githubpkg.Client
+	if cfg.DevMode {
+		githubClient = githubpkg.NewStubClient()
+		log.Printf("DEV_MODE enabled: using stub GitHub client and /auth/dev endpoint")
+	} else {
+		githubClient = githubpkg.NewClient()
+	}
 
 	var fcmClient fcm.Client
 	if cfg.FirebaseServiceAccountJSON != "" {
@@ -258,9 +274,22 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// ルーティング設定（Go 1.22 ServeMux）
 	mux := http.NewServeMux()
 
+	// ヘルスチェック（疎通確認・warmup 用、常時有効）
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+
 	// 認証不要エンドポイント
 	mux.Handle("POST /auth/github", authHandler)
 	mux.Handle("POST /webhook/github", webhookHandler)
+
+	// dev 専用ログイン（DEV_MODE=true のときだけ登録。false なら未登録＝404）
+	if cfg.DevMode {
+		devAuthHandler := handler.NewDevAuthHandler(userRepo, encryptor)
+		mux.Handle("POST /auth/dev", devAuthHandler)
+	}
 
 	// Bearer 認証が必要なエンドポイント
 	mux.Handle("GET /groups", bearerAuth(groupHandler))
