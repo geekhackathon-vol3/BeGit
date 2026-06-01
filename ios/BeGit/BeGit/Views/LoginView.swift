@@ -36,8 +36,7 @@ struct LoginView: View {
 
                         debugCameraButton
 
-                        EmptyView()
-                            .padding(.top, 12)
+                        Spacer(minLength: 12)
 
                         Spacer(minLength: proxy.size.height * 0.12)
                     }
@@ -109,6 +108,25 @@ struct LoginView: View {
         .accessibilityIdentifier("github_sign_in_button")
     }
 
+    private var debugCameraButton: some View {
+        NavigationLink {
+            CameraView()
+        } label: {
+            Text("Debug Camera")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 999)
+                        .fill(Color.white.opacity(0.08))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 999)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        }
+    }
 }
 
 struct LoginView_iPhoneSE_Previews: PreviewProvider {
