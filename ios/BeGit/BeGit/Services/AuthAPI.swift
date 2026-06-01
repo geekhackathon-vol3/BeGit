@@ -49,7 +49,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
     private let encoder: JSONEncoder    // リクエストJSONエンコード用
 
     nonisolated init(
-        baseURL: URL = URL(string: "https://begit.118029-ichikama.workers.dev")!,
+        baseURL: URL = BeGitBackendAPI.defaultBaseURL,
         session: URLSession = .shared
     ) {
         self.baseURL = baseURL
@@ -60,6 +60,16 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         self.encoder = encoder
+    }
+
+    private nonisolated static var defaultBaseURL: URL {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
+              value.isEmpty == false,
+              let url = URL(string: value) else {
+            preconditionFailure("API_BASE_URL is not configured")
+        }
+
+        return url
     }
 
     // GitHub OAuthの認可コードをBeGitバックエンドに送信し、認証情報へ変換する

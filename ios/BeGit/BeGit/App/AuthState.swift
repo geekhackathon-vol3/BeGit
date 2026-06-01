@@ -21,6 +21,9 @@ final class AuthState: ObservableObject {
 
     //  前回ログイン情報を復元する
     func restoreSession() {
+#if DEBUG
+        applyDevSession()
+#else
         do {
             accessToken = try keychainManager.readAccessToken()
             isLoggedIn = accessToken != nil
@@ -28,6 +31,7 @@ final class AuthState: ObservableObject {
             accessToken = nil
             isLoggedIn = false
         }
+#endif
     }
 
     //  ログイン成功処理
@@ -48,5 +52,16 @@ final class AuthState: ObservableObject {
         accessToken = nil
         githubUser = nil
         isLoggedIn = false
+    }
+
+    private func applyDevSession() {
+        accessToken = "dev_alice"
+        githubUser = GitHubUser(
+            id: 1,
+            login: "dev_alice",
+            avatarURL: nil,
+            email: nil
+        )
+        isLoggedIn = true
     }
 }
