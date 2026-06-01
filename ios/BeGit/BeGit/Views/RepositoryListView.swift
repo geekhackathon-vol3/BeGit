@@ -78,7 +78,9 @@ struct RepositoryListView: View {
             }
             //  Repository追加Sheet
             .sheet(isPresented: $viewModel.isShowingAddRepository) {
-                AddRepositoryView { repository in
+                AddRepositoryView(
+                    viewModel: AddRepositoryViewModel(accessToken: authState.accessToken)
+                ) { repository in
                     //  Repository一覧へ追加
                     viewModel.addRepository(repository)
                 }
