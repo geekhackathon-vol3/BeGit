@@ -42,11 +42,13 @@ deploy:
 
 # ── dev 環境（フロント共有用）─────────────────────────────────────────
 # dev D1 を作成（初回のみ）。出力された database_id を
-# backend/wrangler.toml の REPLACE_WITH_DEV_D1_ID 2箇所に貼り付ける。
+# backend/wrangler.toml の該当フィールドに貼り付ける。
 dev-db-create:
 	cd backend && npx wrangler d1 create begit-db-dev
 	@echo ""
-	@echo "👉 出力された database_id を backend/wrangler.toml の REPLACE_WITH_DEV_D1_ID（[env.dev.vars] と [[env.dev.d1_databases]] の2箇所）に貼り付けてください"
+	@echo "👉 出力された database_id を backend/wrangler.toml の以下の2箇所に貼り付けてください:"
+	@echo "   - [env.dev.vars].D1_DATABASE_ID"
+	@echo "   - [[env.dev.d1_databases]].database_id"
 	@echo "👉 次に: npx wrangler secret put CF_API_TOKEN --env dev （cd backend で実行）"
 
 # dev Worker(begit-dev) をデプロイ（DEV_MODE=true）。Docker build → deploy → dev D1 migration

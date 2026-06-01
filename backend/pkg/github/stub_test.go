@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-// TestStubClient_ImplementsClient はスタブが Client インターフェースを満たすことを確認する。
-func TestStubClient_ImplementsClient(t *testing.T) {
-	var _ Client = NewStubClient()
-}
+// stubClient が Client インターフェースを満たすことをコンパイル時にチェックする。
+var _ Client = (*stubClient)(nil)
 
 // TestStubClient_GetRecentCommits は固定のコミットサマリーを返すことを確認する。
 func TestStubClient_GetRecentCommits(t *testing.T) {
