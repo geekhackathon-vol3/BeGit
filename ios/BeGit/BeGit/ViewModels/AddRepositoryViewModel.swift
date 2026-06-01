@@ -6,16 +6,22 @@ import Combine
 
 @MainActor
 final class AddRepositoryViewModel: ObservableObject {
-    @Published var repositoryURLText = ""                               //  Repository URL入力値
-    @Published private(set) var availableRepositories: [GitHubRepository] = [] //  GitHub Repository候補一覧
-    @Published private(set) var selectedRepository: GitHubRepository?   //  選択中Repository
-    @Published private(set) var isLoadingRepositories = false           //  Repository一覧取得中か
-    @Published private(set) var repositoryListErrorMessage: String?     //  Repository一覧取得エラー
-    @Published private(set) var visibleRepositoryCount = 3              //  画面に表示するRepository候補数
-    @Published var memberLoginText = ""                                 //  member login入力値
-    @Published private(set) var members: [RepositoryMember] = []        //  追加済みmember一覧
-    @Published var isMemberInputVisible = false                         //  member入力欄の表示状態
-    let invitedMembers: [RepositoryMember] = [                          //  招待済みmember候補一覧
+    @Published var repositoryURLText = ""                                      // Repository URL入力値
+
+    @Published private(set) var availableRepositories: [GitHubRepository] = []  // GitHub Repository候補一覧
+    @Published private(set) var selectedRepository: GitHubRepository?           // 選択中Repository
+    @Published private(set) var isLoadingRepositories = false                   // Repository一覧取得中か
+    @Published private(set) var repositoryListErrorMessage: String?             // Repository一覧取得エラー
+    @Published private(set) var visibleRepositoryCount = 3                      // 画面に表示するRepository候補数
+
+    @Published var memberLoginText = ""                                         // 招待するmember login入力値
+    @Published private(set) var members: [RepositoryMember] = []                // 追加済みmember一覧
+    @Published var isMemberInputVisible = false                                 // member入力欄の表示状態
+
+    @Published private(set) var isSaving = false                                // Repository作成API実行中
+    @Published var errorMessage: String?                                        // エラーメッセージ
+
+    let invitedMembers: [RepositoryMember] = [                                  // 招待済みmember候補一覧
         RepositoryMember(login: "ayaka"),
         RepositoryMember(login: "begit"),
         RepositoryMember(login: "ios-dev"),
@@ -23,26 +29,29 @@ final class AddRepositoryViewModel: ObservableObject {
     ]
 
     private let accessToken: String?
-    private let repositoryAPI: any GitHubRepositoryAPI
+    private let backendRepositoryAPI: any RepositoryAPI                         // BeGit Repository関連API
+    private let githubRepositoryAPI: any GitHubRepositoryAPI                    // GitHub Repository一覧API
 
     init(
         accessToken: String? = nil,
-        repositoryAPI: (any GitHubRepositoryAPI)? = nil
+        backendRepositoryAPI: any RepositoryAPI = BeGitBackendAPI(),
+        githubRepositoryAPI: (any GitHubRepositoryAPI)? = nil
     ) {
         self.accessToken = accessToken
+        self.backendRepositoryAPI = backendRepositoryAPI
 
-        if let repositoryAPI {
-            self.repositoryAPI = repositoryAPI
+        if let githubRepositoryAPI {
+            self.githubRepositoryAPI = githubRepositoryAPI
         } else if accessToken?.hasPrefix("mock_access_token_") == true {
-            self.repositoryAPI = MockGitHubRepositoryAPI()
+            self.githubRepositoryAPI = MockGitHubRepositoryAPI()
         } else {
-            self.repositoryAPI = GitHubRepositoryClient()
+            self.githubRepositoryAPI = GitHubRepositoryClient()
         }
     }
 
     //  Repository作成可能か
     var canComplete: Bool {
-        repositoryName != nil
+        repositoryName != nil && isSaving == false
     }
 
     //  Repository preview表示名
@@ -90,7 +99,7 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryListErrorMessage = nil
 
         do {
-            availableRepositories = try await repositoryAPI.listRepositories(accessToken: accessToken)
+            availableRepositories = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
             visibleRepositoryCount = min(3, availableRepositories.count)
         } catch {
             repositoryListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -139,14 +148,24 @@ final class AddRepositoryViewModel: ObservableObject {
     }
 
     //  入力値からRepository生成
-    func makeRepository() -> Repository? {
-        guard let repositoryName else { return nil }
+    func createRepository(accessToken: String?) async -> Repository? {
+        guard isSaving == false else { return nil }
+        guard let repositoryName, let accessToken else { return nil }
 
-        return Repository(
-            name: repositoryName,
-            memberCount: members.count,
-            members: members
-        )
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            return try await backendRepositoryAPI.createRepository(
+                repoFullName: repositoryName,
+                name: repositoryName,
+                accessToken: accessToken
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
     }
 
     // MARK: - Private

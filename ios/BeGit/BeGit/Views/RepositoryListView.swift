@@ -41,6 +41,14 @@ struct RepositoryListView: View {
                             loggedInUserSummary
                                 .padding(.bottom, 2)
 
+                            if viewModel.isLoading {
+                                statusText("Loading repositories...")
+                            }
+
+                            if let errorMessage = viewModel.errorMessage {
+                                statusText(errorMessage)
+                            }
+
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
                                 NavigationLink(value: RepositoryNavigationRoute.dashboard(repository)) {
@@ -84,9 +92,18 @@ struct RepositoryListView: View {
                     //  Repository一覧へ追加
                     viewModel.addRepository(repository)
                 }
+                .environmentObject(authState)
             }
             .navigationDestination(for: RepositoryNavigationRoute.self) { route in
                 destination(for: route)
+            }
+            .task {
+                await viewModel.loadRepositories(accessToken: authState.accessToken)
+            }
+            .onChange(of: authState.accessToken) { _, accessToken in
+                Task {
+                    await viewModel.loadRepositories(accessToken: accessToken)
+                }
             }
         }
         .tint(AppTheme.accent)
@@ -166,6 +183,14 @@ struct RepositoryListView: View {
         )
         //  SafeArea下部まで背景を拡張
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func statusText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.62))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
     }
 
     //  routeに応じて遷移先Viewを生成

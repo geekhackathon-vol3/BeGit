@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		84B1C0022FC9000000010002 /* Config-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "BeGit/Config-Release.xcconfig"; sourceTree = "<group>"; };
+		84B1C0012FC9000000010001 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = BeGit/Config.xcconfig; sourceTree = "<group>"; };
 		848E88C32FC31C7E0099886A /* BeGit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BeGit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -14,6 +16,8 @@
 		84222EF02FC546390094F554 /* Exceptions for "BeGit" folder in "BeGit" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"Config-Release.xcconfig",
+				Config.xcconfig,
 				Info.plist,
 			);
 			target = 848E88C22FC31C7E0099886A /* BeGit */;
@@ -45,6 +49,8 @@
 		848E88BA2FC31C7E0099886A = {
 			isa = PBXGroup;
 			children = (
+				84B1C0022FC9000000010002 /* Config-Release.xcconfig */,
+				84B1C0012FC9000000010001 /* Config.xcconfig */,
 				848E88C52FC31C7E0099886A /* BeGit */,
 				848E88C42FC31C7E0099886A /* Products */,
 			);
@@ -140,6 +146,7 @@
 /* Begin XCBuildConfiguration section */
 		848E88CC2FC31C7F0099886A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 84B1C0012FC9000000010001 /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -202,6 +209,7 @@
 		};
 		848E88CD2FC31C7F0099886A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 84B1C0022FC9000000010002 /* Config-Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -256,6 +264,7 @@
 		};
 		848E88CF2FC31C7F0099886A /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 84B1C0012FC9000000010001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -302,6 +311,7 @@
 		};
 		848E88D02FC31C7F0099886A /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 84B1C0022FC9000000010002 /* Config-Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;

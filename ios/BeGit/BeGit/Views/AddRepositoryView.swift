@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct AddRepositoryView: View {
     @Environment(\.dismiss) private var dismiss                 //  Sheetを閉じるためのdismiss action
+    @EnvironmentObject private var authState: AuthState         //  API認証トークン
     @StateObject private var viewModel: AddRepositoryViewModel  //  画面状態を管理するViewModel
 
     let onAdd: (Repository) -> Void                             //  Repository追加完了時のcallback
@@ -43,8 +44,15 @@ struct AddRepositoryView: View {
                         repositorySelectionSection  //  Repository選択
                         membersSection          //  Team member設定
 
+                        if let errorMessage = viewModel.errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(AppTheme.softPink)
+                                .lineSpacing(3)
+                        }
+
                         //  Repository追加完了
-                        PrimaryButton("完了", systemImage: "checkmark", isEnabled: viewModel.canComplete) {
+                        PrimaryButton(viewModel.isSaving ? "追加中..." : "完了", systemImage: "checkmark", isEnabled: viewModel.canComplete) {
                             complete()
                         }
                         .padding(.top, 8)
@@ -444,10 +452,12 @@ struct AddRepositoryView: View {
 
     //  Repository生成後に一覧へ追加
     private func complete() {
-        guard let repository = viewModel.makeRepository() else { return }
+        Task {
+            guard let repository = await viewModel.createRepository(accessToken: authState.accessToken) else { return }
 
-        onAdd(repository)
-        dismiss()
+            onAdd(repository)
+            dismiss()
+        }
     }
 }
 
@@ -544,11 +554,6 @@ private struct FlowElement {
 
 struct AddRepositoryView_Previews: PreviewProvider {
     static var previews: some View {
-        AddRepositoryView(
-            viewModel: AddRepositoryViewModel(
-                accessToken: "mock_access_token_preview",
-                repositoryAPI: MockGitHubRepositoryAPI()
-            )
-        ) { _ in }
+        AddRepositoryView { _ in }
     }
 }
