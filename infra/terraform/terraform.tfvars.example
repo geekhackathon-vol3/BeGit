@@ -1,0 +1,5 @@
+cloudflare_account_id = "your-account-id-here"
+
+# cloudflare_api_token はシークレットのため terraform.tfvars には記載しない
+# 以下の環境変数として渡す:
+#   export TF_VAR_cloudflare_api_token="your-api-token"

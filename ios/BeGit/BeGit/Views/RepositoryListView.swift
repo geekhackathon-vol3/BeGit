@@ -32,9 +32,14 @@ struct RepositoryListView: View {
                     ScrollView {
                         //  Repository card一覧
                         LazyVStack(alignment: .leading, spacing: 16) {
-                            //  Header表示
-                            headerSection
-                                .padding(.bottom, 10)
+                            Text("Repositories")
+                                .font(.custom("Bitcount", size: 34))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            //  ログイン中ユーザー情報
+                            loggedInUserSummary
+                                .padding(.bottom, 2)
 
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
@@ -60,6 +65,10 @@ struct RepositoryListView: View {
             .navigationBarTitleDisplayMode(.inline)
             //  NavigationBar items
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    BeGitToolbarLogoView()
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     //  ログアウト
                     Button("Log Out", action: authState.logout)
@@ -83,61 +92,62 @@ struct RepositoryListView: View {
 
     // MARK: - Components
 
-    //  Header表示
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 16) {
-                //  BeGitロゴ表示
-                logoView
-
-                VStack(alignment: .leading, spacing: 4) {
-                    //  アプリ名
-                    Text("BeGit")
-                        .font(.system(size: 34, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
-
-                    //  Home画面タイトル
-                    Text("Repository Home")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AppTheme.accent)
-                        .textCase(.uppercase)
-                }
-            }
-
-            //  ログインユーザー向け説明文
-            Text("Welcome, \(authState.githubUser?.login ?? "Developer"). Track your active repositories from one place.")
-                .font(.system(size: 14, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.62))
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    //  BeGitロゴView
-    private var logoView: some View {
-        Group {
-            //  ロゴ画像が存在する場合
-            if let image = UIImage(named: "begit_logo") {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .padding(8)
-            } else {
-                //  ロゴ画像未設定時のFallback表示
-                Text("BG")
-                    .font(.system(size: 18, weight: .black, design: .monospaced))
-                    .foregroundStyle(.black)
-            }
-        }
-        .frame(width: 62, height: 62)   //  ロゴサイズ
-        .background(AppTheme.accent)    //  ロゴ背景色
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))  //  ロゴShape
-    }
-
     //  Repository追加ボタン
     private var addRepositoryButton: some View {
         PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
             .accessibilityIdentifier("add_repository_button")
+    }
+
+    //  ログイン中ユーザー情報表示
+    private var loggedInUserSummary: some View {
+        HStack(alignment: .center, spacing: 10) {
+            AvatarView(
+                member: RepositoryMember(
+                    login: displayedGitHubUser.login,
+                    avatarURL: displayedGitHubUser.avatarURL
+                ),
+                size: 34
+            )
+            .background(
+                Circle()
+                    .fill(AppTheme.background.opacity(0.82))
+            )
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
+            )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayedGitHubUser.login)
+                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Text(displayedGitHubUserIDText)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.64))
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    //  表示用ユーザー
+    private var displayedGitHubUser: GitHubUser {
+        authState.githubUser ?? GitHubUser(
+            id: 0,
+            login: "Guest",
+            avatarURL: nil,
+            email: nil
+        )
+    }
+
+    private var displayedGitHubUserIDText: String {
+        guard let githubUser = authState.githubUser else {
+            return "ID: -"
+        }
+
+        return "ID: \(githubUser.id)"
     }
 
     //  下部固定エリア背景
@@ -181,9 +191,11 @@ struct RepositoryListView: View {
 //  BeGit共通テーマカラー
 enum AppTheme {
     //  アプリ背景色
-    static let background = Color(red: 0.02, green: 0.02, blue: 0.05)
+    static let background = Color(red: 0.149, green: 0.157, blue: 0.188)
     //  カード背景色
     static let cardBackground = Color(red: 0.07, green: 0.06, blue: 0.11)
+    //  Repository一覧カード背景色
+    static let repositoryCardBackground = Color(red: 0.267, green: 0.267, blue: 0.267)
     //  入力欄背景色
     static let fieldBackground = Color.white.opacity(0.07)
     //  メインアクセントカラー

@@ -8,7 +8,6 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID                        //  activity識別子
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
-    let comment: String?                //  activity補足コメント
     let date: Date                      //  activity作成日時
     let imageName: String?              //  activity画像名
     let author: RepositoryMember        //  activity実行ユーザー
@@ -18,7 +17,6 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         id: UUID = UUID(),
         type: RepositoryActivityType,
         title: String,
-        comment: String? = nil,
         date: Date = Date(),
         imageName: String? = nil,
         author: RepositoryMember,
@@ -27,7 +25,6 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         self.id = id
         self.type = type
         self.title = title
-        self.comment = comment
         self.date = date
         self.imageName = imageName
         self.author = author
@@ -56,16 +53,15 @@ extension RepositoryActivity {
         let members = repository.members.isEmpty
             ? [RepositoryMember(login: "begit")]
             : repository.members
+        let calendar = Calendar.current
 
         return [
             //  commit activity mock
             RepositoryActivity(
                 type: .commit,
                 title: "Implemented realtime repository home",
-                comment: "UI polish and state wiring landed before the notification window.",
-                date: Date(timeIntervalSinceNow: -60 * 18),
-                //  SF Symbols icon名
-                imageName: "chevron.left.forwardslash.chevron.right",
+                date: calendar.date(byAdding: .minute, value: -18, to: Date()) ?? Date(),
+                imageName: "begit_timeline_mock",
                 author: members[0],
                 reaction: .check
             ),
@@ -73,10 +69,8 @@ extension RepositoryActivity {
             RepositoryActivity(
                 type: .pullRequest,
                 title: "Opened PR for dashboard flow",
-                comment: "Needs review on navigation and activity card density.",
-                date: Date(timeIntervalSinceNow: -60 * 64),
-                //  SF Symbols icon名
-                imageName: "arrow.triangle.pull",
+                date: calendar.date(byAdding: .hour, value: -31, to: Date()) ?? Date(),
+                imageName: "begit_timeline_mock",
                 author: members[min(1, members.count - 1)],
                 reaction: .heart
             ),
@@ -84,14 +78,11 @@ extension RepositoryActivity {
             RepositoryActivity(
                 type: .sorry,
                 title: "Sorry, build was red for 12 minutes",
-                comment: "Fixed the missing Combine import and re-ran simulator build.",
-                date: Date(timeIntervalSinceNow: -60 * 130),
-                //  SF Symbols icon名
-                imageName: "exclamationmark.triangle",
+                date: calendar.date(byAdding: .hour, value: -76, to: Date()) ?? Date(),
+                imageName: "begit_timeline_mock",
                 author: members[min(2, members.count - 1)],
                 reaction: .sorry
             )
         ]
     }
 }
-

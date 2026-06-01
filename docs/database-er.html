@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BeGit DB ER 図</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1e1f2e;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 32px 24px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #cdb7f6;
+      margin-bottom: 4px;
+      letter-spacing: -0.3px;
+    }
+    .meta {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 32px;
+    }
+    .meta a { color: #9ca3af; text-decoration: none; }
+    .meta a:hover { color: #cdb7f6; }
+
+    .section { margin-bottom: 48px; }
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 16px;
+    }
+
+    .mermaid-wrap {
+      background: #12131f;
+      border: 1px solid #2d2f45;
+      border-radius: 12px;
+      padding: 24px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: #12131f;
+      color: #9ca3af;
+      font-weight: 600;
+      border-bottom: 1px solid #2d2f45;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #1e1f2e;
+      vertical-align: top;
+    }
+    tr:hover td { background: #1a1b2a; }
+    code {
+      font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+      font-size: 12px;
+      background: #1e1f2e;
+      color: #cdb7f6;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    .tag-commit      { background: #1d3557; color: #90cdf4; }
+    .tag-pr          { background: #1a2e1a; color: #86efac; }
+    .tag-issue       { background: #2d1f1f; color: #fca5a5; }
+    .tag-review      { background: #2d2a1f; color: #fcd34d; }
+    .tag-comment     { background: #1f2a2d; color: #67e8f9; }
+
+    .lifecycle {
+      background: #12131f;
+      border: 1px solid #2d2f45;
+      border-radius: 12px;
+      padding: 20px 24px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .lifecycle .step {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .lifecycle .arrow { color: #6b7280; }
+    .lifecycle .label { color: #cdb7f6; font-weight: 600; min-width: 140px; }
+    .lifecycle .desc  { color: #9ca3af; }
+  </style>
+</head>
+<body>
+
+<h1>BeGit DB ER 図</h1>
+<p class="meta">
+  Cloudflare D1（SQLite 互換） &nbsp;·&nbsp;
+  <a href="../backend/migrations/0001_initial.sql">0001_initial.sql</a>
+</p>
+
+<div class="section">
+  <h2>全体 ER 図</h2>
+  <div class="mermaid-wrap">
+    <div class="mermaid">
+erDiagram
+    users {
+        INTEGER id PK
+        INTEGER github_id UK
+        TEXT github_login UK
+        TEXT github_name
+        TEXT avatar_url
+        TEXT encrypted_access_token
+        TEXT created_at
+    }
+    groups {
+        INTEGER id PK
+        TEXT repo_full_name UK
+        INTEGER owner_user_id FK
+        INTEGER sprint_duration_days
+        TEXT created_at
+    }
+    group_members {
+        INTEGER group_id PK_FK
+        INTEGER user_id PK_FK
+        TEXT role
+        INTEGER auto_joined
+        TEXT joined_at
+    }
+    fcm_tokens {
+        INTEGER id PK
+        INTEGER user_id FK
+        TEXT token UK
+        TEXT updated_at
+    }
+    sprints {
+        INTEGER id PK
+        INTEGER group_id FK
+        INTEGER index_num
+        TEXT started_at
+        TEXT ends_at
+    }
+    notifications {
+        INTEGER id PK
+        INTEGER sprint_id FK
+        INTEGER sent_by FK
+        TEXT message
+        TEXT sent_at
+    }
+    posts {
+        INTEGER id PK
+        INTEGER notification_id FK
+        INTEGER user_id FK
+        INTEGER group_id FK
+        TEXT post_type
+        TEXT body
+        TEXT repo_full_name
+        TEXT branch_name
+        INTEGER commit_count
+        INTEGER additions
+        INTEGER deletions
+        TEXT latest_commit_message
+        TEXT tags
+        TEXT privacy_level
+        TEXT status
+        TEXT created_at
+    }
+    photos {
+        INTEGER id PK
+        INTEGER post_id FK
+        TEXT r2_key
+        TEXT photo_type
+        TEXT created_at
+    }
+    reactions {
+        INTEGER id PK
+        INTEGER post_id FK
+        INTEGER user_id FK
+        TEXT reaction_type
+    }
+    comments {
+        INTEGER id PK
+        INTEGER post_id FK
+        INTEGER user_id FK
+        TEXT body
+        TEXT created_at
+    }
+
+    github_webhook_deliveries {
+        TEXT delivery_id PK
+        TEXT event_type
+        TEXT received_at
+    }
+
+    users ||--o{ groups : "owner"
+    users ||--o{ group_members : ""
+    groups ||--o{ group_members : ""
+    users ||--o{ fcm_tokens : ""
+    groups ||--o{ sprints : ""
+    sprints ||--o{ notifications : ""
+    users ||--o{ notifications : "sent_by"
+    notifications ||--o{ posts : "triggers"
+    users ||--o{ posts : ""
+    groups ||--o{ posts : ""
+    posts ||--o{ photos : ""
+    posts ||--o{ reactions : ""
+    users ||--o{ reactions : ""
+    posts ||--o{ comments : ""
+    users ||--o{ comments : ""
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>スプリントのライフサイクル</h2>
+  <div class="lifecycle">
+    <div class="step">
+      <span class="label">グループ作成</span>
+      <span class="arrow">→</span>
+      <span class="desc">sprints INSERT（index_num=0, started_at=now, ends_at=now+sprint_duration_days）</span>
+    </div>
+    <div class="step">
+      <span class="label">スプリント期間中</span>
+      <span class="arrow">→</span>
+      <span class="desc">UNIQUE(sprint_id, sent_by) で通知は1人1回まで / posts が on_time | late を判定</span>
+    </div>
+    <div class="step">
+      <span class="label">スプリント終了（Cron）</span>
+      <span class="arrow">→</span>
+      <span class="desc">未投稿メンバーに posts INSERT（status='missed'）→ 次スプリント INSERT（index_num+1）</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>post_type 一覧</h2>
+  <table>
+    <thead>
+      <tr><th>値</th><th>意味</th><th>iOS SF Symbol</th><th>絵文字セット</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="tag tag-commit">commit</span></td>
+        <td>コミット報告</td>
+        <td><code>chevron.left.forwardslash.chevron.right</code></td>
+        <td>heart / lgtm / grass</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-pr">pull_request</span></td>
+        <td>PR オープン / レビュー</td>
+        <td><code>arrow.triangle.pull</code></td>
+        <td>lgtm / review / merge</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-issue">issue</span></td>
+        <td>Issue 対応</td>
+        <td><code>exclamationmark.circle</code></td>
+        <td>lgtm / watching</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-review">review</span></td>
+        <td>コードレビュー完了</td>
+        <td><code>eye</code></td>
+        <td>lgtm / review</td>
+      </tr>
+      <tr>
+        <td><span class="tag tag-comment">comment</span></td>
+        <td>進捗メッセージ（今は作業できないが近況を共有）</td>
+        <td><code>text.bubble</code></td>
+        <td>heart / check</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>ビジネス制約</h2>
+  <table>
+    <thead>
+      <tr><th>制約</th><th>テーブル</th><th>意味</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>UNIQUE(group_id, index_num)</code></td>
+        <td>sprints</td>
+        <td>グループ内でスプリント番号は一意</td>
+      </tr>
+      <tr>
+        <td><code>UNIQUE(sprint_id, sent_by)</code></td>
+        <td>notifications</td>
+        <td>1スプリント1人1回の通知発行</td>
+      </tr>
+      <tr>
+        <td><code>UNIQUE(notification_id, user_id)</code></td>
+        <td>posts</td>
+        <td>1通知につき1ユーザー1投稿</td>
+      </tr>
+      <tr>
+        <td><code>UNIQUE(post_id, user_id, reaction_type)</code></td>
+        <td>reactions</td>
+        <td>同じリアクションは1回のみ（トグルで削除）</td>
+      </tr>
+      <tr>
+        <td><code>PRIMARY KEY(group_id, user_id)</code></td>
+        <td>group_members</td>
+        <td>グループ所属の一意性</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>iOS モデル対応</h2>
+  <table>
+    <thead>
+      <tr><th>DB テーブル</th><th>iOS モデル</th><th>主なマッピング</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>users</code></td>
+        <td>GitHubUser / RepositoryMember</td>
+        <td><code>github_login</code> ↔ <code>.login</code> / <code>avatar_url</code> ↔ <code>.avatarURL</code></td>
+      </tr>
+      <tr>
+        <td><code>groups</code></td>
+        <td>Repository</td>
+        <td><code>repo_full_name</code> ↔ <code>.name</code></td>
+      </tr>
+      <tr>
+        <td><code>group_members</code></td>
+        <td>Repository.members</td>
+        <td>JOIN → <code>[RepositoryMember]</code></td>
+      </tr>
+      <tr>
+        <td><code>sprints</code></td>
+        <td>なし（サーバー内部管理）</td>
+        <td>グループ作成時に自動生成</td>
+      </tr>
+      <tr>
+        <td><code>notifications</code></td>
+        <td>RepositoryNotification</td>
+        <td><code>message</code> ↔ <code>.comment</code> / <code>sent_at</code> ↔ <code>.createdAt</code></td>
+      </tr>
+      <tr>
+        <td><code>posts</code></td>
+        <td>RepositoryActivity (Dashboard) / 将来 FeedPost (Feed)</td>
+        <td><code>post_type</code> ↔ <code>.type</code> / <code>body</code> ↔ <code>.comment</code></td>
+      </tr>
+      <tr>
+        <td><code>reactions</code></td>
+        <td>RepositoryReaction / FeedPost.reactions</td>
+        <td><code>reaction_type</code> = heart|check (Dashboard) / lgtm|... (Feed)</td>
+      </tr>
+      <tr>
+        <td><code>github_webhook_deliveries</code></td>
+        <td>なし（サーバー内部）</td>
+        <td>他テーブルと FK なし。Webhook 冪等性のみ</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      primaryColor: '#1e1f2e',
+      primaryTextColor: '#e2e8f0',
+      primaryBorderColor: '#4a4d6e',
+      lineColor: '#6b7280',
+      secondaryColor: '#12131f',
+      tertiaryColor: '#1a1b2a',
+      edgeLabelBackground: '#1e1f2e',
+      attributeBackgroundColorOdd: '#12131f',
+      attributeBackgroundColorEven: '#1a1b2a',
+    },
+    er: { diagramPadding: 24, layoutDirection: 'TB' }
+  });
+</script>
+</body>
+</html>

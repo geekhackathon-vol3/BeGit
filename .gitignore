@@ -1,0 +1,25 @@
+# Terraform
+infra/terraform/terraform.tfstate
+infra/terraform/terraform.tfstate.backup
+infra/terraform/terraform.tfvars
+infra/terraform/.terraform/
+
+# Environment variables
+.env
+.env.local
+.envrc
+
+# Node.js
+node_modules/
+
+# Wrangler local state
+backend/.wrangler/
+
+# Go build artifacts
+backend/server
+
+# AI logs
+ai_log/
+
+# macOS
+.DS_Store

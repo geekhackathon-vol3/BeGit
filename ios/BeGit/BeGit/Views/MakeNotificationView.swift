@@ -63,6 +63,16 @@ struct MakeNotificationView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BeGitBackButton()
+            }
+
+            ToolbarItem(placement: .principal) {
+                BeGitToolbarLogoView()
+            }
+        }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
     }

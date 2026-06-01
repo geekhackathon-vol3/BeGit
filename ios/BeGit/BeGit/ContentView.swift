@@ -14,7 +14,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if authState.isLoggedIn {
-                MainTabView()   // ログイン済み
+                RepositoryListView()   // ログイン済み
             } else {
                 LoginView()     // 未ログイン
             }

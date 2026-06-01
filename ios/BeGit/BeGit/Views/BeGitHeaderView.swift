@@ -11,44 +11,34 @@ struct BeGitHeaderView: View {
 
     var body: some View {
         //  Header本体
-        HStack(spacing: 14) {
-            //  BeGitロゴ表示
-            logoView
+        VStack(spacing: 4) {
+            //  Headerタイトル表示
+            Text(title)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.softPink)
+                .textCase(.uppercase)
 
-            VStack(alignment: .leading, spacing: 4) {
-                //  アプリロゴテキスト
-                Text("BeGit_")
-                    .font(.system(size: 28, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-
-                //  Headerタイトル表示
-                Text(title)
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppTheme.softPink)
-                    .textCase(.uppercase)
-
-                //  subtitle表示
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.50))
-                        .lineLimit(1)
-                }
+            //  subtitle表示
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.50))
+                    .lineLimit(1)
+                    .multilineTextAlignment(.center)
             }
-
-            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity)
     }
+}
 
-    //  BeGitロゴView
-    private var logoView: some View {
+struct BeGitToolbarLogoView: View {
+    var body: some View {
         Group {
             //  ロゴ画像が存在する場合
             if let image = UIImage(named: "begit_logo") {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .padding(7)
             } else {
                 //  ロゴ画像未設定時のFallback表示
                 Text("BG")
@@ -56,9 +46,31 @@ struct BeGitHeaderView: View {
                     .foregroundStyle(.black)
             }
         }
-        .frame(width: 54, height: 54)                                           //  ロゴサイズ
-        .background(AppTheme.accent)                                            //  ロゴ背景色
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))      //  ロゴShape
+        .frame(width: 118, height: 34)
     }
 }
 
+struct BeGitBackButton: View {
+    @Environment(\.dismiss) private var dismiss
+    private let titleKey = LocalizedStringKey("Back")
+
+    var body: some View {
+        Button(action: dismiss.callAsFunction) {
+            HStack(spacing: 5) {
+                Image("begit_back_arrow")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 22, height: 22)
+
+                Text(titleKey)
+                    .font(.system(size: 21, weight: .regular, design: .monospaced))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .foregroundStyle(AppTheme.softPink)
+            .frame(minWidth: 82, minHeight: 44, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(titleKey))
+    }
+}

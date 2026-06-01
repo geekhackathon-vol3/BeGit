@@ -1,0 +1,6 @@
+# Cloudflare Terraform
+export TF_VAR_cloudflare_api_token="your-api-token-here"
+
+# GitHub OAuth App (Settings → Developer settings → OAuth Apps)
+export GITHUB_CLIENT_ID="your-github-client-id"
+export GITHUB_CLIENT_SECRET="your-github-client-secret"

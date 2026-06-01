@@ -35,7 +35,7 @@
 | プロダクト名 | BeGit |
 | ジャンル | 開発者向け チーム開発支援 SNS アプリ（iOS） |
 | コンセプト | BeReal × GitHub — オンライン＆オフラインのハイブリッド開発を盛り上げる |
-| 一言説明 | 一定期間内にメンバーが任意タイミングで「通知」を発行し、全員が30分以内に今の開発状況をコミットまたは投稿するアプリ |
+| 一言説明 | 一定期間内にメンバーが任意タイミングで「通知」を発行し、全員が1時間以内に今の開発状況をコミットまたは投稿するアプリ |
 
 ### 背景・課題
 
@@ -68,7 +68,7 @@
 ### ゲーミフィケーション要素
 
 - 1スプリントに1人1回しか通知を発行できない → **「いつ打つか」に戦略性が生まれる**
-- 通知後30分以内の投稿は **On Time** バッジ付き
+- 通知後1時間以内の投稿は **On Time** バッジ付き
 - 遅れると **Late**、無視すると **Missed**
 
 ---
@@ -137,7 +137,7 @@
    GET /repos/{owner}/{repo}/collaborators
 3. 一覧の中でBeGit連携済みユーザーを抽出
 4. 該当ユーザーをGroupMemberに自動追加
-5. 追加されたユーザーにAPNs通知「{repo名} のグループに追加されました 🎉」
+5. 追加されたユーザーにFCM通知「{repo名} のグループに追加されました 🎉」
 ```
 
 > **注:** ユーザーは参加を辞退（脱退）することも可能。
@@ -150,19 +150,19 @@
 | タイミング | 発行者が任意のタイミングで発行（ランダムではない） |
 | 意図 | 「今みんな作業してそうな時間」を見計らって打つ → ゲーミフィケーション |
 | 送信先 | グループ全員 |
-| 通知文例 | `「今なに作ってる？」` `「BeGit Time ⏰」` `「30分以内に開発状況を投稿してください」` |
+| 通知文例 | `「今なに作ってる？」` `「BeGit Time ⏰」` `「1時間以内に開発状況を投稿してください」` |
 
 #### 投稿期限ステータス
 
 | ステータス | 条件 |
 |----------|------|
-| `On Time` | 通知から30分以内に投稿 |
-| `Late` | 30分超過後に投稿 |
+| `On Time` | 通知から1時間以内に投稿 |
+| `Late` | 1時間超過後に投稿 |
 | `Missed` | 投稿なし（スプリント終了後に自動付与） |
 
 #### commit / PR検知 → スマホ通知の技術構成
 
-**概要:** GitHubでcommitやPR reviewが発生したことをサーバーが検知し、該当ユーザーのスマホへAPNs経由でpush通知を送る。
+**概要:** GitHubでcommitやPR reviewが発生したことをサーバーが検知し、該当ユーザーのスマホへFCM経由でpush通知を送る。FCMがAPNsへの配信を中継するため、バックエンドはAPNsを直接管理しない。
 
 **全体フロー:**
 
@@ -177,8 +177,10 @@
   2. eventの種別を判定
      - push event       → commitを検知
      - pull_request_review event → PR reviewを検知
-  3. 対象ユーザーのAPNs device tokenをDBから取得
-  4. APNs へ通知リクエストを送信（HTTP/2）
+  3. 対象ユーザーのFCM registration tokenをDBから取得
+  4. FCM HTTP API へ通知リクエストを送信
+        ↓
+[FCM (Firebase Cloud Messaging)]
         ↓
 [APNs (Apple Push Notification service)]
         ↓
@@ -207,21 +209,25 @@
 }
 ```
 
-**APNs通知ペイロード:**
+**FCM通知ペイロード:**
 
 ```json
 {
-  "aps": {
-    "alert": {
+  "message": {
+    "token": "FCM_REGISTRATION_TOKEN",
+    "notification": {
       "title": "commit完了！",
       "body": "認証つけたよー — user/repo main"
     },
-    "sound": "default",
-    "badge": 1
-  },
-  "type": "commit_detected",
-  "repo": "user/repo",
-  "commit_message": "認証つけたよー"
+    "data": {
+      "type": "commit_detected",
+      "repo": "user/repo",
+      "commit_message": "認証つけたよー"
+    },
+    "apns": {
+      "payload": { "aps": { "sound": "default", "badge": 1 } }
+    }
+  }
 }
 ```
 
@@ -409,10 +415,10 @@ User
   - access_token (encrypted)
   - created_at
 
-APNsDeviceToken
+FCMToken
   - id
   - user_id
-  - device_token
+  - registration_token
   - updated_at
 
 Group
@@ -506,7 +512,7 @@ Comment
 
 | Method | Path | 説明 |
 |--------|------|------|
-| `POST` | `/devices` | APNs device token を登録・更新 |
+| `POST` | `/devices` | FCM registration token を登録・更新 |
 | `DELETE` | `/devices/:token` | デバイストークン削除（ログアウト時） |
 
 ### 投稿
@@ -534,13 +540,14 @@ Comment
 | レイヤー | 技術 | 備考 |
 |--------|------|------|
 | iOS アプリ | Swift / SwiftUI | ターゲット: iOS 16+ |
-| バックエンド | Go | REST API |
-| クラウド | TBD（AWS / GCP 等） | |
-| DB | TBD（PostgreSQL 等） | |
-| Push通知 | APNs (Apple Push Notification service) | |
+| バックエンド | Go | Workers Containers (linux/amd64) |
+| クラウド | Cloudflare Workers | エントリーポイント・ルーティング |
+| DB | Cloudflare D1 | SQLite 互換 |
+| Push通知 | FCM (Firebase Cloud Messaging) → APNs | Go → FCM HTTP API → APNs → iPhone |
 | GitHub連携 | GitHub REST API v3 / Webhooks | |
 | 認証 | GitHub OAuth 2.0 | |
-| ストレージ | TBD（S3等） | 写真保存用 |
+| ストレージ | Cloudflare R2 | S3互換API、写真保存用 |
+| IaC | Terraform (cloudflare provider) + Wrangler | リソース作成は Terraform、デプロイは Wrangler |
 
 ---
 
@@ -568,6 +575,7 @@ Comment
 - [x] フィード表示（投稿前ぼかし → 投稿後詳細解放）
 - [x] リアクション
 - [x] On Time / Late / Missed ステータス
+- [x] プライバシー設定
 - [ ] PR / Issue 詳細連携（将来）
 - [ ] フォロワー機能（将来）
 
