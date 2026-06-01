@@ -44,6 +44,17 @@ type CommitSummary struct {
 	RepoFullName        string
 }
 
+// Repo は GitHub リポジトリ情報（リポジトリ一覧用）
+type Repo struct {
+	FullName   string `json:"full_name"`
+	Name       string `json:"name"`
+	Private    bool   `json:"private"`
+	OwnerLogin string `json:"owner_login"`
+	AvatarURL  string `json:"avatar_url"`
+	CanPush    bool   `json:"can_push"`
+	CanAdmin   bool   `json:"can_admin"`
+}
+
 // Client は GitHub REST API v3 インターフェース
 type Client interface {
 	ExchangeCode(ctx context.Context, clientID, clientSecret, code string) (accessToken string, err error)
@@ -52,6 +63,7 @@ type Client interface {
 	GetCollaborators(ctx context.Context, repoFullName, accessToken string) ([]User, error)
 	RegisterWebhook(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
 	GetRecentCommits(ctx context.Context, repoFullName, login, accessToken string) (*CommitSummary, error)
+	ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error)
 }
 
 // githubClient は Client インターフェースの実装
@@ -311,4 +323,52 @@ func (c *githubClient) GetRecentCommits(ctx context.Context, repoFullName, login
 	}
 
 	return summary, nil
+}
+
+// ListUserRepos は認証ユーザーがアクセスできるリポジトリ一覧を取得する。
+// GET /user/repos?affiliation=owner,collaborator&sort=updated&per_page=100 のプロキシ。
+// グループ作成では Webhook 登録のため push / admin 権限が要るので、その権限のあるものに絞る。
+func (c *githubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		"/user/repos?affiliation=owner,collaborator&sort=updated&per_page=100",
+		accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list user repos: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var raw []struct {
+		FullName string `json:"full_name"`
+		Name     string `json:"name"`
+		Private  bool   `json:"private"`
+		Owner    struct {
+			Login     string `json:"login"`
+			AvatarURL string `json:"avatar_url"`
+		} `json:"owner"`
+		Permissions struct {
+			Admin bool `json:"admin"`
+			Push  bool `json:"push"`
+		} `json:"permissions"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("github: failed to decode user repos: %w", err)
+	}
+
+	repos := make([]Repo, 0, len(raw))
+	for _, r := range raw {
+		// push / admin 権限がないリポジトリは Webhook 登録できないため除外する
+		if !r.Permissions.Push && !r.Permissions.Admin {
+			continue
+		}
+		repos = append(repos, Repo{
+			FullName:   r.FullName,
+			Name:       r.Name,
+			Private:    r.Private,
+			OwnerLogin: r.Owner.Login,
+			AvatarURL:  r.Owner.AvatarURL,
+			CanPush:    r.Permissions.Push,
+			CanAdmin:   r.Permissions.Admin,
+		})
+	}
+	return repos, nil
 }

@@ -276,6 +276,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	commentSvc := service.NewCommentService(commentRepo, postRepo)
 
+	githubSvc := service.NewGitHubService(githubClient, groupRepo)
+
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
 	groupHandler := handler.NewGroupHandler(groupSvc)
@@ -285,6 +287,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc)
 	reactionHandler := handler.NewReactionHandler(reactionSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)
+	githubHandler := handler.NewGitHubHandler(githubSvc)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -330,6 +333,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups", bearerAuth, groupHandler.List)
 	r.POST("/groups", bearerAuth, groupHandler.Create)
 	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)
+	r.GET("/github/repos", bearerAuth, githubHandler.ListRepos)
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)

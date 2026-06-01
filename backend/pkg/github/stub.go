@@ -61,3 +61,11 @@ func (c *stubClient) GetRecentCommits(ctx context.Context, repoFullName, login, 
 		RepoFullName:        repoFullName,
 	}, nil
 }
+
+// ListUserRepos は固定のダミーリポジトリ一覧を返す。
+func (c *stubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	return []Repo{
+		{FullName: "dev-stub-user/sample-repo", Name: "sample-repo", Private: false, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: true},
+		{FullName: "dev-stub-user/private-repo", Name: "private-repo", Private: true, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: false},
+	}, nil
+}
