@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/pkg/crypto"
 )
@@ -34,6 +36,16 @@ func (r *fakeUserRepo) GetByGitHubLogin(ctx context.Context, login string) (*mod
 
 const testEncKey = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
 
+// newDevAuthRouter は /auth/dev を登録したテスト用 gin エンジンを作る。
+// GET で 405 を返す従来挙動を維持するため HandleMethodNotAllowed を有効化する。
+func newDevAuthRouter(repo *fakeUserRepo, enc crypto.Encryptor) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.HandleMethodNotAllowed = true
+	r.POST("/auth/dev", NewDevAuthHandler(repo, enc).DevLogin)
+	return r
+}
+
 // TestDevAuthHandler_DefaultLogin は body 省略時に alice として token=dev_alice を返すことを確認する。
 func TestDevAuthHandler_DefaultLogin(t *testing.T) {
 	enc, err := crypto.NewEncryptor(testEncKey)
@@ -41,11 +53,10 @@ func TestDevAuthHandler_DefaultLogin(t *testing.T) {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
 	repo := &fakeUserRepo{}
-	h := NewDevAuthHandler(repo, enc)
 
 	req := httptest.NewRequest(http.MethodPost, "/auth/dev", bytes.NewReader([]byte(`{}`)))
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
+	newDevAuthRouter(repo, enc).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d. body: %s", rr.Code, rr.Body.String())
@@ -74,12 +85,11 @@ func TestDevAuthHandler_StoresMatchingEncryptedToken(t *testing.T) {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
 	repo := &fakeUserRepo{}
-	h := NewDevAuthHandler(repo, enc)
 
 	body, _ := json.Marshal(map[string]string{"login": "bob"})
 	req := httptest.NewRequest(http.MethodPost, "/auth/dev", bytes.NewReader(body))
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
+	newDevAuthRouter(repo, enc).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
@@ -104,11 +114,10 @@ func TestDevAuthHandler_StoresMatchingEncryptedToken(t *testing.T) {
 // TestDevAuthHandler_MethodNotAllowed は GET で 405 を返すことを確認する。
 func TestDevAuthHandler_MethodNotAllowed(t *testing.T) {
 	enc, _ := crypto.NewEncryptor(testEncKey)
-	h := NewDevAuthHandler(&fakeUserRepo{}, enc)
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/dev", nil)
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, req)
+	newDevAuthRouter(&fakeUserRepo{}, enc).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", rr.Code)

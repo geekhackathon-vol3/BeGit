@@ -1,14 +1,23 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/irj0927/begit/internal/service"
 )
+
+// CreatePostRequest は POST /groups/:id/posts のリクエストボディ
+type CreatePostRequest struct {
+	Body           *string `json:"body"`
+	NotificationID *int64  `json:"notification_id"`
+	GitHubLogin    string  `json:"github_login"`
+	RepoFullName   string  `json:"repo_full_name"`
+}
 
 // PostJSON は投稿レスポンス型
 type PostJSON struct {
@@ -32,59 +41,59 @@ type PostFeedJSON struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
-// postHandler は PostHandler の実装
-type postHandler struct {
+// PostListResponse は GET /groups/:id/posts のレスポンス
+type PostListResponse struct {
+	Posts []PostFeedJSON `json:"posts"`
+}
+
+// PostHandler は投稿エンドポイントのハンドラ
+type PostHandler struct {
 	postService service.PostService
 }
 
 // NewPostHandler は PostHandler を作成する
-func NewPostHandler(postService service.PostService) http.Handler {
-	return &postHandler{postService: postService}
+func NewPostHandler(postService service.PostService) *PostHandler {
+	return &PostHandler{postService: postService}
 }
 
-// ServeHTTP は /groups/:id/posts を処理する
-func (h *postHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	userID, ok := r.Context().Value(UserIDKey).(int64)
-	if !ok || userID == 0 {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+// Create は投稿を作成する。
+//
+//	@Summary		投稿作成
+//	@Tags			posts
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id		path		int					true	"グループ ID"
+//	@Param			request	body		CreatePostRequest	true	"投稿内容"
+//	@Success		201		{object}	PostJSON
+//	@Failure		400		{object}	ErrorResponse
+//	@Failure		401		{object}	ErrorResponse
+//	@Failure		403		{object}	ErrorResponse
+//	@Failure		502		{object}	ErrorResponse
+//	@Failure		500		{object}	ErrorResponse
+//	@Router			/groups/{id}/posts [post]
+func (h *PostHandler) Create(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	groupIDStr := r.PathValue("id")
-	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid group id")
+		respondError(c, http.StatusBadRequest, "invalid group id")
 		return
 	}
 
-	switch r.Method {
-	case http.MethodPost:
-		h.createPost(w, r, groupID, userID)
-	case http.MethodGet:
-		h.listPosts(w, r, groupID, userID)
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
+	accessToken := accessTokenFromContext(c)
 
-// createPost は POST /groups/:id/posts を処理する
-func (h *postHandler) createPost(w http.ResponseWriter, r *http.Request, groupID, userID int64) {
-	accessToken, _ := r.Context().Value(AccessTokenKey).(string)
-
-	var req struct {
-		Body           *string `json:"body"`
-		NotificationID *int64  `json:"notification_id"`
-		GitHubLogin    string  `json:"github_login"`
-		RepoFullName   string  `json:"repo_full_name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	var req CreatePostRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	post, err := h.postService.CreatePost(r.Context(), service.CreatePostRequest{
+	post, err := h.postService.CreatePost(c.Request.Context(), service.CreatePostRequest{
 		Body:           req.Body,
 		NotificationID: req.NotificationID,
 		AccessToken:    accessToken,
@@ -93,15 +102,14 @@ func (h *postHandler) createPost(w http.ResponseWriter, r *http.Request, groupID
 	}, groupID, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrExternalAPI) {
-			writeError(w, http.StatusBadGateway, "external api error")
+			respondError(c, http.StatusBadGateway, "external api error")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(PostJSON{
+	c.JSON(http.StatusCreated, PostJSON{
 		ID:                  post.ID,
 		UserID:              post.UserID,
 		PostType:            post.PostType,
@@ -116,11 +124,33 @@ func (h *postHandler) createPost(w http.ResponseWriter, r *http.Request, groupID
 	})
 }
 
-// listPosts は GET /groups/:id/posts を処理する
-func (h *postHandler) listPosts(w http.ResponseWriter, r *http.Request, groupID, userID int64) {
-	feeds, err := h.postService.ListPosts(r.Context(), groupID, userID)
+// List はフィード（投稿一覧）を返す。
+//
+//	@Summary		フィード取得
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Success		200	{object}	PostListResponse
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/posts [get]
+func (h *PostHandler) List(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	feeds, err := h.postService.ListPosts(c.Request.Context(), groupID, userID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -145,5 +175,5 @@ func (h *postHandler) listPosts(w http.ResponseWriter, r *http.Request, groupID,
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"posts": result})
+	c.JSON(http.StatusOK, PostListResponse{Posts: result})
 }

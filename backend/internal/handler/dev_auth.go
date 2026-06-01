@@ -1,9 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
 	"hash/fnv"
 	"net/http"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -17,35 +18,38 @@ var devSeedUsers = map[string]int64{
 	"carol": -1003,
 }
 
-// devAuthHandler は POST /auth/dev を処理する dev 専用ログインハンドラ。
-// DEV_MODE=true のときだけルート登録される（buildHandler 側で gate）。
+// DevLoginRequest は POST /auth/dev のリクエストボディ（省略可）
+type DevLoginRequest struct {
+	Login string `json:"login" example:"alice"`
+}
+
+// DevAuthHandler は dev 専用ログイン（DEV_MODE=true のときだけ登録）。
 // GitHub OAuth を通さず、固定トークン dev_<login> を発行してユーザーを UPSERT する。
-type devAuthHandler struct {
+type DevAuthHandler struct {
 	userRepo  repository.UserRepository
 	encryptor crypto.Encryptor
 }
 
-// NewDevAuthHandler は devAuthHandler を作成する。
-func NewDevAuthHandler(userRepo repository.UserRepository, encryptor crypto.Encryptor) http.Handler {
-	return &devAuthHandler{userRepo: userRepo, encryptor: encryptor}
+// NewDevAuthHandler は DevAuthHandler を作成する。
+func NewDevAuthHandler(userRepo repository.UserRepository, encryptor crypto.Encryptor) *DevAuthHandler {
+	return &DevAuthHandler{userRepo: userRepo, encryptor: encryptor}
 }
 
-// ServeHTTP は POST /auth/dev を処理する。
-// body: { "login": "alice" }（省略時は "alice"）。
-// レスポンスは POST /auth/github と同形（{user, token}）。
-func (h *devAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	var req struct {
-		Login string `json:"login"`
-	}
+// DevLogin は dev 専用ログインを処理する。
+//
+//	@Summary		dev 専用ログイン（DEV_MODE 限定）
+//	@Description	GitHub OAuth を通さず固定トークン dev_<login> を発行する。DEV_MODE=true のときのみ有効。body 省略時は alice。
+//	@Tags			auth
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		DevLoginRequest	false	"ログイン名（省略時 alice）"
+//	@Success		200		{object}	AuthResponse
+//	@Failure		500		{object}	ErrorResponse
+//	@Router			/auth/dev [post]
+func (h *DevAuthHandler) DevLogin(c *gin.Context) {
+	var req DevLoginRequest
 	// body は任意。デコード失敗・空 body でも alice にフォールバックする。
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	_ = c.ShouldBindJSON(&req)
 
 	login := req.Login
 	if login == "" {
@@ -62,7 +66,7 @@ func (h *devAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := "dev_" + login
 	encryptedToken, err := h.encryptor.Encrypt(token)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -74,13 +78,13 @@ func (h *devAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		EncryptedAccessToken: encryptedToken,
 	}
 
-	saved, err := h.userRepo.UpsertUser(r.Context(), user)
+	saved, err := h.userRepo.UpsertUser(c.Request.Context(), user)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	resp := AuthResponse{
+	c.JSON(http.StatusOK, AuthResponse{
 		User: UserJSON{
 			ID:        saved.ID,
 			Login:     saved.GitHubLogin,
@@ -88,10 +92,7 @@ func (h *devAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Name:      saved.GitHubName,
 		},
 		Token: token,
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	})
 }
 
 // deterministicDevID は未知の login に対し決定的な負の github_id を生成する。

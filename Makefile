@@ -1,4 +1,6 @@
-.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev
+.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev openapi openapi-sync
+
+SWAG_VERSION ?= v2.0.0-rc5  # RC version pinned for OpenAPI 3.1 support (--v3.1 flag); outputs validated
 
 WORKERS_URL ?= https://begit.118029-ichikama.workers.dev
 DEV_URL ?= https://begit-dev.118029-ichikama.workers.dev
@@ -7,6 +9,22 @@ setup:
 	git config core.hooksPath .githooks
 	chmod +x .githooks/post-commit
 	@echo "✅ git hooks の設定が完了しました"
+
+# swag (gin のアノテーション) から OpenAPI 3.1 仕様を再生成する。
+# 生成物: backend/docs/swagger.json, backend/docs/swagger.yaml
+# swag が未インストールなら自動で取得する。
+# v2.0.0-rc5: OpenAPI 3.1 生成に必須 (--v3.1 flag)。生成物は検証済み。
+openapi:
+	@command -v swag >/dev/null 2>&1 || go install github.com/swaggo/swag/v2/cmd/swag@$(SWAG_VERSION)
+	cd backend && swag init -g cmd/server/main.go -o docs --ot json,yaml --parseInternal --v3.1
+	@echo "✅ OpenAPI 3.1 仕様を backend/docs/ に生成しました"
+
+# OpenAPI 仕様を再生成し、iOS (swift-openapi-generator) のターゲットへ配布する。
+# iOS 側はソースフォルダ内の openapi.yaml をビルド時に読んで型/クライアントを生成する。
+IOS_OPENAPI_DEST ?= ios/BeGit/BeGit/openapi.yaml
+openapi-sync: openapi
+	cp backend/docs/swagger.yaml $(IOS_OPENAPI_DEST)
+	@echo "✅ OpenAPI 仕様を $(IOS_OPENAPI_DEST) へ同期しました（iOS をリビルドすると型が追随します）"
 
 # ローカル開発サーバー起動（.envrc の変数を使用）
 # 必要な環境変数: TF_VAR_cloudflare_api_token, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
@@ -24,7 +42,7 @@ dev:
 	GITHUB_CLIENT_SECRET="$$GITHUB_CLIENT_SECRET" \
 	GITHUB_WEBHOOK_SECRET="dev-webhook-secret" \
 	FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"dummy"}' \
-	go run ./backend/cmd/server
+	go run -C backend ./cmd/server
 
 # Task 4.1: Terraform apply + wrangler.toml database_id 自動更新
 terraform-apply:

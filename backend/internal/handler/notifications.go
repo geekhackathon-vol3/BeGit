@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/irj0927/begit/internal/service"
 )
@@ -28,93 +29,101 @@ type MemberStatusJSON struct {
 	UserID    int64  `json:"user_id"`
 	Login     string `json:"login"`
 	AvatarURL string `json:"avatar_url"`
-	Status    string `json:"status"` // "On Time" | "Late" | "Missed"
+	Status    string `json:"status" example:"On Time"` // "On Time" | "Late" | "Missed"
 }
 
-// notificationHandler は NotificationHandler の実装
-type notificationHandler struct {
+// NotificationHandler は通知エンドポイントのハンドラ
+type NotificationHandler struct {
 	notificationService service.NotificationService
 }
 
 // NewNotificationHandler は NotificationHandler を作成する
-func NewNotificationHandler(notificationService service.NotificationService) http.Handler {
-	return &notificationHandler{notificationService: notificationService}
+func NewNotificationHandler(notificationService service.NotificationService) *NotificationHandler {
+	return &NotificationHandler{notificationService: notificationService}
 }
 
-// ServeHTTP は /groups/:id/notifications と /groups/:id/notifications/:nid を処理する
-func (h *notificationHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	userID, ok := r.Context().Value(UserIDKey).(int64)
-	if !ok || userID == 0 {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+// Send は BeGit Time 通知を発行する。
+//
+//	@Summary		BeGit Time 通知発行
+//	@Description	1 スプリント 1 人 1 回まで
+//	@Tags			notifications
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Success		201	{object}	NotificationJSON
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		409	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/notifications [post]
+func (h *NotificationHandler) Send(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	groupIDStr := r.PathValue("id")
-	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid group id")
+		respondError(c, http.StatusBadRequest, "invalid group id")
 		return
 	}
 
-	nidStr := r.PathValue("nid")
-
-	if nidStr == "" {
-		// POST /groups/:id/notifications
-		switch r.Method {
-		case http.MethodPost:
-			h.sendNotification(w, r, groupID, userID)
-		default:
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		}
-		return
-	}
-
-	// GET /groups/:id/notifications/:nid
-	notifID, err := strconv.ParseInt(nidStr, 10, 64)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid notification id")
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		h.getNotificationStatus(w, r, groupID, notifID)
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-// sendNotification は POST /groups/:id/notifications を処理する
-func (h *notificationHandler) sendNotification(w http.ResponseWriter, r *http.Request, groupID, userID int64) {
-	notif, err := h.notificationService.SendNotification(r.Context(), groupID, userID)
+	notif, err := h.notificationService.SendNotification(c.Request.Context(), groupID, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) {
-			writeError(w, http.StatusConflict, "conflict: already sent notification in this sprint")
+			respondError(c, http.StatusConflict, "conflict: already sent notification in this sprint")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(NotificationJSON{
+	c.JSON(http.StatusCreated, NotificationJSON{
 		ID:       notif.ID,
 		SprintID: notif.SprintID,
 		SentAt:   notif.SentAt.UTC().Format(time.RFC3339),
 	})
 }
 
-// getNotificationStatus は GET /groups/:id/notifications/:nid を処理する
-func (h *notificationHandler) getNotificationStatus(w http.ResponseWriter, r *http.Request, groupID, notifID int64) {
-	status, err := h.notificationService.GetNotificationStatus(r.Context(), notifID, groupID)
+// GetStatus は通知の達成ステータスを返す。
+//
+//	@Summary		通知の達成ステータス（On Time / Late / Missed）
+//	@Tags			notifications
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Param			nid	path		int	true	"通知 ID"
+//	@Success		200	{object}	NotificationStatusJSON
+//	@Failure		400	{object}	ErrorResponse
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		404	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/notifications/{nid} [get]
+func (h *NotificationHandler) GetStatus(c *gin.Context) {
+	if _, ok := userIDFromContext(c); !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	notifID, err := strconv.ParseInt(c.Param("nid"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid notification id")
+		return
+	}
+
+	status, err := h.notificationService.GetNotificationStatus(c.Request.Context(), notifID, groupID)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not found")
+			respondError(c, http.StatusNotFound, "not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -128,7 +137,7 @@ func (h *notificationHandler) getNotificationStatus(w http.ResponseWriter, r *ht
 		})
 	}
 
-	json.NewEncoder(w).Encode(NotificationStatusJSON{
+	c.JSON(http.StatusOK, NotificationStatusJSON{
 		NotificationID: status.NotificationID,
 		Members:        members,
 	})
