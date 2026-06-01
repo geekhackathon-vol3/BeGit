@@ -8,12 +8,39 @@ import Combine
 final class RepositoryListViewModel: ObservableObject {
     @Published private(set) var repositories: [Repository]  //  表示中のRepository一覧
     @Published var isShowingAddRepository = false           //  Repository追加画面の表示状態
+    @Published private(set) var isLoading = false            //  一覧取得中
+    @Published var errorMessage: String?                     //  APIエラー表示
 
-    init(repositories: [Repository] = Repository.mockRepositories) {
+    private let repositoryAPI: any RepositoryAPI
+
+    init(
+        repositories: [Repository] = [],
+        repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
+    ) {
         self.repositories = repositories
+        self.repositoryAPI = repositoryAPI
     }
 
     // MARK: - Actions
+
+    func loadRepositories(accessToken: String?) async {
+        guard let accessToken else {
+            repositories = []
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            repositories = try await repositoryAPI.listRepositories(accessToken: accessToken)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 
     //  Repository追加画面を表示
     func showAddRepository() {

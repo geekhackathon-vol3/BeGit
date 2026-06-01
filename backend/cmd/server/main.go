@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
+	"github.com/irj0927/begit/docs"
 	"github.com/irj0927/begit/internal/handler"
 	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/internal/service"
@@ -36,6 +39,10 @@ type Config struct {
 
 	// Application
 	AppBaseURL string
+
+	// DevMode が true のとき dev 認証バイパス（POST /auth/dev）と
+	// スタブ GitHub クライアントを有効化する。本番では未設定＝false。
+	DevMode bool
 }
 
 // loadConfig は環境変数から Config を読み込む
@@ -51,6 +58,7 @@ func loadConfig() (*Config, error) {
 		D1DatabaseID:               os.Getenv("D1_DATABASE_ID"),
 		CFAPIToken:                 os.Getenv("CF_API_TOKEN"),
 		AppBaseURL:                 os.Getenv("APP_BASE_URL"),
+		DevMode:                    os.Getenv("DEV_MODE") == "true",
 	}
 
 	// 必須環境変数の検証
@@ -105,6 +113,9 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
 		cfg.AppBaseURL = v
 	}
+	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
+		cfg.DevMode = v == "true"
+	}
 }
 
 // server はすべての依存関係を保持するサーバー構造体
@@ -114,6 +125,14 @@ type server struct {
 	mu      sync.RWMutex
 }
 
+//	@title						BeGit API
+//	@version					1.0
+//	@description				BeGit バックエンド API。GitHub と連携したリポジトリ単位のグループ・通知・投稿機能を提供する。
+//	@BasePath					/
+//	@securityDefinitions.apikey	BearerAuth
+//	@in							header
+//	@name						Authorization
+//	@description				`Authorization: Bearer <token>` 形式でアクセストークンを付与する。
 func main() {
 	// 環境変数から設定を読み込む（X-Internal-* ヘッダーでの上書きも許可）
 	cfg, err := loadConfig()
@@ -188,7 +207,15 @@ func (s *server) buildHandler() (http.Handler, error) {
 		return nil, fmt.Errorf("failed to create encryptor: %w", err)
 	}
 
-	githubClient := githubpkg.NewClient()
+	// DEV_MODE 時は実 GitHub API の代わりにスタブを注入する。
+	// これにより auth/group/post の各 service が GitHub 設定・実トークンなしで動作する。
+	var githubClient githubpkg.Client
+	if cfg.DevMode {
+		githubClient = githubpkg.NewStubClient()
+		log.Printf("DEV_MODE enabled: using stub GitHub client and /auth/dev endpoint")
+	} else {
+		githubClient = githubpkg.NewClient()
+	}
 
 	var fcmClient fcm.Client
 	if cfg.FirebaseServiceAccountJSON != "" {
@@ -252,27 +279,56 @@ func (s *server) buildHandler() (http.Handler, error) {
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc)
 
 	// ミドルウェアの初期化
-	bearerAuth := handler.BearerAuthMiddleware(userRepo, encryptor)
-	groupMember := handler.GroupMemberMiddleware(groupRepo)
+	bearerAuth := handler.BearerAuth(userRepo, encryptor)
+	groupMember := handler.GroupMember(groupRepo)
 
-	// ルーティング設定（Go 1.22 ServeMux）
-	mux := http.NewServeMux()
+	// ルーティング設定（gin）
+	gin.SetMode(gin.ReleaseMode)
+	r := gin.New()
+	r.Use(gin.Recovery())
+	// パスは一致するがメソッドが異なる場合は 404 ではなく 405 を返す（従来挙動を維持）
+	r.HandleMethodNotAllowed = true
+	r.NoMethod(func(c *gin.Context) {
+		c.AbortWithStatusJSON(http.StatusMethodNotAllowed, handler.ErrorResponse{Error: "method not allowed"})
+	})
+
+	// ヘルスチェック（疎通確認・warmup 用、常時有効）
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+
+	// API ドキュメント（OpenAPI 3.1 仕様の配信 + Swagger UI）
+	r.GET("/openapi.json", func(c *gin.Context) {
+		c.Data(http.StatusOK, "application/json; charset=utf-8", docs.SwaggerJSON)
+	})
+	r.GET("/openapi.yaml", func(c *gin.Context) {
+		c.Data(http.StatusOK, "application/yaml; charset=utf-8", docs.SwaggerYAML)
+	})
+	r.GET("/docs", func(c *gin.Context) {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(docs.SwaggerUIHTML))
+	})
 
 	// 認証不要エンドポイント
-	mux.Handle("POST /auth/github", authHandler)
-	mux.Handle("POST /webhook/github", webhookHandler)
+	r.POST("/auth/github", authHandler.GitHub)
+	r.POST("/webhook/github", webhookHandler.Receive)
+
+	// dev 専用ログイン（DEV_MODE=true のときだけ登録。false なら未登録＝404）
+	if cfg.DevMode {
+		devAuthHandler := handler.NewDevAuthHandler(userRepo, encryptor)
+		r.POST("/auth/dev", devAuthHandler.DevLogin)
+	}
 
 	// Bearer 認証が必要なエンドポイント
-	mux.Handle("GET /groups", bearerAuth(groupHandler))
-	mux.Handle("POST /groups", bearerAuth(groupHandler))
+	r.GET("/groups", bearerAuth, groupHandler.List)
+	r.POST("/groups", bearerAuth, groupHandler.Create)
+	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)
 
 	// グループメンバー確認が必要なエンドポイント
-	mux.Handle("GET /groups/{id}", bearerAuth(groupMember(groupHandler)))
-	mux.Handle("POST /groups/{id}/notifications", bearerAuth(groupMember(notifHandler)))
-	mux.Handle("GET /groups/{id}/notifications/{nid}", bearerAuth(groupMember(notifHandler)))
-	mux.Handle("POST /groups/{id}/posts", bearerAuth(groupMember(postHandler)))
-	mux.Handle("GET /groups/{id}/posts", bearerAuth(groupMember(postHandler)))
-	mux.Handle("PUT /me/fcm-token", bearerAuth(fcmTokenHandler))
+	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
+	r.POST("/groups/:id/notifications", bearerAuth, groupMember, notifHandler.Send)
+	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
+	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
+	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
 
-	return mux, nil
+	return r, nil
 }

@@ -21,12 +21,24 @@ final class AuthState: ObservableObject {
 
     //  前回ログイン情報を復元する
     func restoreSession() {
+        let restoredSavedSession = restoreSavedSession()
+
+#if DEBUG
+        if devSessionEnabled || !restoredSavedSession {
+            applyDevSession()
+        }
+#endif
+    }
+
+    private func restoreSavedSession() -> Bool {
         do {
             accessToken = try keychainManager.readAccessToken()
             isLoggedIn = accessToken != nil
+            return isLoggedIn
         } catch {
             accessToken = nil
             isLoggedIn = false
+            return false
         }
     }
 
@@ -48,5 +60,21 @@ final class AuthState: ObservableObject {
         accessToken = nil
         githubUser = nil
         isLoggedIn = false
+    }
+
+    private func applyDevSession() {
+        accessToken = "dev_alice"
+        githubUser = GitHubUser(
+            id: 1,
+            login: "dev_alice",
+            avatarURL: nil,
+            email: nil
+        )
+        isLoggedIn = true
+    }
+
+    private var devSessionEnabled: Bool {
+        let environmentValue = ProcessInfo.processInfo.environment["BEGIT_DEV_SESSION_ENABLED"]
+        return environmentValue == "1" || UserDefaults.standard.bool(forKey: "devSessionEnabled")
     }
 }

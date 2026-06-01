@@ -105,6 +105,11 @@ struct CameraView: View {
             camera.startSession()
         }
 
+        .onDisappear {
+
+            camera.stopSession()
+        }
+
         // MARK: - Show Preview
 
         .onReceive(camera.$capturedImage) { image in

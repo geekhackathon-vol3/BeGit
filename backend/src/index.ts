@@ -15,6 +15,8 @@ interface Env {
   CF_ACCOUNT_ID: string;
   D1_DATABASE_ID: string;
   APP_BASE_URL: string;
+  // dev 環境でのみ "true"（[env.dev.vars]）。dev 認証バイパスを有効化する。
+  DEV_MODE: string;
 }
 
 export class BeGitAPI extends Container {
@@ -37,6 +39,7 @@ export default {
         'X-Internal-D1-Database-Id': env.D1_DATABASE_ID ?? '',
         'X-Internal-CF-Api-Token': env.CF_API_TOKEN ?? '',
         'X-Internal-App-Base-URL': env.APP_BASE_URL ?? '',
+        'X-Internal-Dev-Mode': env.DEV_MODE ?? '',
       }
     });
     return getContainer(env.BEGIT_API, "begit-api-singleton").fetch(modifiedRequest);

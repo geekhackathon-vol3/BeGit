@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct AddRepositoryView: View {
     @Environment(\.dismiss) private var dismiss                 //  Sheetを閉じるためのdismiss action
+    @EnvironmentObject private var authState: AuthState         //  API認証トークン
     @StateObject private var viewModel: AddRepositoryViewModel  //  画面状態を管理するViewModel
 
     let onAdd: (Repository) -> Void                             //  Repository追加完了時のcallback
@@ -40,11 +41,18 @@ struct AddRepositoryView: View {
 
                         repositoryPreview
 
-                        repositoryURLSection    //  Repository URL入力
+                        repositorySelectionSection  //  Repository選択
                         membersSection          //  Team member設定
 
+                        if let errorMessage = viewModel.errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(AppTheme.softPink)
+                                .lineSpacing(3)
+                        }
+
                         //  Repository追加完了
-                        PrimaryButton("完了", systemImage: "checkmark", isEnabled: viewModel.canComplete) {
+                        PrimaryButton(viewModel.isSaving ? "追加中..." : "完了", systemImage: "checkmark", isEnabled: viewModel.canComplete) {
                             complete()
                         }
                         .padding(.top, 8)
@@ -68,6 +76,9 @@ struct AddRepositoryView: View {
             }
         }
         .tint(AppTheme.accent)
+        .task {
+            await viewModel.loadRepositories()
+        }
     }
 
     // MARK: - Components
@@ -96,30 +107,199 @@ struct AddRepositoryView: View {
         }
     }
 
-    //  Repository URL入力Section
-    private var repositoryURLSection: some View {
+    //  Repository選択Section
+    private var repositorySelectionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle(
-                "■ GitHub Repository URL",
+                "■ GitHub Repository",
                 size: 20,
                 weight: .regular,
                 color: Color(red: 0.980, green: 0.973, blue: 0.780)
             )
 
-            TextField("https://github.com/apple/swift", text: $viewModel.repositoryURLText)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .keyboardType(.URL)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
-                .padding(16)
-                .background(Color(red: 0.247, green: 0.247, blue: 0.286))
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
-                )
+            repositoryPickerBox
         }
+    }
+
+    //  GitHub Repository候補リスト
+    private var repositoryPickerBox: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if viewModel.isLoadingRepositories {
+                repositoryLoadingRow
+            } else if let errorMessage = viewModel.repositoryListErrorMessage {
+                repositoryErrorState(errorMessage)
+            } else if viewModel.displayedRepositories.isEmpty {
+                repositoryEmptyState
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(viewModel.displayedRepositories) { repository in
+                        repositoryCandidateRow(repository)
+                    }
+
+                    if viewModel.canShowMoreRepositories {
+                        showMoreRepositoriesButton
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+        .padding(12)
+        .background(Color(red: 0.247, green: 0.247, blue: 0.286))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
+        )
+    }
+
+    //  Repository読み込み中表示
+    private var repositoryLoadingRow: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+                .tint(AppTheme.accent)
+
+            Text("Loading repositories")
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.54))
+        }
+        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+    }
+
+    //  Repository候補なし表示
+    private var repositoryEmptyState: some View {
+        Text("No repositories found")
+            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.42))
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+    }
+
+    //  Repository候補の追加表示button
+    private var showMoreRepositoriesButton: some View {
+        Button(action: viewModel.showMoreRepositories) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 13, weight: .black))
+
+                Text("Show more")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(AppTheme.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("リポジトリ候補をさらに表示")
+    }
+
+    //  Repository取得エラー表示
+    private func repositoryErrorState(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(message)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Task {
+                    await viewModel.loadRepositories()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .black))
+
+                    Text("Retry")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                }
+                .foregroundStyle(.black)
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .background(AppTheme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    //  Repository候補行
+    private func repositoryCandidateRow(_ repository: GitHubRepository) -> some View {
+        let isSelected = viewModel.selectedRepository?.id == repository.id
+
+        return Button {
+            viewModel.selectRepository(repository)
+        } label: {
+            HStack(spacing: 12) {
+                repositoryAvatar(repository)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 7) {
+                        Text(repository.fullName)
+                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+
+                        if repository.isPrivate {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+                    }
+
+                    if let description = repository.description, description.isEmpty == false {
+                        Text(description)
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.48))
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(.black)
+                        .frame(width: 28, height: 28)
+                        .background(Color(red: 0.725, green: 0.976, blue: 0.902))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+            }
+            .padding(10)
+            .background(isSelected ? AppTheme.accent.opacity(0.18) : Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isSelected ? AppTheme.accent.opacity(0.8) : Color.white.opacity(0.06), lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(repository.fullName)を選択")
+    }
+
+    //  Repository owner avatar
+    private func repositoryAvatar(_ repository: GitHubRepository) -> some View {
+        AsyncImage(url: repository.ownerAvatarURL) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+            default:
+                Image("github_default_icon")
+                    .resizable()
+                    .scaledToFill()
+            }
+        }
+        .frame(width: 34, height: 34)
+        .clipShape(Circle())
+        .background(
+            Circle()
+                .fill(Color.black.opacity(0.20))
+        )
     }
 
     //  Team member設定Section
@@ -272,10 +452,12 @@ struct AddRepositoryView: View {
 
     //  Repository生成後に一覧へ追加
     private func complete() {
-        guard let repository = viewModel.makeRepository() else { return }
+        Task {
+            guard let repository = await viewModel.createRepository(accessToken: authState.accessToken) else { return }
 
-        onAdd(repository)
-        dismiss()
+            onAdd(repository)
+            dismiss()
+        }
     }
 }
 

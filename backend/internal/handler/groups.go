@@ -1,13 +1,20 @@
 package handler
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/irj0927/begit/internal/service"
 )
+
+// CreateGroupRequest は POST /groups のリクエストボディ
+type CreateGroupRequest struct {
+	RepoFullName string `json:"repo_full_name" example:"owner/repo"`
+	Name         string `json:"name" example:"My Repo"`
+}
 
 // GroupJSON は GET /groups レスポンスのグループ型
 type GroupJSON struct {
@@ -15,6 +22,11 @@ type GroupJSON struct {
 	Name         string `json:"name"`
 	RepoFullName string `json:"repo_full_name"`
 	AvatarURL    string `json:"avatar_url"`
+}
+
+// GroupListResponse は GET /groups のレスポンス
+type GroupListResponse struct {
+	Groups []GroupJSON `json:"groups"`
 }
 
 // GroupDetailJSON は GET /groups/:id レスポンスの詳細型
@@ -31,53 +43,36 @@ type GroupMemberJSON struct {
 	Role      string `json:"role"`
 }
 
-// groupHandler は GroupHandler の実装
-type groupHandler struct {
+// GroupHandler はグループ（リポジトリ）エンドポイントのハンドラ
+type GroupHandler struct {
 	groupService service.GroupService
 }
 
 // NewGroupHandler は GroupHandler を作成する
-func NewGroupHandler(groupService service.GroupService) http.Handler {
-	return &groupHandler{groupService: groupService}
+func NewGroupHandler(groupService service.GroupService) *GroupHandler {
+	return &GroupHandler{groupService: groupService}
 }
 
-// ServeHTTP は /groups と /groups/:id を処理する
-func (h *groupHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	// URL に ID が含まれるかどうかで分岐
-	id := r.PathValue("id")
-	if id != "" {
-		switch r.Method {
-		case http.MethodGet:
-			h.getGroup(w, r, id)
-		default:
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		}
+// List は参加グループ一覧を返す。
+//
+//	@Summary		参加グループ（リポジトリ）一覧
+//	@Tags			groups
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	GroupListResponse
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups [get]
+func (h *GroupHandler) List(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
-		h.listGroups(w, r)
-	case http.MethodPost:
-		h.createGroup(w, r)
-	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-// listGroups は GET /groups を処理する
-func (h *groupHandler) listGroups(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(UserIDKey).(int64)
-	if !ok || userID == 0 {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	groups, err := h.groupService.ListGroups(r.Context(), userID)
+	groups, err := h.groupService.ListGroups(c.Request.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -91,57 +86,68 @@ func (h *groupHandler) listGroups(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{"groups": result})
+	c.JSON(http.StatusOK, GroupListResponse{Groups: result})
 }
 
-// createGroup は POST /groups を処理する
-func (h *groupHandler) createGroup(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(UserIDKey).(int64)
-	if !ok || userID == 0 {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+// Create はグループ（リポジトリ登録 + Webhook 登録）を作成する。
+//
+//	@Summary		グループ作成
+//	@Description	GitHub リポジトリを登録し Webhook を設定する
+//	@Tags			groups
+//	@Accept			json
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			request	body		CreateGroupRequest	true	"作成するリポジトリ"
+//	@Success		201		{object}	GroupJSON
+//	@Failure		401		{object}	ErrorResponse
+//	@Failure		409		{object}	ErrorResponse
+//	@Failure		422		{object}	ErrorResponse
+//	@Failure		502		{object}	ErrorResponse
+//	@Failure		500		{object}	ErrorResponse
+//	@Router			/groups [post]
+func (h *GroupHandler) Create(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	accessToken, _ := r.Context().Value(AccessTokenKey).(string)
+	accessToken := accessTokenFromContext(c)
 
-	var req struct {
-		RepoFullName string `json:"repo_full_name"`
-		Name         string `json:"name"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+	var req CreateGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if req.RepoFullName == "" {
-		writeError(w, http.StatusUnprocessableEntity, "repo_full_name: required")
+		respondError(c, http.StatusUnprocessableEntity, "repo_full_name: required")
 		return
 	}
 	if req.Name == "" {
-		writeError(w, http.StatusUnprocessableEntity, "name: required")
+		respondError(c, http.StatusUnprocessableEntity, "name: required")
 		return
 	}
 
-	group, err := h.groupService.CreateGroup(r.Context(), service.CreateGroupRequest{
+	group, err := h.groupService.CreateGroup(c.Request.Context(), service.CreateGroupRequest{
 		RepoFullName: req.RepoFullName,
 		Name:         req.Name,
 		AccessToken:  accessToken,
 	}, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrExternalAPI) {
-			writeError(w, http.StatusBadGateway, "external api error")
+			respondError(c, http.StatusBadGateway, "external api error")
 			return
 		}
 		if errors.Is(err, service.ErrConflict) {
-			writeError(w, http.StatusConflict, "conflict")
+			respondError(c, http.StatusConflict, "conflict")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(GroupJSON{
+	c.JSON(http.StatusCreated, GroupJSON{
 		ID:           group.ID,
 		Name:         group.Name,
 		RepoFullName: group.RepoFullName,
@@ -149,31 +155,43 @@ func (h *groupHandler) createGroup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getGroup は GET /groups/:id を処理する
-func (h *groupHandler) getGroup(w http.ResponseWriter, r *http.Request, idStr string) {
-	userID, ok := r.Context().Value(UserIDKey).(int64)
-	if !ok || userID == 0 {
-		writeError(w, http.StatusUnauthorized, "unauthorized")
+// Get はグループ詳細とメンバー一覧を返す。
+//
+//	@Summary		グループ詳細 + メンバー
+//	@Tags			groups
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Success		200	{object}	GroupDetailJSON
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse
+//	@Failure		404	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id} [get]
+func (h *GroupHandler) Get(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 
-	groupID, err := strconv.ParseInt(idStr, 10, 64)
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid group id")
+		respondError(c, http.StatusBadRequest, "invalid group id")
 		return
 	}
 
-	detail, err := h.groupService.GetGroup(r.Context(), groupID, userID)
+	detail, err := h.groupService.GetGroup(c.Request.Context(), groupID, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrNotFound) {
-			writeError(w, http.StatusNotFound, "not found")
+			respondError(c, http.StatusNotFound, "not found")
 			return
 		}
 		if errors.Is(err, service.ErrForbidden) {
-			writeError(w, http.StatusForbidden, "forbidden")
+			respondError(c, http.StatusForbidden, "forbidden")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -187,7 +205,7 @@ func (h *groupHandler) getGroup(w http.ResponseWriter, r *http.Request, idStr st
 		})
 	}
 
-	json.NewEncoder(w).Encode(GroupDetailJSON{
+	c.JSON(http.StatusOK, GroupDetailJSON{
 		GroupJSON: GroupJSON{
 			ID:           detail.ID,
 			Name:         detail.Name,
