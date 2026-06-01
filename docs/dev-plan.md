@@ -1,4 +1,4 @@
-# BeGit 5日間開発フロー
+# BeGit; 5日間開発フロー
 
 > 作成日: 2026-05-31  
 > ハッカソン: 技育CAMP ハッカソン2026 vol.3
@@ -100,7 +100,7 @@ backend/
 - [ ] `POST /groups` — グループ作成
   - `groups` + `group_repositories` に INSERT
   - GitHub API でコラボレーター一覧を取得
-  - BeGit 連携済みユーザー（users テーブルに存在）を `group_members` に自動 INSERT
+  - BeGit; 連携済みユーザー（users テーブルに存在）を `group_members` に自動 INSERT
 
 - [ ] `GET /groups/:id` — グループ情報 + メンバー一覧取得
 
@@ -397,4 +397,4 @@ iOS RepositoryNotification  → DB notifications
 
 ---
 
-*BeGit — あなたの開発を、チームのワクワクに。*
+*BeGit; — あなたの開発を、チームのワクワクに。*

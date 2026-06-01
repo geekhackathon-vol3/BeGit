@@ -1,8 +1,8 @@
-# 技術設計書: BeGit バックエンド REST API
+# 技術設計書: BeGit; バックエンド REST API
 
 ## Overview
 
-BeGit バックエンド REST API は、iOS クライアントのリクエストを受け付け GitHub OAuth 認証・グループ管理・BeGit Time 通知発行・投稿フィード・GitHub Webhook 受信・FCM トークン管理の6機能を提供する Go サーバーである。Cloudflare Workers Container（ポート 8080）として動作し、Cloudflare D1（SQLite 互換）をデータストアとして使用する。
+BeGit; バックエンド REST API は、iOS クライアントのリクエストを受け付け GitHub OAuth 認証・グループ管理・BeGit Time 通知発行・投稿フィード・GitHub Webhook 受信・FCM トークン管理の6機能を提供する Go サーバーである。Cloudflare Workers Container（ポート 8080）として動作し、Cloudflare D1（SQLite 互換）をデータストアとして使用する。
 
 本 API はハッカソンプロダクト「BeReal × GitHub」コンセプトのコアであり、iOS クライアントが必要とするすべてのバックエンドロジックを担う。Workers（TypeScript）はルーティングのエントリーポイントとして機能し、Go Container はすべてのビジネスロジックおよび外部 API 連携を担当する。
 

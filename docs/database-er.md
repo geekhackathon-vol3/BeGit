@@ -1,4 +1,4 @@
-# BeGit データベース ER 図
+# BeGit; データベース ER 図
 
 **DB:** Cloudflare D1（SQLite 互換）  
 **スキーマ:** [`backend/migrations/0001_initial.sql`](../backend/migrations/0001_initial.sql)
