@@ -25,8 +25,8 @@ class CameraManager: NSObject, ObservableObject {
     @Published var useFrontCamera = true
 
     private var currentPosition: AVCaptureDevice.Position = .back
-    private var capturePosition: AVCaptureDevice.Position = .back
-
+    private var capturePositions:
+        [Int64: AVCaptureDevice.Position] = [:]
     // MARK: - Init
 
     override init() {
@@ -150,10 +150,9 @@ class CameraManager: NSObject, ObservableObject {
 
     func takePhoto() {
 
-        // 撮影時のカメラ位置保存
-        capturePosition = currentPosition
-
         let settings = AVCapturePhotoSettings()
+
+        capturePositions[settings.uniqueID] = currentPosition
 
         output.capturePhoto(
             with: settings,
@@ -219,17 +218,24 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         }
 
         guard let data = photo.fileDataRepresentation(),
-              let image = UIImage(data: data)
+        let image = UIImage(data: data)
         else {
 
             print("Image conversion failed")
             return
         }
 
+        guard let position =
+            capturePositions.removeValue(forKey: photo.uniqueID)
+        else {
+
+            print("Capture position not found")
+            return
+        }
+
         DispatchQueue.main.async {
 
-            // 撮影時のカメラ位置で保存先を分岐
-            if self.capturePosition == .back {
+            if position == .back {
 
                 self.capturedImage = image
 
