@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -109,5 +110,67 @@ func TestUpsertUser(t *testing.T) {
 	}
 	if result.GitHubLogin != "testuser" {
 		t.Errorf("expected login=testuser, got %s", result.GitHubLogin)
+	}
+}
+
+// TestUpsertUser_DoesNotUseInsertOrReplace は UpsertUser が INSERT OR REPLACE を
+// 使わず ON CONFLICT DO UPDATE で既存行を更新することを保証する。
+// REPLACE は UNIQUE 衝突時に既存行を DELETE+INSERT するため、参照されている
+// ユーザーの再ログインで FOREIGN KEY constraint failed（=500）を起こす。
+func TestUpsertUser_DoesNotUseInsertOrReplace(t *testing.T) {
+	var capturedSQL string
+	mock := &mockD1Client{
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			capturedSQL = sql
+			return 1, nil
+		},
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{
+				{
+					"id":                     float64(1),
+					"github_id":              float64(12345),
+					"github_login":           "testuser",
+					"encrypted_access_token": "nonce:encrypted",
+				},
+			}, nil
+		},
+	}
+
+	repo := NewUserRepository(mock)
+	_, err := repo.UpsertUser(context.Background(), &model.User{
+		GitHubID:             12345,
+		GitHubLogin:          "testuser",
+		EncryptedAccessToken: "nonce:encrypted",
+	})
+	if err != nil {
+		t.Fatalf("UpsertUser() failed: %v", err)
+	}
+
+	upper := strings.ToUpper(capturedSQL)
+	if strings.Contains(upper, "INSERT OR REPLACE") || strings.Contains(upper, "REPLACE INTO") {
+		t.Errorf("UpsertUser must not use INSERT OR REPLACE (deletes referenced rows / reassigns id), got SQL:\n%s", capturedSQL)
+	}
+	if !strings.Contains(upper, "ON CONFLICT") {
+		t.Errorf("UpsertUser must use ON CONFLICT DO UPDATE to preserve id, got SQL:\n%s", capturedSQL)
+	}
+}
+
+// TestUpsertUser_ExecError は D1 の Exec が失敗したときにエラーを伝播することを確認する
+// （ハンドラ側で 500 を返す経路）。
+func TestUpsertUser_ExecError(t *testing.T) {
+	mock := &mockD1Client{
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			return 0, d1.ErrD1API
+		},
+	}
+
+	repo := NewUserRepository(mock)
+	_, err := repo.UpsertUser(context.Background(), &model.User{
+		GitHubID:             12345,
+		GitHubLogin:          "testuser",
+		EncryptedAccessToken: "nonce:encrypted",
+	})
+	if err == nil {
+		t.Fatal("expected error when Exec fails, got nil")
 	}
 }

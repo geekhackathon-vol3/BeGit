@@ -77,11 +77,24 @@ func (r *userRepository) GetByEncryptedToken(ctx context.Context, encryptedToken
 	return scanUser(rows[0])
 }
 
-// UpsertUser は users テーブルにユーザーを INSERT OR REPLACE する
+// UpsertUser は users テーブルにユーザーを UPSERT する。
+//
+// INSERT OR REPLACE は使わない。REPLACE は UNIQUE 衝突時に既存行を
+// DELETE+INSERT するため、(1) AUTOINCREMENT の id が振り直されて
+// group_members / posts / notifications などの参照が孤立し、
+// (2) それらの外部キー参照がある状態では暗黙 DELETE が
+// FOREIGN KEY constraint failed で失敗する（=再ログインで 500）。
+// github_id を識別子とした ON CONFLICT ... DO UPDATE で既存行を
+// 更新し、id を保持する。
 func (r *userRepository) UpsertUser(ctx context.Context, user *model.User) (*model.User, error) {
 	_, err := r.db.Exec(ctx,
-		`INSERT OR REPLACE INTO users (github_id, github_login, github_name, avatar_url, encrypted_access_token)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO users (github_id, github_login, github_name, avatar_url, encrypted_access_token)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(github_id) DO UPDATE SET
+		   github_login           = excluded.github_login,
+		   github_name            = excluded.github_name,
+		   avatar_url             = excluded.avatar_url,
+		   encrypted_access_token = excluded.encrypted_access_token`,
 		[]interface{}{user.GitHubID, user.GitHubLogin, user.GitHubName, user.AvatarURL, user.EncryptedAccessToken},
 	)
 	if err != nil {
