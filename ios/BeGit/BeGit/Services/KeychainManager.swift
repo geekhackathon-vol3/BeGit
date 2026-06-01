@@ -8,23 +8,67 @@ import Security
 protocol KeychainManaging: Sendable {
     func saveAccessToken(_ token: String) throws    //  保存
     func readAccessToken() throws -> String?        //  取得
+    func saveGitHubUser(_ user: GitHubUser) throws  //  ユーザー情報保存
+    func readGitHubUser() throws -> GitHubUser?      //  ユーザー情報取得
     func deleteAccessToken() throws                 //  削除
+    func deleteGitHubUser() throws                  //  ユーザー情報削除
 }
 
 //  Keychainを使ってアクセストークンを管理
 struct KeychainManager: KeychainManaging {
     //  保存データを識別するキー
     private let service = "com.Palm7710.BeGit.auth"
-    private let account = "github_access_token"
+    private let tokenAccount = "github_access_token"
+    private let userAccount = "github_user"
 
     nonisolated init() {}
 
     //  アクセストークンを保存
     func saveAccessToken(_ token: String) throws {
         let data = Data(token.utf8)
+        try save(data: data, account: tokenAccount)
+    }
 
-        //  既存トークンを削除
-        try deleteAccessTokenIfPresent()
+    //  保存済みトークンを読み込み
+    func readAccessToken() throws -> String? {
+        guard let data = try readData(account: tokenAccount) else {
+            return nil
+        }
+
+        guard let token = String(data: data, encoding: .utf8) else {
+            throw KeychainError.invalidData
+        }
+
+        return token
+    }
+
+    //  GitHubユーザー情報を保存
+    func saveGitHubUser(_ user: GitHubUser) throws {
+        let data = try JSONEncoder().encode(GitHubUserKeychainItem(user: user))
+        try save(data: data, account: userAccount)
+    }
+
+    //  保存済みGitHubユーザー情報を読み込み
+    func readGitHubUser() throws -> GitHubUser? {
+        guard let data = try readData(account: userAccount) else {
+            return nil
+        }
+
+        return try JSONDecoder().decode(GitHubUserKeychainItem.self, from: data).user
+    }
+
+    //  保存済みトークンを削除
+    func deleteAccessToken() throws {
+        try deleteItem(account: tokenAccount)
+    }
+
+    //  保存済みGitHubユーザー情報を削除
+    func deleteGitHubUser() throws {
+        try deleteItem(account: userAccount)
+    }
+
+    private func save(data: Data, account: String) throws {
+        try deleteItemIfPresent(account: account)
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -33,15 +77,13 @@ struct KeychainManager: KeychainManaging {
             kSecValueData as String: data
         ]
 
-        //  新しいトークンを保存
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw KeychainError.saveFailed(status)
         }
     }
 
-    //  保存済みトークンを読み込み
-    func readAccessToken() throws -> String? {
+    private func readData(account: String) throws -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -63,17 +105,15 @@ struct KeychainManager: KeychainManaging {
         }
 
         guard
-            let data = item as? Data,
-            let token = String(data: data, encoding: .utf8)
+            let data = item as? Data
         else {
             throw KeychainError.invalidData
         }
 
-        return token
+        return data
     }
 
-    //  保存済みトークンを削除
-    func deleteAccessToken() throws {
+    private func deleteItem(account: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -86,15 +126,32 @@ struct KeychainManager: KeychainManaging {
         }
     }
 
-    //  保存前に既存トークンがあれば削除
-    private func deleteAccessTokenIfPresent() throws {
+    private func deleteItemIfPresent(account: String) throws {
         do {
-            try deleteAccessToken()
+            try deleteItem(account: account)
         } catch let error as KeychainError {
             if case .deleteFailed = error {
                 throw error
             }
         }
+    }
+}
+
+private struct GitHubUserKeychainItem: Codable {
+    let id: Int
+    let login: String
+    let avatarURL: URL?
+    let email: String?
+
+    init(user: GitHubUser) {
+        id = user.id
+        login = user.login
+        avatarURL = user.avatarURL
+        email = user.email
+    }
+
+    var user: GitHubUser {
+        GitHubUser(id: id, login: login, avatarURL: avatarURL, email: email)
     }
 }
 

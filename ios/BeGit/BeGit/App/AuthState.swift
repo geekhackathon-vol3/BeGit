@@ -24,7 +24,7 @@ final class AuthState: ObservableObject {
         let restoredSavedSession = restoreSavedSession()
 
 #if DEBUG
-        if devSessionEnabled || !restoredSavedSession {
+        if devSessionEnabled && !restoredSavedSession {
             applyDevSession()
         }
 #endif
@@ -33,10 +33,12 @@ final class AuthState: ObservableObject {
     private func restoreSavedSession() -> Bool {
         do {
             accessToken = try keychainManager.readAccessToken()
+            githubUser = try keychainManager.readGitHubUser()
             isLoggedIn = accessToken != nil
             return isLoggedIn
         } catch {
             accessToken = nil
+            githubUser = nil
             isLoggedIn = false
             return false
         }
@@ -53,6 +55,7 @@ final class AuthState: ObservableObject {
     func logout() {
         do {
             try keychainManager.deleteAccessToken()
+            try keychainManager.deleteGitHubUser()
         } catch {
             // Keychainの削除に失敗しても、ログアウト状態にはする
         }

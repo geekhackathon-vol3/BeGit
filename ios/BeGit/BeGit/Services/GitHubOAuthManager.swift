@@ -70,6 +70,7 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
                     let code = try self.extractCode(from: callbackURL)
                     let response = try await self.authAPI.exchangeCode(code: code)  //  認証コードをアクセストークンへ交換
                     try self.keychainManager.saveAccessToken(response.accessToken)  //  アクセストークンをKeychainへ保存
+                    try self.keychainManager.saveGitHubUser(response.githubUser)     //  ユーザー情報をKeychainへ保存
                     self.authState?.completeLogin(response: response)               //  ログイン状態へ更新
                 } catch {
                     self.activeAlert = .init(error: self.mapFlowError(error))
