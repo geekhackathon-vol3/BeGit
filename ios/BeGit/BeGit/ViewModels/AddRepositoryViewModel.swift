@@ -6,10 +6,20 @@ import Combine
 
 @MainActor
 final class AddRepositoryViewModel: ObservableObject {
-    @Published var repositoryURLText = ""                           //  Repository URL入力値
-    @Published var memberLoginText = ""                             //  member login入力値
-    @Published private(set) var members: [RepositoryMember] = []    //  追加済みmember一覧
-    @Published var isMemberInputVisible = false                     //  member入力欄の表示状態
+    @Published var repositoryURLText = ""                        // GitHub Repository URL入力値
+    @Published var memberLoginText = ""                          // 招待するメンバーのlogin名入力値
+    @Published private(set) var members: [RepositoryMember] = [] // 追加済みメンバー一覧
+
+    @Published var isMemberInputVisible = false                  // メンバー入力欄の表示状態
+    @Published private(set) var isSaving = false                 // Repository作成API実行中
+    @Published var errorMessage: String?                         // エラーメッセージ
+
+    private let repositoryAPI: any RepositoryAPI                // Repository関連API
+
+    init(repositoryAPI: any RepositoryAPI = BeGitBackendAPI()) {
+        self.repositoryAPI = repositoryAPI
+    }
+
     let invitedMembers: [RepositoryMember] = [                      //  招待済みmember候補一覧
         RepositoryMember(login: "ayaka"),
         RepositoryMember(login: "begit"),
@@ -19,7 +29,7 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  Repository作成可能か
     var canComplete: Bool {
-        repositoryName != nil
+        repositoryName != nil && isSaving == false
     }
 
     //  Repository preview表示名
@@ -71,14 +81,23 @@ final class AddRepositoryViewModel: ObservableObject {
     }
 
     //  入力値からRepository生成
-    func makeRepository() -> Repository? {
-        guard let repositoryName else { return nil }
+    func createRepository(accessToken: String?) async -> Repository? {
+        guard let repositoryName, let accessToken else { return nil }
 
-        return Repository(
-            name: repositoryName,
-            memberCount: members.count,
-            members: members
-        )
+        isSaving = true
+        errorMessage = nil
+        defer { isSaving = false }
+
+        do {
+            return try await repositoryAPI.createRepository(
+                repoFullName: repositoryName,
+                name: repositoryName,
+                accessToken: accessToken
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
     }
 
     // MARK: - Private

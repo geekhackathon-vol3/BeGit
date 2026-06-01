@@ -12,12 +12,17 @@ final class MakeNotificationViewModel: ObservableObject {
     @Published var members: [RepositoryMember]      //  Repository member一覧
     @Published var selectedMemberIDs: Set<UUID>     //  選択中member ID一覧
     @Published var comment = ""                     //  通知コメント入力値
+    @Published private(set) var isSending = false   //  通知送信中
+    @Published var errorMessage: String?            //  APIエラー表示
 
-    init(repository: Repository) {
+    private let repositoryAPI: any RepositoryAPI    // Repository関連API
+
+    init(repository: Repository, repositoryAPI: any RepositoryAPI = BeGitBackendAPI()) {
         self.repository = repository
         self.members = repository.members                           //  初期member一覧
         self.selectedMemberIDs = Set(repository.members.map(\.id))  //  初期状態では全memberを選択
         self.adminMember = repository.members.first                 //  先頭memberを管理者として利用
+        self.repositoryAPI = repositoryAPI
     }
 
     //  選択中member一覧
@@ -27,7 +32,7 @@ final class MakeNotificationViewModel: ObservableObject {
 
     //  通知送信可能か
     var canSend: Bool {
-        selectedMembers.isEmpty == false
+        selectedMembers.isEmpty == false && isSending == false
     }
 
     // MARK: - Actions
@@ -71,5 +76,23 @@ final class MakeNotificationViewModel: ObservableObject {
             comment: comment.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
-}
 
+    func sendNotification(accessToken: String?) async -> RepositoryNotification? {
+        guard let accessToken, let backendID = repository.backendID else {
+            errorMessage = "Repository IDが見つかりません。"
+            return nil
+        }
+
+        isSending = true
+        errorMessage = nil
+        defer { isSending = false }
+
+        do {
+            try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
+            return makeNotification()
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+}

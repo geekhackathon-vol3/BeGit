@@ -5,6 +5,7 @@ import SwiftUI
 
 @MainActor
 struct MakeNotificationView: View {
+    @EnvironmentObject private var authState: AuthState
     //  通知作成画面の状態を管理するViewModel
     @StateObject private var viewModel: MakeNotificationViewModel
     private let onSend: (RepositoryNotification) -> Void
@@ -40,6 +41,13 @@ struct MakeNotificationView: View {
                         membersSection
                         //  通知コメント入力
                         commentsSection
+
+                        if let errorMessage = viewModel.errorMessage {
+                            Text(errorMessage)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(AppTheme.softPink)
+                                .lineSpacing(3)
+                        }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
@@ -49,7 +57,7 @@ struct MakeNotificationView: View {
                 //  通知を生成して結果画面へ遷移
                 Button(action: sendNotification) {
                     PrimaryCapsuleButtonLabel(
-                        title: "通知を送る",
+                        title: viewModel.isSending ? "送信中..." : "通知を送る",
                         systemImage: "paperplane.fill",
                         isEnabled: viewModel.canSend
                     )
@@ -158,7 +166,10 @@ struct MakeNotificationView: View {
     }
 
     private func sendNotification() {
-        onSend(viewModel.makeNotification())
+        Task {
+            guard let notification = await viewModel.sendNotification(accessToken: authState.accessToken) else { return }
+            onSend(notification)
+        }
     }
 }
 

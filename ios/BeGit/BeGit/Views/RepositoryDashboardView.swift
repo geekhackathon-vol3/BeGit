@@ -5,6 +5,7 @@ import SwiftUI
 
 @MainActor
 struct RepositoryDashboardView: View {
+    @EnvironmentObject private var authState: AuthState
     //  Dashboard画面の状態を管理するViewModel
     @StateObject private var viewModel: RepositoryDashboardViewModel
 
@@ -32,6 +33,14 @@ struct RepositoryDashboardView: View {
 
                         //  Repository member一覧
                         memberStrip
+
+                        if viewModel.isLoading {
+                            statusText("Loading timeline...")
+                        }
+
+                        if let errorMessage = viewModel.errorMessage {
+                            statusText(errorMessage)
+                        }
 
                         //  activity card一覧
                         RepositoryActivityTimelineView(activities: viewModel.activities)
@@ -69,6 +78,9 @@ struct RepositoryDashboardView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
+        .task {
+            await viewModel.loadActivities(accessToken: authState.accessToken)
+        }
     }
 
     // MARK: - Components
@@ -119,6 +131,14 @@ struct RepositoryDashboardView: View {
             endPoint: .bottom
         )
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func statusText(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.62))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
     }
 }
 
