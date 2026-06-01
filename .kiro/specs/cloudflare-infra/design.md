@@ -2,7 +2,7 @@
 
 ## Overview
 
-BeGit のインフラ基盤を Cloudflare プラットフォーム上に構築する。Terraform (cloudflare provider) で D1 データベースと R2 バケットを宣言的に作成し、Wrangler で Workers エントリーポイント（TypeScript）と Workers Container（Go API）をデプロイする。シークレットは Wrangler Secrets で管理し、D1 スキーマは Wrangler マイグレーションで適用する。
+BeGit; のインフラ基盤を Cloudflare プラットフォーム上に構築する。Terraform (cloudflare provider) で D1 データベースと R2 バケットを宣言的に作成し、Wrangler で Workers エントリーポイント（TypeScript）と Workers Container（Go API）をデプロイする。シークレットは Wrangler Secrets で管理し、D1 スキーマは Wrangler マイグレーションで適用する。
 
 インフラ管理者は `terraform apply` → `wrangler deploy` → `wrangler d1 migrations apply` の 3 ステップでインフラ全体をゼロから再現できる。Workers Container は Durable Objects ベースのアーキテクチャで動作し、TypeScript Worker スクリプトがルーティングエントリーポイントとして Go コンテナへリクエストを転送する。
 
