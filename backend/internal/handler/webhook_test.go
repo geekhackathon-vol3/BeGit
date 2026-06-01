@@ -10,6 +10,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
+	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/internal/service"
 )
 
@@ -44,6 +47,14 @@ func computeHMAC(secret string, payload []byte) string {
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// newWebhookRouter は /webhook/github を登録したテスト用 gin エンジンを作る
+func newWebhookRouter(svc service.WebhookService, repo repository.WebhookRepository, secret string) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/webhook/github", NewWebhookHandler(svc, repo, secret).Receive)
+	return r
+}
+
 // TestWebhookHandler_ValidSignature は正しい HMAC で 200 を返すことを確認する
 func TestWebhookHandler_ValidSignature(t *testing.T) {
 	secret := "webhook_secret"
@@ -52,15 +63,13 @@ func TestWebhookHandler_ValidSignature(t *testing.T) {
 	webhookSvc := &mockWebhookService{}
 	webhookRepo := &mockWebhookRepository{}
 
-	handler := NewWebhookHandler(webhookSvc, webhookRepo, secret)
-
 	req := httptest.NewRequest(http.MethodPost, "/webhook/github", bytes.NewReader(payload))
 	req.Header.Set("X-Hub-Signature-256", computeHMAC(secret, payload))
 	req.Header.Set("X-GitHub-Event", "push")
 	req.Header.Set("X-GitHub-Delivery", "delivery-uuid-123")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	newWebhookRouter(webhookSvc, webhookRepo, secret).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d. body: %s", rr.Code, rr.Body.String())
@@ -75,15 +84,13 @@ func TestWebhookHandler_InvalidSignature(t *testing.T) {
 	webhookSvc := &mockWebhookService{}
 	webhookRepo := &mockWebhookRepository{}
 
-	handler := NewWebhookHandler(webhookSvc, webhookRepo, secret)
-
 	req := httptest.NewRequest(http.MethodPost, "/webhook/github", bytes.NewReader(payload))
 	req.Header.Set("X-Hub-Signature-256", "sha256=invalidsignature")
 	req.Header.Set("X-GitHub-Event", "push")
 	req.Header.Set("X-GitHub-Delivery", "delivery-uuid-456")
 	rr := httptest.NewRecorder()
 
-	handler.ServeHTTP(rr, req)
+	newWebhookRouter(webhookSvc, webhookRepo, secret).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("expected status 403, got %d", rr.Code)
@@ -114,8 +121,7 @@ func TestWebhookHandler_Idempotent(t *testing.T) {
 		},
 	}
 
-	handler := NewWebhookHandler(webhookSvc, webhookRepo, secret)
-
+	router := newWebhookRouter(webhookSvc, webhookRepo, secret)
 	sig := computeHMAC(secret, payload)
 
 	// 1回目
@@ -124,7 +130,7 @@ func TestWebhookHandler_Idempotent(t *testing.T) {
 	req1.Header.Set("X-GitHub-Event", "push")
 	req1.Header.Set("X-GitHub-Delivery", "same-delivery-id")
 	rr1 := httptest.NewRecorder()
-	handler.ServeHTTP(rr1, req1)
+	router.ServeHTTP(rr1, req1)
 
 	if rr1.Code != http.StatusOK {
 		t.Errorf("1st request: expected 200, got %d", rr1.Code)
@@ -136,7 +142,7 @@ func TestWebhookHandler_Idempotent(t *testing.T) {
 	req2.Header.Set("X-GitHub-Event", "push")
 	req2.Header.Set("X-GitHub-Delivery", "same-delivery-id")
 	rr2 := httptest.NewRecorder()
-	handler.ServeHTTP(rr2, req2)
+	router.ServeHTTP(rr2, req2)
 
 	if rr2.Code != http.StatusOK {
 		t.Errorf("2nd request (duplicate): expected 200, got %d", rr2.Code)

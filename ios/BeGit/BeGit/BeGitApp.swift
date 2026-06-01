@@ -18,7 +18,7 @@ struct BeGitApp: App {
             // 認証状態管理クラス
             authState: AuthState.shared,
             // API通信クラス
-            authAPI: MockAuthAPI(),
+            authAPI: BeGitBackendAPI(),
             // Keychain保存クラス
             keychainManager: KeychainManager()
         )

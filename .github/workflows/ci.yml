@@ -20,6 +20,28 @@ jobs:
       - run: go build ./...
       - run: go test ./...
 
+  openapi-drift:
+    name: OpenAPI spec is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      # make openapi が go install する swag は $GOPATH/bin に入るため PATH へ通す
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: make openapi
+      - name: Fail if committed spec drifted from Gin annotations
+        run: |
+          # iOS の spec はバックエンド spec のコピー。追跡済みなら同期して検査対象に含める
+          # （未コミットのうちは git diff が空 = スキップされる）。
+          if git ls-files --error-unmatch ios/BeGit/BeGit/openapi.yaml >/dev/null 2>&1; then
+            cp backend/docs/swagger.yaml ios/BeGit/BeGit/openapi.yaml
+          fi
+          git diff --exit-code -- backend/docs/ ios/BeGit/BeGit/openapi.yaml \
+            || { echo "::error::OpenAPI 仕様が古いです。'make openapi-sync' を実行してコミットしてください"; exit 1; }
+
   typecheck:
     name: TypeScript typecheck
     runs-on: ubuntu-latest

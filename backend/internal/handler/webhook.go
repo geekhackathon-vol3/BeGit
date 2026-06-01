@@ -4,17 +4,18 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/gin-gonic/gin"
 
 	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/internal/service"
 )
 
-// webhookHandler は WebhookHandler の実装
-type webhookHandler struct {
+// WebhookHandler は GitHub Webhook 受信エンドポイントのハンドラ
+type WebhookHandler struct {
 	webhookService service.WebhookService
 	webhookRepo    repository.WebhookRepository
 	secret         string
@@ -25,69 +26,74 @@ func NewWebhookHandler(
 	webhookService service.WebhookService,
 	webhookRepo repository.WebhookRepository,
 	secret string,
-) http.Handler {
-	return &webhookHandler{
+) *WebhookHandler {
+	return &WebhookHandler{
 		webhookService: webhookService,
 		webhookRepo:    webhookRepo,
 		secret:         secret,
 	}
 }
 
-// ServeHTTP は POST /webhook/github を処理する
-func (h *webhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
+// Receive は GitHub Webhook を受信する。
+//
+//	@Summary		GitHub Webhook 受信（サーバ間）
+//	@Description	X-Hub-Signature-256 で HMAC 検証し、X-GitHub-Delivery で冪等性を担保する
+//	@Tags			webhook
+//	@Accept			json
+//	@Produce		json
+//	@Param			X-Hub-Signature-256	header		string	true	"HMAC-SHA256 署名"
+//	@Param			X-GitHub-Event		header		string	true	"イベント種別"
+//	@Param			X-GitHub-Delivery	header		string	true	"配信 ID（冪等性キー）"
+//	@Success		200					{object}	map[string]string
+//	@Failure		400					{object}	ErrorResponse
+//	@Failure		403					{object}	ErrorResponse
+//	@Failure		500					{object}	ErrorResponse
+//	@Router			/webhook/github [post]
+func (h *WebhookHandler) Receive(c *gin.Context) {
 	// ペイロードを読み込む
-	payload, err := io.ReadAll(r.Body)
+	payload, err := io.ReadAll(c.Request.Body)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "failed to read request body")
+		respondError(c, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 
 	// X-Hub-Signature-256 で HMAC 検証
-	sig := r.Header.Get("X-Hub-Signature-256")
+	sig := c.GetHeader("X-Hub-Signature-256")
 	if !h.verifySignature(payload, sig) {
-		writeError(w, http.StatusForbidden, "invalid signature")
+		respondError(c, http.StatusForbidden, "invalid signature")
 		return
 	}
 
 	// X-GitHub-Delivery で冪等性確認
-	deliveryID := r.Header.Get("X-GitHub-Delivery")
-	eventType := r.Header.Get("X-GitHub-Event")
+	deliveryID := c.GetHeader("X-GitHub-Delivery")
+	eventType := c.GetHeader("X-GitHub-Event")
 
-	isDuplicate, err := h.webhookRepo.InsertDelivery(r.Context(), deliveryID, eventType)
+	isDuplicate, err := h.webhookRepo.InsertDelivery(c.Request.Context(), deliveryID, eventType)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	if isDuplicate {
 		// 重複配信 → 200 OK で即座に返す
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "duplicate"})
+		c.JSON(http.StatusOK, map[string]string{"status": "duplicate"})
 		return
 	}
 
 	// イベント処理を WebhookService に委譲
-	if err := h.webhookService.ProcessWebhook(r.Context(), service.WebhookRequest{
+	if err := h.webhookService.ProcessWebhook(c.Request.Context(), service.WebhookRequest{
 		DeliveryID: deliveryID,
 		EventType:  eventType,
 		Payload:    payload,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, "internal server error")
+		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // verifySignature は X-Hub-Signature-256 ヘッダーを検証する
-func (h *webhookHandler) verifySignature(payload []byte, sig string) bool {
+func (h *WebhookHandler) verifySignature(payload []byte, sig string) bool {
 	if sig == "" {
 		return false
 	}

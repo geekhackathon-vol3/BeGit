@@ -8,14 +8,32 @@ import Combine
 final class RepositoryDashboardViewModel: ObservableObject {
     let repository: Repository                                      //  表示対象Repository
     @Published private(set) var activities: [RepositoryActivity]    //  Timeline表示用activity一覧
+    @Published private(set) var isLoading = false                   //  Timeline取得中
+    @Published var errorMessage: String?                            //  APIエラー表示
+
+    private let repositoryAPI: any RepositoryAPI
 
     init(
         repository: Repository,
-        activities: [RepositoryActivity]? = nil
+        activities: [RepositoryActivity]? = nil,
+        repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
     ) {
         self.repository = repository
-        //  activity未指定時はMock dataを利用
-        self.activities = activities ?? RepositoryActivity.mockActivities(for: repository)
+        self.activities = activities ?? []
+        self.repositoryAPI = repositoryAPI
+    }
+
+    func loadActivities(accessToken: String?) async {
+        guard let accessToken else { return }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            activities = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
-
