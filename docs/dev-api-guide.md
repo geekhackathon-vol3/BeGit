@@ -90,7 +90,7 @@ curl $BASE/groups/1/posts -H "Authorization: Bearer $TOKEN"
 
 `Config.xcconfig` にバックエンド URL を設定します（README「iOS アプリ」参照）。
 
-```
+```xcconfig
 API_BASE_URL = https:/$()/begit-dev.118029-ichikama.workers.dev
 ```
 
