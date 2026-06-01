@@ -77,3 +77,14 @@ type PostFeed struct {
 	AvatarURL string
 	Blurred   bool
 }
+
+// Reaction は投稿へのリアクション。UNIQUE(post_id, user_id, reaction_type)。
+// Login / AvatarURL は users テーブルとの JOIN で付与する一覧表示用フィールド。
+type Reaction struct {
+	ID           int64
+	PostID       int64
+	UserID       int64
+	ReactionType string
+	Login        string
+	AvatarURL    string
+}

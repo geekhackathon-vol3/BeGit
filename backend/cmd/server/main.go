@@ -233,6 +233,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	postRepo := repository.NewPostRepository(d1Client)
 	webhookRepo := repository.NewWebhookRepository(d1Client)
 	fcmTokenRepo := repository.NewFCMTokenRepository(d1Client)
+	reactionRepo := repository.NewReactionRepository(d1Client)
 
 	// Service 層の初期化
 	authSvc := service.NewAuthService(
@@ -270,6 +271,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	fcmTokenSvc := service.NewFCMTokenService(fcmTokenRepo)
 
+	reactionSvc := service.NewReactionService(reactionRepo, postRepo)
+
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
 	groupHandler := handler.NewGroupHandler(groupSvc)
@@ -277,6 +280,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	postHandler := handler.NewPostHandler(postSvc)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, webhookRepo, cfg.GitHubWebhookSecret)
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc)
+	reactionHandler := handler.NewReactionHandler(reactionSvc)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -329,6 +333,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.POST("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.Create)
+	r.DELETE("/groups/:id/posts/:postId/reactions/:reactionType", bearerAuth, groupMember, reactionHandler.Delete)
+	r.GET("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.List)
 
 	return r, nil
 }

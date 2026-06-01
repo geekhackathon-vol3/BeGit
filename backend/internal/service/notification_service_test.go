@@ -66,6 +66,7 @@ type mockPostRepository struct {
 	listByGroupIDFunc          func(ctx context.Context, groupID int64) ([]model.Post, error)
 	hasPostedInSprintFunc      func(ctx context.Context, userID, sprintID int64) (bool, error)
 	getByUserAndNotifFunc      func(ctx context.Context, userID, notifID int64) (*model.Post, error)
+	getByIDFunc                func(ctx context.Context, postID int64) (*model.Post, error)
 }
 
 func (m *mockPostRepository) Create(ctx context.Context, post *model.Post) (*model.Post, error) {
@@ -93,6 +94,13 @@ func (m *mockPostRepository) HasPostedInSprint(ctx context.Context, userID, spri
 func (m *mockPostRepository) GetByUserAndNotification(ctx context.Context, userID, notifID int64) (*model.Post, error) {
 	if m.getByUserAndNotifFunc != nil {
 		return m.getByUserAndNotifFunc(ctx, userID, notifID)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockPostRepository) GetByID(ctx context.Context, postID int64) (*model.Post, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, postID)
 	}
 	return nil, repository.ErrNotFound
 }
