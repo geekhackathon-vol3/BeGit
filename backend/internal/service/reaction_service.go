@@ -9,6 +9,18 @@ import (
 	"github.com/irj0927/begit/internal/repository"
 )
 
+// allowedReactionTypes は許可されたリアクションタイプのセット
+var allowedReactionTypes = map[string]bool{
+	"heart":     true,
+	"thumbsup":  true,
+	"celebrate": true,
+	"fire":      true,
+	"rocket":    true,
+}
+
+// ErrInvalidReactionType は無効なリアクションタイプが指定された場合に返す
+var ErrInvalidReactionType = errors.New("invalid reaction type")
+
 // ReactionService はリアクションサービスインターフェース
 type ReactionService interface {
 	// AddReaction はリアクションを追加し、更新後の一覧を返す。
@@ -54,6 +66,9 @@ func (s *reactionService) verifyPostInGroup(ctx context.Context, groupID, postID
 
 // AddReaction はリアクションを追加し、更新後の一覧を返す。
 func (s *reactionService) AddReaction(ctx context.Context, groupID, postID, userID int64, reactionType string) ([]model.Reaction, error) {
+	if !allowedReactionTypes[reactionType] {
+		return nil, ErrInvalidReactionType
+	}
 	if err := s.verifyPostInGroup(ctx, groupID, postID); err != nil {
 		return nil, err
 	}
@@ -65,6 +80,9 @@ func (s *reactionService) AddReaction(ctx context.Context, groupID, postID, user
 
 // RemoveReaction はリアクションを削除し、更新後の一覧を返す。
 func (s *reactionService) RemoveReaction(ctx context.Context, groupID, postID, userID int64, reactionType string) ([]model.Reaction, error) {
+	if !allowedReactionTypes[reactionType] {
+		return nil, ErrInvalidReactionType
+	}
 	if err := s.verifyPostInGroup(ctx, groupID, postID); err != nil {
 		return nil, err
 	}

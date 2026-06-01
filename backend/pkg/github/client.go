@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // エラー型定義
@@ -444,22 +446,40 @@ func (c *githubClient) ListCommits(ctx context.Context, repoFullName, accessToke
 		return nil, fmt.Errorf("github: failed to decode commits list: %w", err)
 	}
 
-	commits := make([]Commit, 0, len(raw))
-	for _, r := range raw {
-		commit := Commit{
+	commits := make([]Commit, len(raw))
+	for i, r := range raw {
+		commits[i] = Commit{
 			SHA:         r.SHA,
 			Message:     r.Commit.Message,
 			AuthorName:  r.Commit.Author.Name,
 			AuthorLogin: r.Author.Login,
 			Date:        r.Commit.Author.Date,
 		}
-		// 差分統計は詳細エンドポイントから取得する
-		if add, del, err := c.commitStats(ctx, repoFullName, r.SHA, accessToken); err == nil {
-			commit.Additions = add
-			commit.Deletions = del
-		}
-		commits = append(commits, commit)
 	}
+
+	// 差分統計を並列取得（最大5並列）
+	g, gCtx := errgroup.WithContext(ctx)
+	sem := make(chan struct{}, 5)
+	for i := range commits {
+		i := i // ループ変数をキャプチャ
+		g.Go(func() error {
+			sem <- struct{}{}        // セマフォを取得
+			defer func() { <-sem }() // セマフォを解放
+
+			add, del, err := c.commitStats(gCtx, repoFullName, commits[i].SHA, accessToken)
+			if err != nil {
+				return err
+			}
+			commits[i].Additions = add
+			commits[i].Deletions = del
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("%w: failed to fetch commit stats: %v", ErrExternalAPI, err)
+	}
+
 	return commits, nil
 }
 

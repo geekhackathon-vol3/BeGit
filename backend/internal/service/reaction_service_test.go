@@ -86,7 +86,7 @@ func TestReactionService_AddReaction_PostNotFound(t *testing.T) {
 	reactionRepo := &mockReactionRepository{}
 
 	svc := NewReactionService(reactionRepo, postRepo)
-	_, err := svc.RemoveReaction(context.Background(), 1, 10, 2, "heart")
+	_, err := svc.AddReaction(context.Background(), 1, 10, 2, "heart")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
