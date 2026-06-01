@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string></string>
+	<string>Take photos for BeReal-style posts in BeGit.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
