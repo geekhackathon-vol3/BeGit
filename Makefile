@@ -1,6 +1,6 @@
 .PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev openapi openapi-sync
 
-SWAG_VERSION ?= v2.0.0-rc5
+SWAG_VERSION ?= v2.0.0-rc5  # RC version pinned for OpenAPI 3.1 support (--v3.1 flag); outputs validated
 
 WORKERS_URL ?= https://begit.118029-ichikama.workers.dev
 DEV_URL ?= https://begit-dev.118029-ichikama.workers.dev
@@ -13,6 +13,7 @@ setup:
 # swag (gin のアノテーション) から OpenAPI 3.1 仕様を再生成する。
 # 生成物: backend/docs/swagger.json, backend/docs/swagger.yaml
 # swag が未インストールなら自動で取得する。
+# v2.0.0-rc5: OpenAPI 3.1 生成に必須 (--v3.1 flag)。生成物は検証済み。
 openapi:
 	@command -v swag >/dev/null 2>&1 || go install github.com/swaggo/swag/v2/cmd/swag@$(SWAG_VERSION)
 	cd backend && swag init -g cmd/server/main.go -o docs --ot json,yaml --parseInternal --v3.1
