@@ -337,6 +337,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
+	r.POST("/groups/:id/sync-members", bearerAuth, groupMember, groupHandler.SyncMembers)
 	r.POST("/groups/:id/notifications", bearerAuth, groupMember, notifHandler.Send)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)

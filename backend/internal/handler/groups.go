@@ -43,6 +43,11 @@ type GroupMemberJSON struct {
 	Role      string `json:"role"`
 }
 
+// MemberListResponse は POST /groups/:id/sync-members のレスポンス
+type MemberListResponse struct {
+	Members []GroupMemberJSON `json:"members"`
+}
+
 // GroupHandler はグループ（リポジトリ）エンドポイントのハンドラ
 type GroupHandler struct {
 	groupService service.GroupService
@@ -214,4 +219,59 @@ func (h *GroupHandler) Get(c *gin.Context) {
 		},
 		Members: members,
 	})
+}
+
+// SyncMembers は GitHub コラボレーターとグループメンバーを同期する。
+//
+//	@Summary		メンバー同期
+//	@Description	GitHub コラボレーターを取得し、BeGit 登録済みユーザーをグループに追加（加算的）して最新のメンバー一覧を返す。
+//	@Tags			groups
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Success		200	{object}	MemberListResponse
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse
+//	@Failure		404	{object}	ErrorResponse
+//	@Failure		502	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/sync-members [post]
+func (h *GroupHandler) SyncMembers(c *gin.Context) {
+	if _, ok := userIDFromContext(c); !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	accessToken := accessTokenFromContext(c)
+
+	members, err := h.groupService.SyncMembers(c.Request.Context(), groupID, accessToken)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrExternalAPI), errors.Is(err, service.ErrUnauthorized):
+			respondError(c, http.StatusBadGateway, "external api error")
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "not found")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	result := make([]GroupMemberJSON, 0, len(members))
+	for _, m := range members {
+		result = append(result, GroupMemberJSON{
+			UserID:    m.UserID,
+			Login:     m.Login,
+			AvatarURL: m.AvatarURL,
+			Role:      m.Role,
+		})
+	}
+
+	c.JSON(http.StatusOK, MemberListResponse{Members: result})
 }
