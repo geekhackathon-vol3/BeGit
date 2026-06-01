@@ -226,8 +226,9 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
         }
 
         guard let position =
-            capturePositions.removeValue(forKey: photo.uniqueID)
-        else {
+            capturePositions.removeValue(
+                forKey: photo.resolvedSettings.uniqueID
+            )        else {
 
             print("Capture position not found")
             return
