@@ -1,4 +1,4 @@
-.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev openapi
+.PHONY: setup dev terraform-apply deploy secrets-init warmup verify-local smoke-test dev-db-create deploy-dev seed-dev openapi openapi-sync
 
 SWAG_VERSION ?= v2.0.0-rc5
 
@@ -17,6 +17,13 @@ openapi:
 	@command -v swag >/dev/null 2>&1 || go install github.com/swaggo/swag/v2/cmd/swag@$(SWAG_VERSION)
 	cd backend && swag init -g cmd/server/main.go -o docs --ot json,yaml --parseInternal --v3.1
 	@echo "✅ OpenAPI 3.1 仕様を backend/docs/ に生成しました"
+
+# OpenAPI 仕様を再生成し、iOS (swift-openapi-generator) のターゲットへ配布する。
+# iOS 側はソースフォルダ内の openapi.yaml をビルド時に読んで型/クライアントを生成する。
+IOS_OPENAPI_DEST ?= ios/BeGit/BeGit/openapi.yaml
+openapi-sync: openapi
+	cp backend/docs/swagger.yaml $(IOS_OPENAPI_DEST)
+	@echo "✅ OpenAPI 仕様を $(IOS_OPENAPI_DEST) へ同期しました（iOS をリビルドすると型が追随します）"
 
 # ローカル開発サーバー起動（.envrc の変数を使用）
 # 必要な環境変数: TF_VAR_cloudflare_api_token, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
