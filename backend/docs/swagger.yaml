@@ -13,6 +13,61 @@ components:
         user:
           $ref: '#/components/schemas/handler.UserJSON'
       type: object
+    handler.CommentJSON:
+      properties:
+        avatar_url:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+        id:
+          type: integer
+        login:
+          type: string
+        post_id:
+          type: integer
+        user_id:
+          type: integer
+      type: object
+    handler.CommentListResponse:
+      properties:
+        comments:
+          items:
+            $ref: '#/components/schemas/handler.CommentJSON'
+          type: array
+          uniqueItems: false
+      type: object
+    handler.CommitJSON:
+      properties:
+        additions:
+          type: integer
+        author_login:
+          type: string
+        author_name:
+          type: string
+        date:
+          type: string
+        deletions:
+          type: integer
+        message:
+          type: string
+        sha:
+          type: string
+      type: object
+    handler.CommitListResponse:
+      properties:
+        commits:
+          items:
+            $ref: '#/components/schemas/handler.CommitJSON'
+          type: array
+          uniqueItems: false
+      type: object
+    handler.CreateCommentRequest:
+      properties:
+        body:
+          type: string
+      type: object
     handler.CreateGroupRequest:
       properties:
         name:
@@ -31,6 +86,11 @@ components:
         notification_id:
           type: integer
         repo_full_name:
+          type: string
+      type: object
+    handler.CreateReactionRequest:
+      properties:
+        reaction_type:
           type: string
       type: object
     handler.DevLoginRequest:
@@ -89,6 +149,14 @@ components:
           type: string
         user_id:
           type: integer
+      type: object
+    handler.MemberListResponse:
+      properties:
+        members:
+          items:
+            $ref: '#/components/schemas/handler.GroupMemberJSON'
+          type: array
+          uniqueItems: false
       type: object
     handler.MemberStatusJSON:
       properties:
@@ -181,6 +249,54 @@ components:
         posts:
           items:
             $ref: '#/components/schemas/handler.PostFeedJSON'
+          type: array
+          uniqueItems: false
+      type: object
+    handler.ReactionJSON:
+      properties:
+        avatar_url:
+          type: string
+        id:
+          type: integer
+        login:
+          type: string
+        post_id:
+          type: integer
+        reaction_type:
+          type: string
+        user_id:
+          type: integer
+      type: object
+    handler.ReactionListResponse:
+      properties:
+        reactions:
+          items:
+            $ref: '#/components/schemas/handler.ReactionJSON'
+          type: array
+          uniqueItems: false
+      type: object
+    handler.RepoJSON:
+      properties:
+        avatar_url:
+          type: string
+        can_admin:
+          type: boolean
+        can_push:
+          type: boolean
+        full_name:
+          type: string
+        name:
+          type: string
+        owner_login:
+          type: string
+        private:
+          type: boolean
+      type: object
+    handler.RepoListResponse:
+      properties:
+        repos:
+          items:
+            $ref: '#/components/schemas/handler.RepoJSON'
           type: array
           uniqueItems: false
       type: object
@@ -294,6 +410,62 @@ paths:
       summary: GitHub OAuth ログイン
       tags:
       - auth
+  /auth/logout:
+    post:
+      description: FCM トークンを削除する。認証はステートレス（GitHub アクセストークン）のためサーバー側のトークン失効は行わない。
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: ログアウト
+      tags:
+      - auth
+  /github/repos:
+    get:
+      description: 認証ユーザーが push / admin 権限を持つリポジトリ一覧を返す。グループ作成時のリポジトリ選択に使う。
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.RepoListResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: GitHub リポジトリ一覧
+      tags:
+      - github
   /groups:
     get:
       responses:
@@ -420,6 +592,85 @@ paths:
       summary: グループ詳細 + メンバー
       tags:
       - groups
+  /groups/{id}/commits:
+    get:
+      description: グループに紐づく GitHub リポジトリのコミット履歴を返す（GET /repos/{owner}/{repo}/commits
+        のプロキシ）。
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: author でフィルタ（login or email）
+        in: query
+        name: author
+        schema:
+          type: string
+      - description: ISO8601 これ以降
+        in: query
+        name: since
+        schema:
+          type: string
+      - description: ISO8601 これ以前
+        in: query
+        name: until
+        schema:
+          type: string
+      - description: 取得件数（1〜50、既定 20）
+        in: query
+        name: per_page
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.CommitListResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: コミット一覧
+      tags:
+      - github
   /groups/{id}/notifications:
     post:
       description: 1 スプリント 1 人 1 回まで
@@ -605,6 +856,428 @@ paths:
       summary: 投稿作成
       tags:
       - posts
+  /groups/{id}/posts/{postId}/comments:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.CommentListResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: コメント一覧
+      tags:
+      - comments
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateCommentRequest'
+                description: コメント本文
+                summary: request
+        description: コメント本文
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.CommentJSON'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: コメント投稿
+      tags:
+      - comments
+  /groups/{id}/posts/{postId}/comments/{commentId}:
+    delete:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      - description: コメント ID
+        in: path
+        name: commentId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: コメント削除
+      tags:
+      - comments
+  /groups/{id}/posts/{postId}/reactions:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ReactionListResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: リアクション一覧
+      tags:
+      - reactions
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateReactionRequest'
+                description: リアクション種別
+                summary: request
+        description: リアクション種別
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ReactionListResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: リアクション追加
+      tags:
+      - reactions
+  /groups/{id}/posts/{postId}/reactions/{reactionType}:
+    delete:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      - description: リアクション種別
+        in: path
+        name: reactionType
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ReactionListResponse'
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: リアクション削除
+      tags:
+      - reactions
+  /groups/{id}/sync-members:
+    post:
+      description: GitHub コラボレーターを取得し、BeGit 登録済みユーザーをグループに追加（加算的）して最新のメンバー一覧を返す。
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.MemberListResponse'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: メンバー同期
+      tags:
+      - groups
   /me/fcm-token:
     put:
       requestBody:
