@@ -92,7 +92,8 @@ func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]model.Gr
 	return groups, nil
 }
 
-// CreateGroup はグループ作成 → Webhook 登録 → オーナー追加 → コラボレーター自動追加の順に処理する
+// CreateGroup はリポジトリ情報取得 → Webhook 登録 → グループ作成 → オーナー追加 → コラボレーター自動追加の順に処理する。
+// Webhook 登録を先に行うことで、登録失敗時にグループが作成されないことを保証する。
 func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error) {
 	// Step 1: リポジトリ情報（avatar_url）を取得
 	repoInfo, err := s.githubClient.GetRepoInfo(ctx, req.RepoFullName, req.AccessToken)
@@ -103,7 +104,16 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		return nil, fmt.Errorf("%w: get repo info failed: %v", ErrExternalAPI, err)
 	}
 
-	// Step 2: グループを D1 に作成
+	// Step 2: GitHub Webhook を登録（失敗時はグループを作成しない）
+	// "hook already exists" エラーは非致命的として扱う
+	webhookURL := s.config.AppBaseURL + "/webhook/github"
+	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, req.AccessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
+		if !isHookAlreadyExistsError(err) {
+			return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
+		}
+	}
+
+	// Step 3: グループを D1 に作成
 	group, err := s.groupRepo.Create(ctx, &repository.GroupCreateInput{
 		RepoFullName: req.RepoFullName,
 		Name:         req.Name,
@@ -117,20 +127,9 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		return nil, fmt.Errorf("group_service: CreateGroup failed: %w", err)
 	}
 
-	// Step 3: 作成者を owner ロールで group_members に追加
+	// Step 4: 作成者を owner ロールで group_members に追加
 	if err := s.groupRepo.AddMember(ctx, group.ID, userID, "owner"); err != nil {
 		return nil, fmt.Errorf("group_service: AddMember (owner) failed: %w", err)
-	}
-
-	// Step 4: GitHub Webhook を登録（失敗時は DB をクリーンアップ）
-	webhookURL := s.config.AppBaseURL + "/webhook/github"
-	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, req.AccessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
-		// Webhook 登録失敗時はグループを削除（ベストエフォート）
-		// "hook already exists" エラーは非致命的として扱う
-		if !isHookAlreadyExistsError(err) {
-			// TODO: グループ削除処理を実装する場合はここで呼ぶ
-			return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
-		}
 	}
 
 	// Step 5: GitHub コラボレーターを取得して BeGit 登録済みユーザーを自動追加

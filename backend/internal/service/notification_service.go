@@ -57,14 +57,16 @@ func NewNotificationService(
 
 // NewNotificationServiceWithGroupRepo は GetNotificationStatus も含むフル実装を作成する
 func NewNotificationServiceWithGroupRepo(
+	sprintRepo repository.SprintRepository,
 	notifRepo repository.NotificationRepository,
 	groupRepo repository.GroupRepository,
 	postRepo repository.PostRepository,
 ) NotificationService {
 	return &notificationService{
-		notifRepo: notifRepo,
-		groupRepo: groupRepo,
-		postRepo:  postRepo,
+		sprintRepo: sprintRepo,
+		notifRepo:  notifRepo,
+		groupRepo:  groupRepo,
+		postRepo:   postRepo,
 	}
 }
 

@@ -180,7 +180,7 @@ func TestNotificationService_GetStatus_OnTime(t *testing.T) {
 		},
 	}
 
-	svc := NewNotificationServiceWithGroupRepo(notifRepo, groupRepo, postRepo)
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, notifRepo, groupRepo, postRepo)
 
 	status, err := svc.GetNotificationStatus(context.Background(), 1, 1)
 	if err != nil {
@@ -228,7 +228,7 @@ func TestNotificationService_GetStatus_Late(t *testing.T) {
 		},
 	}
 
-	svc := NewNotificationServiceWithGroupRepo(notifRepo, groupRepo, postRepo)
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, notifRepo, groupRepo, postRepo)
 
 	status, err := svc.GetNotificationStatus(context.Background(), 1, 1)
 	if err != nil {
@@ -268,7 +268,7 @@ func TestNotificationService_GetStatus_Missed(t *testing.T) {
 		},
 	}
 
-	svc := NewNotificationServiceWithGroupRepo(notifRepo, groupRepo, postRepo)
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, notifRepo, groupRepo, postRepo)
 
 	status, err := svc.GetNotificationStatus(context.Background(), 1, 1)
 	if err != nil {
