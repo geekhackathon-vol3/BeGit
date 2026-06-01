@@ -48,3 +48,47 @@ func TestListUserRepos(t *testing.T) {
 		t.Errorf("unexpected repo: %+v", repos[0])
 	}
 }
+
+// TestListCommits は一覧 + 各コミットの差分統計を返すことを確認する
+func TestListCommits(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// /repos/{owner}/{repo}/commits/{sha} は詳細、それ以外は一覧
+		if r.URL.Path == "/repos/alice/repo/commits" {
+			json.NewEncoder(w).Encode([]map[string]interface{}{
+				{
+					"sha": "sha1",
+					"commit": map[string]interface{}{
+						"message": "first",
+						"author":  map[string]interface{}{"name": "Alice", "date": "2026-06-01T10:00:00Z"},
+					},
+					"author": map[string]interface{}{"login": "alice"},
+				},
+			})
+			return
+		}
+		// 詳細（stats 付き）
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"stats": map[string]interface{}{"additions": 42, "deletions": 7},
+		})
+	}))
+	defer server.Close()
+
+	client := &githubClient{
+		httpClient:    server.Client(),
+		oauthEndpoint: server.URL,
+		apiEndpoint:   server.URL,
+	}
+
+	commits, err := client.ListCommits(context.Background(), "alice/repo", "token", CommitListOptions{PerPage: 5})
+	if err != nil {
+		t.Fatalf("ListCommits() failed: %v", err)
+	}
+	if len(commits) != 1 {
+		t.Fatalf("expected 1 commit, got %d", len(commits))
+	}
+	c := commits[0]
+	if c.SHA != "sha1" || c.Message != "first" || c.AuthorLogin != "alice" || c.Additions != 42 || c.Deletions != 7 {
+		t.Errorf("unexpected commit: %+v", c)
+	}
+}

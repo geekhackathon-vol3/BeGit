@@ -347,6 +347,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.POST("/groups/:id/posts/:postId/comments", bearerAuth, groupMember, commentHandler.Create)
 	r.GET("/groups/:id/posts/:postId/comments", bearerAuth, groupMember, commentHandler.List)
 	r.DELETE("/groups/:id/posts/:postId/comments/:commentId", bearerAuth, groupMember, commentHandler.Delete)
+	r.GET("/groups/:id/commits", bearerAuth, groupMember, githubHandler.ListCommits)
 
 	return r, nil
 }

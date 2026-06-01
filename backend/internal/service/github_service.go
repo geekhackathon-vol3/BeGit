@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/irj0927/begit/internal/repository"
@@ -12,6 +13,8 @@ import (
 type GitHubService interface {
 	// ListRepos は認証ユーザーがアクセスできる（push/admin 権限のある）リポジトリ一覧を返す。
 	ListRepos(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
+	// ListGroupCommits はグループに紐づくリポジトリのコミット一覧を返す。
+	ListGroupCommits(ctx context.Context, groupID int64, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
 }
 
 // gitHubService は GitHubService インターフェースの実装
@@ -42,4 +45,25 @@ func (s *gitHubService) ListRepos(ctx context.Context, accessToken string) ([]gi
 		return nil, fmt.Errorf("%w: failed to list repos: %v", ErrExternalAPI, err)
 	}
 	return repos, nil
+}
+
+// ListGroupCommits はグループの repo_full_name を解決し、コミット一覧を返す。
+func (s *gitHubService) ListGroupCommits(ctx context.Context, groupID int64, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error) {
+	if s.githubClient == nil {
+		return nil, fmt.Errorf("%w: github client not configured", ErrExternalAPI)
+	}
+
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("github_service: ListGroupCommits failed: %w", err)
+	}
+
+	commits, err := s.githubClient.ListCommits(ctx, group.RepoFullName, accessToken, opts)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list commits: %v", ErrExternalAPI, err)
+	}
+	return commits, nil
 }

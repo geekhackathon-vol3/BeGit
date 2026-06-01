@@ -3,10 +3,12 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/irj0927/begit/internal/service"
+	githubpkg "github.com/irj0927/begit/pkg/github"
 )
 
 // RepoJSON は GitHub リポジトリレスポンス型
@@ -79,4 +81,94 @@ func (h *GitHubHandler) ListRepos(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, RepoListResponse{Repos: result})
+}
+
+// CommitJSON はコミットレスポンス型
+type CommitJSON struct {
+	SHA         string `json:"sha"`
+	Message     string `json:"message"`
+	AuthorName  string `json:"author_name"`
+	AuthorLogin string `json:"author_login"`
+	Date        string `json:"date"`
+	Additions   int    `json:"additions"`
+	Deletions   int    `json:"deletions"`
+}
+
+// CommitListResponse は GET /groups/:id/commits のレスポンス
+type CommitListResponse struct {
+	Commits []CommitJSON `json:"commits"`
+}
+
+// ListCommits はグループに紐づくリポジトリのコミット一覧を返す。
+//
+//	@Summary		コミット一覧
+//	@Description	グループに紐づく GitHub リポジトリのコミット履歴を返す（GET /repos/{owner}/{repo}/commits のプロキシ）。
+//	@Tags			github
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id			path		int		true	"グループ ID"
+//	@Param			author		query		string	false	"author でフィルタ（login or email）"
+//	@Param			since		query		string	false	"ISO8601 これ以降"
+//	@Param			until		query		string	false	"ISO8601 これ以前"
+//	@Param			per_page	query		int		false	"取得件数（1〜50、既定 20）"
+//	@Success		200			{object}	CommitListResponse
+//	@Failure		400			{object}	ErrorResponse
+//	@Failure		401			{object}	ErrorResponse
+//	@Failure		403			{object}	ErrorResponse
+//	@Failure		404			{object}	ErrorResponse
+//	@Failure		502			{object}	ErrorResponse
+//	@Failure		500			{object}	ErrorResponse
+//	@Router			/groups/{id}/commits [get]
+func (h *GitHubHandler) ListCommits(c *gin.Context) {
+	if _, ok := userIDFromContext(c); !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	accessToken := accessTokenFromContext(c)
+
+	opts := githubpkg.CommitListOptions{
+		Author: c.Query("author"),
+		Since:  c.Query("since"),
+		Until:  c.Query("until"),
+	}
+	if pp := c.Query("per_page"); pp != "" {
+		if v, err := strconv.Atoi(pp); err == nil {
+			opts.PerPage = v
+		}
+	}
+
+	commits, err := h.githubService.ListGroupCommits(c.Request.Context(), groupID, accessToken, opts)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrExternalAPI):
+			respondError(c, http.StatusBadGateway, "external api error")
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "group not found")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	result := make([]CommitJSON, 0, len(commits))
+	for _, cm := range commits {
+		result = append(result, CommitJSON{
+			SHA:         cm.SHA,
+			Message:     cm.Message,
+			AuthorName:  cm.AuthorName,
+			AuthorLogin: cm.AuthorLogin,
+			Date:        cm.Date,
+			Additions:   cm.Additions,
+			Deletions:   cm.Deletions,
+		})
+	}
+
+	c.JSON(http.StatusOK, CommitListResponse{Commits: result})
 }
