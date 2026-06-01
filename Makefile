@@ -34,7 +34,7 @@ dev:
 	GITHUB_CLIENT_SECRET="$$GITHUB_CLIENT_SECRET" \
 	GITHUB_WEBHOOK_SECRET="dev-webhook-secret" \
 	FIREBASE_SERVICE_ACCOUNT_JSON='{"type":"service_account","project_id":"dummy"}' \
-	go run ./backend/cmd/server
+	go run -C backend ./cmd/server
 
 # Task 4.1: Terraform apply + wrangler.toml database_id 自動更新
 terraform-apply:
