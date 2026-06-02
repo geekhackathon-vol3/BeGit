@@ -32,13 +32,19 @@ func (s *server) buildHandler() (http.Handler, error) {
 		return nil, fmt.Errorf("failed to create encryptor: %w", err)
 	}
 
-	// DEV_MODE 時は実 GitHub API の代わりにスタブを注入する。
-	// これにより auth/group/post の各 service が GitHub 設定・実トークンなしで動作する。
+	// GitHub クライアント。
+	// GitHub OAuth 認証情報（GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET）が設定されていれば、
+	// DEV_MODE であっても実 GitHub API を使う（dev-stub-user ではなく実ユーザーが返る）。
+	// DEV_MODE かつ認証情報が無い場合のみスタブ（GitHub 設定なしでローカル/dev が起動できる）。
 	var githubClient githubpkg.Client
-	if cfg.DevMode {
+	switch {
+	case cfg.GitHubClientID != "" && cfg.GitHubClientSecret != "":
+		githubClient = githubpkg.NewClient()
+		log.Printf("GitHub client configured (real GitHub API)")
+	case cfg.DevMode:
 		githubClient = githubpkg.NewStubClient()
-		log.Printf("DEV_MODE enabled: using stub GitHub client and /auth/dev endpoint")
-	} else {
+		log.Printf("DEV_MODE enabled without GitHub credentials: using stub GitHub client")
+	default:
 		githubClient = githubpkg.NewClient()
 	}
 
@@ -179,6 +185,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	}
 
 	// Bearer 認証が必要なエンドポイント
+	r.GET("/me", bearerAuth, authHandler.Me)
 	r.GET("/groups", bearerAuth, groupHandler.List)
 	r.POST("/groups", bearerAuth, groupHandler.Create)
 	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)

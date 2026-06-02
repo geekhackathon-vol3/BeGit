@@ -24,6 +24,11 @@ protocol AuthAPI: Sendable {
     func exchangeCode(code: String) async throws -> AuthResponse
 }
 
+// ログイン中ユーザー情報を取得する API インターフェース（バックエンド GET /me）
+protocol CurrentUserAPI: Sendable {
+    func getCurrentUser(accessToken: String) async throws -> GitHubUser
+}
+
 protocol RepositoryAPI: Sendable {
     func listRepositories(accessToken: String) async throws -> [Repository]
     func createRepository(repoFullName: String, name: String, accessToken: String) async throws -> Repository

@@ -26,6 +26,7 @@ type AuthServiceConfig struct {
 // AuthService は GitHub OAuth フローを処理するサービスインターフェース
 type AuthService interface {
 	ExchangeCode(ctx context.Context, code string) (*AuthResult, error)
+	GetUser(ctx context.Context, userID int64) (*model.User, error)
 }
 
 // authService は AuthService インターフェースの実装
@@ -95,4 +96,9 @@ func (s *authService) ExchangeCode(ctx context.Context, code string) (*AuthResul
 		User:  *savedUser,
 		Token: accessToken, // 平文の access_token を返す
 	}, nil
+}
+
+// GetUser は userID からユーザーを取得する（GET /me 用）
+func (s *authService) GetUser(ctx context.Context, userID int64) (*model.User, error) {
+	return s.userRepo.GetByID(ctx, userID)
 }

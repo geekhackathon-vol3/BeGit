@@ -7,6 +7,7 @@ import Foundation
 import OpenAPIRuntime
 import OpenAPIURLSession
 import HTTPTypes
+import BeGitOpenAPIClient
 
 // Authorization: Bearer を全リクエストへ付与する。
 private struct AuthMiddleware: ClientMiddleware {
@@ -49,7 +50,7 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
     }
 }
 
-struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
+struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     private let baseURL: URL
     private let session: URLSession
 
@@ -151,8 +152,17 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
         )
         guard case .created = output else { throw BeGitAPIError.invalidResponse }
     }
+
+    // GET /me : Bearer トークンから現在ログイン中ユーザーを取得（GitHub 直叩きの代替）
+    func getCurrentUser(accessToken: String) async throws -> GitHubUser {
+        let output = try await makeClient(accessToken: accessToken).getMe()
+        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        return try ok.body.json.toGitHubUser()
+    }
 }
 
-private struct ErrorResponseDTO: Decodable {
+// nonisolated 指定：アプリは MainActor 既定隔離のため、これを付けないと Decodable 適合も
+// MainActor 隔離になり、上の nonisolated な ErrorThrowingMiddleware から decode できない。
+private nonisolated struct ErrorResponseDTO: Decodable {
     let error: String
 }
