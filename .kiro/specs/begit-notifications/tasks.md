@@ -26,7 +26,7 @@
 
 ## 2. Core: リポジトリ層（クエリと冪等状態）
 
-- [ ] 2.1 (P) 送信済み冪等リポジトリ（notification_deliveries）
+- [x] 2.1 (P) 送信済み冪等リポジトリ（notification_deliveries）
   - `(kind, ref_id)` の INSERT を行い、UNIQUE 違反は「送信済み」として識別できる返り値にする
   - テスト: 同一 (kind, ref_id) の2回目 INSERT が送信済みと判定されることを検証
   - _Requirements: 3.3, 4.4, 9.4_
