@@ -407,7 +407,10 @@ func TestNotificationService_GetStatus_OnTime(t *testing.T) {
 // TestNotificationService_GetStatus_Late は通知後61分の投稿が "Late" になることを確認する
 func TestNotificationService_GetStatus_Late(t *testing.T) {
 	sentAt := time.Now().Add(-61 * time.Minute)
-	postedAt := time.Now().Add(-1 * time.Minute) // sentAt から 60分後
+	// sentAt から 61 分後 = 締切(sentAt + 1h)を明確に超過 → Late。
+	// postedAt を sentAt 基準で導出し、time.Now() を2回呼ぶことで生じる
+	// 締切ちょうど（On Time 誤判定）のフレーキーを排除する。
+	postedAt := sentAt.Add(61 * time.Minute)
 
 	notifRepo := &mockNotificationRepository{
 		getByIDFunc: func(ctx context.Context, notifID int64) (*model.Notification, error) {
