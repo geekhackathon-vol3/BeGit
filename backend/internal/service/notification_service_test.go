@@ -78,11 +78,29 @@ func (m *mockNotificationRepository) HasActiveInSprint(ctx context.Context, spri
 
 // mockPostRepository はテスト用の投稿リポジトリモック
 type mockPostRepository struct {
-	createFunc                 func(ctx context.Context, post *model.Post) (*model.Post, error)
-	listByGroupIDFunc          func(ctx context.Context, groupID int64) ([]model.Post, error)
-	hasPostedInSprintFunc      func(ctx context.Context, userID, sprintID int64) (bool, error)
-	getByUserAndNotifFunc      func(ctx context.Context, userID, notifID int64) (*model.Post, error)
-	getByIDFunc                func(ctx context.Context, postID int64) (*model.Post, error)
+	createFunc            func(ctx context.Context, post *model.Post) (*model.Post, error)
+	listByGroupIDFunc     func(ctx context.Context, groupID int64) ([]model.Post, error)
+	hasPostedInSprintFunc func(ctx context.Context, userID, sprintID int64) (bool, error)
+	getByUserAndNotifFunc func(ctx context.Context, userID, notifID int64) (*model.Post, error)
+	getByIDFunc           func(ctx context.Context, postID int64) (*model.Post, error)
+	createDraftFunc       func(ctx context.Context, post *model.Post) (*model.Post, error)
+	confirmDraftFunc      func(ctx context.Context, postID int64) error
+}
+
+func (m *mockPostRepository) CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error) {
+	if m.createDraftFunc != nil {
+		return m.createDraftFunc(ctx, post)
+	}
+	post.ID = 1
+	post.IsDraft = true
+	return post, nil
+}
+
+func (m *mockPostRepository) ConfirmDraft(ctx context.Context, postID int64) error {
+	if m.confirmDraftFunc != nil {
+		return m.confirmDraftFunc(ctx, postID)
+	}
+	return nil
 }
 
 func (m *mockPostRepository) Create(ctx context.Context, post *model.Post) (*model.Post, error) {

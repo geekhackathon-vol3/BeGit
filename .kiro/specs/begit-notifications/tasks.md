@@ -40,7 +40,7 @@
   - _Requirements: 1.3, 2.3_
   - _Boundary: notification_repository_
 
-- [ ] 2.3 (P) 投稿リポジトリの draft 対応（除外・作成・確定・取得）
+- [x] 2.3 (P) 投稿リポジトリの draft 対応（除外・作成・確定・取得）
   - フィード一覧クエリで `is_draft = 0` のみ返す（draft を除外）
   - draft 投稿の作成（`is_draft=1`、`notification_id` 紐付け）、確定（`is_draft=0` へ更新、べき等）、取得
   - テスト: draft がフィードに出ないこと、確定後に出ること、再確定が no-op であることを検証
