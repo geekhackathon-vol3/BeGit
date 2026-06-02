@@ -1,7 +1,14 @@
 //  AuthAPI.swift
-//  Backend APIのインターフェース・実装
+//  Backend API のインターフェース・実装
+//
+//  通信は swift-openapi-generator が openapi.yaml から生成する `Client` / 型
+//  (`Components.Schemas.*`) を利用する。手書きの Codable DTO は廃止し、生成型 →
+//  ドメインモデルの変換のみをこのファイルで担う（バックエンドと型がズレないようにするため）。
 
 import Foundation
+import OpenAPIRuntime
+import OpenAPIURLSession
+import HTTPTypes
 
 // BeGitバックエンドAPIで発生するエラー
 enum BeGitAPIError: LocalizedError {
@@ -30,23 +37,64 @@ protocol AuthAPI: Sendable {
 // リポジトリ関連APIインターフェース
 protocol RepositoryAPI: Sendable {
     // 参加中のリポジトリ一覧を取得
-    func listRepositories(accessToken: String) async throws -> [Repository]                                  
-    // 新しいリポジトリグループを作成   
+    func listRepositories(accessToken: String) async throws -> [Repository]
+    // 新しいリポジトリグループを作成
     func createRepository(repoFullName: String, name: String, accessToken: String) async throws -> Repository
     // リポジトリ詳細を取得
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
-    // リポジトリのアクティビティ一覧を取得                
+    // リポジトリのアクティビティ一覧を取得
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
-    // メンバーへ通知を送信     
+    // メンバーへ通知を送信
     func sendNotification(repositoryID: Int64, accessToken: String) async throws
+}
+
+// Authorization: Bearer <token> ヘッダを全リクエストへ付与するミドルウェア
+private struct AuthMiddleware: ClientMiddleware {
+    let token: String
+
+    nonisolated func intercept(
+        _ request: HTTPRequest,
+        body: HTTPBody?,
+        baseURL: URL,
+        operationID: String,
+        next: @Sendable @concurrent (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+    ) async throws -> (HTTPResponse, HTTPBody?) {
+        var request = request
+        request.headerFields[.authorization] = "Bearer \(token)"
+        return try await next(request, body, baseURL)
+    }
+}
+
+// 2xx 以外のレスポンスを BeGitAPIError へ変換して throw するミドルウェア。
+// これにより各 API メソッドは成功ケースのみを扱えばよくなる
+// （生成コードの型付きエラーケースを毎回 switch する必要がなくなる）。
+private struct ErrorThrowingMiddleware: ClientMiddleware {
+    nonisolated func intercept(
+        _ request: HTTPRequest,
+        body: HTTPBody?,
+        baseURL: URL,
+        operationID: String,
+        next: @Sendable @concurrent (HTTPRequest, HTTPBody?, URL) async throws -> (HTTPResponse, HTTPBody?)
+    ) async throws -> (HTTPResponse, HTTPBody?) {
+        let (response, responseBody) = try await next(request, body, baseURL)
+        guard response.status.code >= 300 else {
+            return (response, responseBody)
+        }
+
+        // エラーボディ（{"error": "..."}）からメッセージを抽出（失敗しても無視）
+        var message: String?
+        if let responseBody,
+           let data = try? await Data(collecting: responseBody, upTo: 64 * 1024) {
+            message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
+        }
+        throw BeGitAPIError.requestFailed(statusCode: response.status.code, message: message)
+    }
 }
 
 // BeGitバックエンドとの通信を行う実装
 struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
     private let baseURL: URL            // APIエンドポイントのベースURL
     private let session: URLSession     // HTTP通信に利用するURLSession
-    private let decoder: JSONDecoder    // レスポンスJSONデコード用
-    private let encoder: JSONEncoder    // リクエストJSONエンコード用
 
     nonisolated init(
         baseURL: URL = BeGitBackendAPI.defaultBaseURL,
@@ -54,12 +102,6 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
     ) {
         self.baseURL = baseURL
         self.session = session
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        self.decoder = decoder
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        self.encoder = encoder
     }
 
     private nonisolated static var defaultBaseURL: URL {
@@ -72,20 +114,35 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
         return url
     }
 
+    // 生成 Client を構築する。openapi.yaml の servers は相対(/)のため、
+    // 実行時の baseURL を serverURL として明示的に上書きする。
+    private func makeClient(accessToken: String? = nil) -> Client {
+        var middlewares: [any ClientMiddleware] = [ErrorThrowingMiddleware()]
+        if let accessToken {
+            middlewares.insert(AuthMiddleware(token: accessToken), at: 0)
+        }
+        return Client(
+            serverURL: baseURL,
+            transport: URLSessionTransport(configuration: .init(session: session)),
+            middlewares: middlewares
+        )
+    }
+
     // GitHub OAuthの認可コードをBeGitバックエンドに送信し、認証情報へ変換する
     func exchangeCode(code: String) async throws -> AuthResponse {
-        let response: AuthResponseDTO = try await request(
-            path: "/auth/github",
-            method: "POST",
-            body: AuthRequestDTO(code: code)
+        let output = try await makeClient().postAuthGithub(
+            .init(body: .json(.Handler_AuthRequest(.init(code: code))))
         )
+        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        let payload = try ok.body.json
+        let user = payload.user
 
         return AuthResponse(
-            accessToken: response.token,
+            accessToken: payload.token ?? "",
             githubUser: GitHubUser(
-                id: Int(response.user.id),
-                login: response.user.login,
-                avatarURL: URL(string: response.user.avatarUrl),
+                id: user?.id ?? 0,
+                login: user?.login ?? "",
+                avatarURL: user?.avatarUrl.flatMap { URL(string: $0) },
                 email: nil
             )
         )
@@ -93,102 +150,47 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI {
 
     // ログイン中ユーザーが参加しているリポジトリグループ一覧を取得する
     func listRepositories(accessToken: String) async throws -> [Repository] {
-        let response: GroupsResponseDTO = try await request(
-            path: "/groups",
-            method: "GET",
-            accessToken: accessToken
-        )
-
-        return response.groups.map { $0.repository(members: []) }
+        let output = try await makeClient(accessToken: accessToken).getGroups()
+        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        return (try ok.body.json.groups ?? []).map { $0.toRepository(members: []) }
     }
 
     // GitHubリポジトリ名を指定して、新しいBeGitリポジトリグループを作成する
     func createRepository(repoFullName: String, name: String, accessToken: String) async throws -> Repository {
-        let group: GroupDTO = try await request(
-            path: "/groups",
-            method: "POST",
-            accessToken: accessToken,
-            body: CreateGroupRequestDTO(repoFullName: repoFullName, name: name)
+        let output = try await makeClient(accessToken: accessToken).postGroups(
+            .init(body: .json(.Handler_CreateGroupRequest(.init(name: name, repoFullName: repoFullName))))
         )
+        guard case let .created(created) = output else { throw BeGitAPIError.invalidResponse }
+        guard let id = try created.body.json.id else { throw BeGitAPIError.invalidResponse }
 
-        return try await getRepository(id: group.id, accessToken: accessToken)
+        return try await getRepository(id: Int64(id), accessToken: accessToken)
     }
 
     // 指定したバックエンドIDのリポジトリ詳細を取得する
     func getRepository(id: Int64, accessToken: String) async throws -> Repository {
-        let detail: GroupDetailDTO = try await request(
-            path: "/groups/\(id)",
-            method: "GET",
-            accessToken: accessToken
+        let output = try await makeClient(accessToken: accessToken).getGroupsId(
+            .init(path: .init(id: Int(id)))
         )
-
-        return detail.repository()
+        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        return try ok.body.json.toRepository()
     }
 
     // 指定リポジトリのタイムライン表示用アクティビティ一覧を取得する
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity] {
         guard let backendID = repository.backendID else { return [] }
-        let response: PostsResponseDTO = try await request(
-            path: "/groups/\(backendID)/posts",
-            method: "GET",
-            accessToken: accessToken
+        let output = try await makeClient(accessToken: accessToken).getGroupsIdPosts(
+            .init(path: .init(id: Int(backendID)))
         )
-
-        return response.posts.map { $0.activity(fallbackRepository: repository) }
+        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        return (try ok.body.json.posts ?? []).map { $0.toActivity(fallbackRepository: repository) }
     }
 
     // 指定リポジトリのメンバーに作業通知を送信する
     func sendNotification(repositoryID: Int64, accessToken: String) async throws {
-        let _: NotificationDTO = try await request(
-            path: "/groups/\(repositoryID)/notifications",
-            method: "POST",
-            accessToken: accessToken,
-            body: EmptyRequestDTO()
+        let output = try await makeClient(accessToken: accessToken).postGroupsIdNotifications(
+            .init(path: .init(id: Int(repositoryID)))
         )
-    }
-
-    // 共通APIリクエスト処理
-    // リクエスト送信・レスポンス検証・JSONデコードを行う
-    private func request<Response: Decodable>(
-        path: String,
-        method: String,
-        accessToken: String? = nil
-    ) async throws -> Response {
-        try await request(path: path, method: method, accessToken: accessToken, body: Optional<EmptyRequestDTO>.none)
-    }
-
-    private func request<Response: Decodable, Body: Encodable>(
-        path: String,
-        method: String,
-        accessToken: String? = nil,
-        body: Body? = nil
-    ) async throws -> Response {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
-            throw BeGitAPIError.invalidURL
-        }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let accessToken {
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        }
-        if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try encoder.encode(body)
-        }
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw BeGitAPIError.invalidResponse
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let errorResponse = try? decoder.decode(ErrorResponseDTO.self, from: data)
-            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: errorResponse?.error)
-        }
-
-        return try decoder.decode(Response.self, from: data)
+        guard case .created = output else { throw BeGitAPIError.invalidResponse }
     }
 }
 
@@ -209,117 +211,64 @@ struct MockAuthAPI: AuthAPI {
     }
 }
 
-// GitHub認証リクエストDTO
-private struct AuthRequestDTO: Encodable {
-    let code: String
+// エラーレスポンスボディ（{"error": "..."}）
+private struct ErrorResponseDTO: Decodable {
+    let error: String
 }
 
-private struct EmptyRequestDTO: Encodable {}
+// MARK: - 生成型 → ドメインモデル変換
 
-// グループ作成リクエストDTO
-private struct CreateGroupRequestDTO: Encodable {
-    let repoFullName: String    // GitHubリポジトリ名 (owner/repository)
-    let name: String            // アプリ内表示名
-}
-
-// 認証APIレスポンスDTO
-private struct AuthResponseDTO: Decodable {
-    let user: UserDTO   // GitHubユーザー情報
-    let token: String   // BeGitアクセストークン
-}
-
-// グループ情報DTO
-private struct UserDTO: Decodable {
-    let id: Int64           // GitHubユーザーID
-    let login: String       // GitHubユーザー名
-    let avatarUrl: String   // アバター画像URL
-    let name: String        // 表示名
-}
-
-private struct GroupsResponseDTO: Decodable {
-    let groups: [GroupDTO]
-}
-
-private struct GroupDTO: Decodable {
-    let id: Int64               // バックエンド管理ID
-    let name: String            // グループ名
-    let repoFullName: String    // GitHubリポジトリ名
-    let avatarUrl: String       // リポジトリアイコンURL
-
-    func repository(members: [RepositoryMember]) -> Repository {
-        Repository(
-            backendID: id,
-            name: repoFullName.isEmpty ? name : repoFullName,
+private extension Components.Schemas.Handler_GroupJSON {
+    // グループ概要 → Repository。repo_full_name が空ならグループ名で代替する。
+    func toRepository(members: [RepositoryMember]) -> Repository {
+        let fullName = repoFullName ?? ""
+        let displayName = fullName.isEmpty ? (name ?? "") : fullName
+        return Repository(
+            backendID: id.map(Int64.init),
+            name: displayName,
             memberCount: members.count,
             members: members
         )
     }
 }
 
-private struct GroupDetailDTO: Decodable {
-    let id: Int64               // バックエンド管理ID
-    let name: String            // グループ名
-    let repoFullName: String    // GitHubリポジトリ名
-    let avatarUrl: String       // リポジトリアイコンURL
-    let members: [GroupMemberDTO] // 所属メンバー一覧
-
-    func repository() -> Repository {
-        let repositoryMembers = members.map { $0.member() }
+private extension Components.Schemas.Handler_GroupDetailJSON {
+    // グループ詳細 → Repository（メンバー込み）
+    func toRepository() -> Repository {
+        let repositoryMembers = (members ?? []).map { $0.toMember() }
+        let fullName = repoFullName ?? ""
+        let displayName = fullName.isEmpty ? (name ?? "") : fullName
         return Repository(
-            backendID: id,
-            name: repoFullName.isEmpty ? name : repoFullName,
+            backendID: id.map(Int64.init),
+            name: displayName,
             memberCount: repositoryMembers.count,
             members: repositoryMembers
         )
     }
 }
 
-private struct GroupMemberDTO: Decodable {
-    let userId: Int64
-    let login: String
-    let avatarUrl: String
-    let role: String
-
-    func member() -> RepositoryMember {
+private extension Components.Schemas.Handler_GroupMemberJSON {
+    func toMember() -> RepositoryMember {
         RepositoryMember(
-            backendUserID: userId,
-            login: login,
-            avatarURL: URL(string: avatarUrl)
+            backendUserID: userId.map(Int64.init),
+            login: login ?? "",
+            avatarURL: avatarUrl.flatMap { URL(string: $0) }
         )
     }
 }
 
-private struct PostsResponseDTO: Decodable {
-    let posts: [PostDTO]
-}
-
-// タイムライン投稿DTO
-private struct PostDTO: Decodable {
-    let id: Int64               // 投稿ID
-    let userId: Int64           // 投稿ユーザーID
-    let postType: String        // 投稿種別(commit / pull_request / memo)
-    let body: String?           // 投稿本文
-    let repoFullName: String?   // リポジトリ名
-    let commitCount: Int        // コミット数
-    let additions: Int          // 追加行数
-    let deletions: Int          // 削除行数
-    let latestCommitMessage: String?    // 最新コミットメッセージ
-    let status: String?         // 状態メッセージ
-    let createdAt: String       // 投稿作成日時(ISO8601)
-    let login: String           // 投稿者ユーザー名
-    let avatarUrl: String       // 投稿者アバターURL
-
-    // 投稿DTOを画面表示用のRepositoryActivityへ変換
-    func activity(fallbackRepository: Repository) -> RepositoryActivity {
+private extension Components.Schemas.Handler_PostFeedJSON {
+    // タイムライン投稿 → 画面表示用 RepositoryActivity
+    func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
         RepositoryActivity(
             type: activityType,
             title: activityTitle(fallbackRepository: fallbackRepository),
-            date: ISO8601DateFormatter().date(from: createdAt) ?? Date(),
+            date: createdAt.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date(),
             imageName: "begit_timeline_mock",
             author: RepositoryMember(
-                backendUserID: userId,
-                login: login,
-                avatarURL: URL(string: avatarUrl)
+                backendUserID: userId.map(Int64.init),
+                login: login ?? "",
+                avatarURL: avatarUrl.flatMap { URL(string: $0) }
             ),
             reaction: reaction
         )
@@ -358,19 +307,10 @@ private struct PostDTO: Decodable {
         if let body, body.isEmpty == false {
             return body
         }
-        if commitCount > 0 {
-            return "\(commitCount) commits in \(repoFullName ?? fallbackRepository.name)"
+        let commits = commitCount ?? 0
+        if commits > 0 {
+            return "\(commits) commits in \(repoFullName ?? fallbackRepository.name)"
         }
         return status ?? "No activity yet"
     }
-}
-
-private struct NotificationDTO: Decodable {
-    let id: Int64
-    let sprintId: Int64
-    let sentAt: String
-}
-
-private struct ErrorResponseDTO: Decodable {
-    let error: String
 }
