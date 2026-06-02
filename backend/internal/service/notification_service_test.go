@@ -168,6 +168,7 @@ func (m *mockPostRepository) GetByID(ctx context.Context, postID int64) (*model.
 type mockFCMTokenRepository struct {
 	upsertFunc             func(ctx context.Context, userID int64, token string) error
 	getTokensByGroupIDFunc func(ctx context.Context, groupID int64) ([]string, error)
+	getTokensByUserIDFunc  func(ctx context.Context, userID int64) ([]string, error)
 	deleteByUserIDFunc     func(ctx context.Context, userID int64) error
 }
 
@@ -181,6 +182,13 @@ func (m *mockFCMTokenRepository) Upsert(ctx context.Context, userID int64, token
 func (m *mockFCMTokenRepository) GetTokensByGroupID(ctx context.Context, groupID int64) ([]string, error) {
 	if m.getTokensByGroupIDFunc != nil {
 		return m.getTokensByGroupIDFunc(ctx, groupID)
+	}
+	return []string{}, nil
+}
+
+func (m *mockFCMTokenRepository) GetTokensByUserID(ctx context.Context, userID int64) ([]string, error) {
+	if m.getTokensByUserIDFunc != nil {
+		return m.getTokensByUserIDFunc(ctx, userID)
 	}
 	return []string{}, nil
 }

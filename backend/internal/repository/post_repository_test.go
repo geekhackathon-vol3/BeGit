@@ -190,6 +190,23 @@ func TestFCMTokenRepository_GetTokensByGroupID(t *testing.T) {
 	}
 }
 
+// TestFCMTokenRepository_GetTokensByUserID は特定ユーザーのトークン一覧を返すことを確認する
+func TestFCMTokenRepository_GetTokensByUserID(t *testing.T) {
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{{"token": "t1"}}, nil
+		},
+	}
+	repo := NewFCMTokenRepository(mock)
+	tokens, err := repo.GetTokensByUserID(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("GetTokensByUserID() failed: %v", err)
+	}
+	if len(tokens) != 1 || tokens[0] != "t1" {
+		t.Errorf("expected [t1], got %v", tokens)
+	}
+}
+
 // TestFCMTokenRepository_GetTokensByGroupID_Empty は空の場合に空スライスを返すことを確認する
 func TestFCMTokenRepository_GetTokensByGroupID_Empty(t *testing.T) {
 	mock := &mockD1Client{

@@ -72,7 +72,7 @@
   - _Boundary: notification_service_
   - _Depends: 2.2, 3.1_
 
-- [ ] 3.3 ② Nice Work! 発火サービス
+- [x] 3.3 ② Nice Work! 発火サービス
   - メンバー判定 → anchor 特定 → 初アクティビティ冪等（draft INSERT を UNIQUE で先取り、違反は skip）→ on_time/late 確定 → 本人のみへ `nice_work` data 送信
   - anchor 無し / 非メンバー / 既発火 はいずれも no-op（送信しない）
   - テスト: 本人のみ送信（グループ非送信）、冪等 skip、on_time/late 境界、anchor 無し no-op を検証
