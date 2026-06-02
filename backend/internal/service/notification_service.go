@@ -126,7 +126,7 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		tokens, err := s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
 		if err == nil && len(tokens) > 0 {
 			payload := BuildBeGitTime(groupID, notif.ID, sprint.ID)
-			_ = s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data)
+			logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
 		}
 	}
 

@@ -1,10 +1,22 @@
 package service
 
 import (
+	"log"
 	"strconv"
 
 	"github.com/irj0927/begit/pkg/fcm"
 )
+
+// logFCMSend は FCM 送信結果をログに出す（ベストエフォート送信の可観測性向上）。
+// err が非 nil でも呼び出し側の処理は継続する（API/Cron を失敗させない）。
+// dev では `wrangler tail` でこのログを見て FCM 連携の生死を確認できる。
+func logFCMSend(notifType string, tokenCount int, err error) {
+	if err != nil {
+		log.Printf("fcm send failed (type=%s, tokens=%d): %v", notifType, tokenCount, err)
+		return
+	}
+	log.Printf("fcm sent ok (type=%s, tokens=%d)", notifType, tokenCount)
+}
 
 // Payload は FCM 送信用の通知ペイロード。
 // Notification は表示用（title/body）、Data は ios-guide §2 準拠の data メッセージ（全値文字列）。

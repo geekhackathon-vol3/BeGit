@@ -491,3 +491,28 @@ func TestNotificationService_GetStatus_Missed(t *testing.T) {
 		t.Errorf("expected status=Missed (no post), got %s", status.Members[0].Status)
 	}
 }
+
+// TestNotificationService_SendNotification_FCMFailure_DoesNotFail は FCM 失敗でも ① 発行が成功することを確認する
+func TestNotificationService_SendNotification_FCMFailure_DoesNotFail(t *testing.T) {
+	sprintRepo := &mockSprintRepository{
+		getOrCreateFunc: func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error) {
+			return &model.Sprint{ID: 7, GroupID: groupID}, nil
+		},
+	}
+	notifRepo := &mockNotificationRepository{
+		hasActiveInSprintFunc: func(ctx context.Context, sprintID int64) (bool, error) { return false, nil },
+		createFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+			notif.ID = 345
+			return notif, nil
+		},
+	}
+	ft := &mockFCMTokenRepository{
+		getTokensByGroupIDFunc: func(ctx context.Context, groupID int64) ([]string, error) {
+			return []string{"a", "b"}, nil
+		},
+	}
+	svc := NewNotificationService(sprintRepo, notifRepo, ft, &failingFCMClient{})
+	if _, err := svc.SendNotification(context.Background(), 12, 2); err != nil {
+		t.Fatalf("SendNotification() should succeed even if FCM fails, got: %v", err)
+	}
+}

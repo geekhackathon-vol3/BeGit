@@ -156,3 +156,26 @@ func TestCommentService_ListComments_PostNotInGroup(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+// TestComment_FCMFailure_DoesNotFail は FCM 失敗でもコメント登録が成功することを確認する（ベストエフォート + ログ）
+func TestComment_FCMFailure_DoesNotFail(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 99}, nil
+		},
+	}
+	userRepo := &mockUserByID{
+		getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+			return &model.User{ID: id, GitHubLogin: "octocat"}, nil
+		},
+	}
+	ft := &mockFCMTokenRepository{
+		getTokensByUserIDFunc: func(ctx context.Context, userID int64) ([]string, error) {
+			return []string{"author-tok"}, nil
+		},
+	}
+	svc := NewCommentServiceWithNotifications(&mockCommentRepository{}, postRepo, userRepo, ft, &failingFCMClient{})
+	if _, err := svc.CreateComment(context.Background(), 12, 890, 2, "nice"); err != nil {
+		t.Fatalf("CreateComment() should succeed even if FCM fails, got: %v", err)
+	}
+}

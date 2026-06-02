@@ -198,3 +198,36 @@ func TestCron_Daily_Idempotent(t *testing.T) {
 		t.Errorf("expected no additional daily sends on re-run, got %d", len(fc.withDataCalls))
 	}
 }
+
+// TestCron_FCMFailure_DoesNotFail は FCM 失敗でも Cron 実行がエラーにならないことを確認する
+func TestCron_FCMFailure_DoesNotFail(t *testing.T) {
+	notifRepo := &mockNotificationRepository{
+		listChallengeEndDueFunc: func(ctx context.Context) ([]model.Notification, error) {
+			return []model.Notification{{ID: 345, SprintID: 7, SentAt: time.Now().Add(-2 * time.Hour)}}, nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(ctx context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: 7, GroupID: 12}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
+			return []model.GroupMember{{UserID: 1}}, nil
+		},
+	}
+	postRepo := &mockPostRepository{
+		getByUserAndNotifFunc: func(ctx context.Context, userID, notifID int64) (*model.Post, error) {
+			return nil, repository.ErrNotFound
+		},
+	}
+	ft := &mockFCMTokenRepository{
+		getTokensByGroupIDFunc: func(ctx context.Context, groupID int64) ([]string, error) {
+			return []string{"t1"}, nil
+		},
+	}
+	svc := NewCronService(notifRepo, sprintRepo, groupRepo, postRepo, newMockDeliveryRepo(), ft, &failingFCMClient{})
+	if err := svc.RunCron(context.Background(), "minutely"); err != nil {
+		t.Fatalf("RunCron(minutely) should succeed even if FCM fails, got: %v", err)
+	}
+}

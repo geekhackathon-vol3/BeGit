@@ -53,7 +53,7 @@ func notifyPostAuthor(
 	}
 
 	payload := buildPayload(post.GroupID, post.ID, actor.GitHubLogin)
-	_ = fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data)
+	logFCMSend(payload.Data["type"], len(tokens), fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
 }
 
 // allowedReactionTypes は許可されたリアクションタイプのセット

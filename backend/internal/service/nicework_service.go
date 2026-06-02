@@ -154,7 +154,7 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 			log.Printf("nicework_service: GetTokensByUserID failed for user %d: %v", user.ID, err)
 		} else if len(tokens) > 0 {
 			payload := BuildNiceWork(groupID, anchor.ID, created.ID, status)
-			_ = s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data)
+			logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
 		}
 	}
 

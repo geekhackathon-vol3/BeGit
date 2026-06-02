@@ -206,7 +206,7 @@ func (s *cronService) sendToGroup(ctx context.Context, groupID int64, payload Pa
 	if len(tokens) == 0 {
 		return
 	}
-	_ = s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data)
+	logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
 }
 
 // summarize は集計結果を簡潔な文字列にする（ログ用）。

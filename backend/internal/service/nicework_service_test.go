@@ -183,3 +183,30 @@ func TestNiceWork_Idempotent_Skip(t *testing.T) {
 		t.Error("expected no FCM send when already fired (idempotent skip)")
 	}
 }
+
+// TestNiceWork_FCMFailure_DoesNotFail は FCM 失敗でも ② 処理（draft 作成）が成功することを確認する
+func TestNiceWork_FCMFailure_DoesNotFail(t *testing.T) {
+	u, g, sp, n, p, ft, _ := niceWorkDeps()
+	u.getByLoginFunc = func(ctx context.Context, login string) (*model.User, error) {
+		return &model.User{ID: 10}, nil
+	}
+	g.isMemberFunc = func(ctx context.Context, groupID, userID int64) (bool, error) { return true, nil }
+	sp.getCurrentFunc = func(ctx context.Context, groupID int64) (*model.Sprint, error) {
+		return &model.Sprint{ID: 7, GroupID: groupID}, nil
+	}
+	n.getLatestInSprintBeforeFunc = func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
+		return &model.Notification{ID: 345, SprintID: 7, SentAt: time.Now().Add(-30 * time.Minute)}, nil
+	}
+	p.createDraftFunc = func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		post.ID = 890
+		return post, nil
+	}
+	ft.getTokensByUserIDFunc = func(ctx context.Context, userID int64) ([]string, error) {
+		return []string{"author-token"}, nil
+	}
+	// failingFCMClient（interface）を直接渡すため実コンストラクタを使う（newNiceWorkSvc は *fakeFCMClient 固定）
+	svc := NewNiceWorkService(u, g, sp, n, p, ft, &failingFCMClient{})
+	if err := svc.HandleActivity(context.Background(), 12, "octocat", "commit", ActivityData{CommitCount: 3}); err != nil {
+		t.Fatalf("HandleActivity() should succeed even if FCM fails, got: %v", err)
+	}
+}
