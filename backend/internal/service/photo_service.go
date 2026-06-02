@@ -94,26 +94,60 @@ func (s *photoService) UploadPhotos(ctx context.Context, req UploadPhotosRequest
 		items = append(items, item{photoType: "front", file: req.Front})
 	}
 
-	photos := make([]model.Photo, 0, len(items))
+	// First validate all items before any external writes
+	type validatedItem struct {
+		photoType string
+		file      *UploadFile
+		ext       string
+		key       string
+	}
+	validated := make([]validatedItem, 0, len(items))
 	for _, it := range items {
 		ext, err := validatePhoto(it.file)
 		if err != nil {
 			return nil, err
 		}
-
 		key := fmt.Sprintf("posts/%d/%s.%s", postID, it.photoType, ext)
-		if err := s.r2Client.PutObject(ctx, key, it.file.ContentType, it.file.Data); err != nil {
+		validated = append(validated, validatedItem{
+			photoType: it.photoType,
+			file:      it.file,
+			ext:       ext,
+			key:       key,
+		})
+	}
+
+	// Now perform uploads and DB creates, rolling back on failure
+	photos := make([]model.Photo, 0, len(validated))
+	uploadedKeys := make([]string, 0, len(validated))
+	createdIDs := make([]int64, 0, len(validated))
+
+	for _, v := range validated {
+		// Upload to R2
+		if err := s.r2Client.PutObject(ctx, v.key, v.file.ContentType, v.file.Data); err != nil {
+			// Rollback: delete already uploaded R2 objects
+			for _, k := range uploadedKeys {
+				_ = s.r2Client.DeleteObject(ctx, k)
+			}
 			return nil, fmt.Errorf("%w: r2 put failed: %v", ErrExternalAPI, err)
 		}
+		uploadedKeys = append(uploadedKeys, v.key)
 
+		// Create DB record
 		created, err := s.photoRepo.Create(ctx, &model.Photo{
 			PostID:    postID,
-			R2Key:     key,
-			PhotoType: it.photoType,
+			R2Key:     v.key,
+			PhotoType: v.photoType,
 		})
 		if err != nil {
+			// Rollback: delete uploaded R2 objects
+			for _, k := range uploadedKeys {
+				_ = s.r2Client.DeleteObject(ctx, k)
+			}
+			// Note: DB rollback would require transaction support or manual cleanup
+			// For now we rely on application-level retry logic
 			return nil, fmt.Errorf("photo_service: Create failed: %w", err)
 		}
+		createdIDs = append(createdIDs, created.ID)
 		photos = append(photos, *created)
 	}
 

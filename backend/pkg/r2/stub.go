@@ -24,3 +24,8 @@ func (s *stubClient) PutObject(ctx context.Context, key, contentType string, bod
 func (s *stubClient) PresignGetURL(key string, ttl time.Duration) (string, error) {
 	return "https://stub.r2.local/" + key + "?stub=1", nil
 }
+
+// DeleteObject は何もせず成功を返す
+func (s *stubClient) DeleteObject(ctx context.Context, key string) error {
+	return nil
+}

@@ -141,9 +141,11 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		for _, p := range posts {
 			postIDs = append(postIDs, p.ID)
 		}
-		if m, err := s.photoRepo.ListByPostIDs(ctx, postIDs); err == nil {
-			photoMap = m
+		m, err := s.photoRepo.ListByPostIDs(ctx, postIDs)
+		if err != nil {
+			return nil, fmt.Errorf("post_service: ListByPostIDs failed: %w", err)
 		}
+		photoMap = m
 	}
 
 	// Step 6: PostFeed を構築し、ぼかし制御を適用

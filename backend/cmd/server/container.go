@@ -69,9 +69,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 		r2Client = r2.NewStubClient()
 		log.Printf("DEV_MODE: R2 credentials not set, using stub R2 client")
 	default:
-		// 本番で認証情報が無い場合も実クライアントを生成する（アップロード時にエラーとして表面化）
-		r2Client = r2.NewClient(cfg.CFAccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, r2Bucket)
-		log.Printf("Warning: R2 credentials not set; R2 operations will fail until configured")
+		// 本番で認証情報が無い場合はサーバー起動を中断する
+		return nil, fmt.Errorf("R2 credentials (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) are required in production mode")
 	}
 
 	// Repository 層の初期化

@@ -97,6 +97,10 @@ func (h *PhotoHandler) Upload(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "main photo is required")
 		return
 	}
+	if main == nil {
+		respondError(c, http.StatusBadRequest, "main photo is required")
+		return
+	}
 	front, err := readFormFile(c, "front")
 	if err != nil {
 		respondError(c, http.StatusBadRequest, "invalid front photo")
@@ -125,9 +129,12 @@ func (h *PhotoHandler) Upload(c *gin.Context) {
 	for _, p := range photos {
 		url := ""
 		if h.r2Client != nil {
-			if u, err := h.r2Client.PresignGetURL(p.R2Key, time.Hour); err == nil {
-				url = u
+			u, err := h.r2Client.PresignGetURL(p.R2Key, time.Hour)
+			if err != nil {
+				respondError(c, http.StatusInternalServerError, "failed to generate photo URL")
+				return
 			}
+			url = u
 		}
 		result = append(result, PhotoJSON{ID: p.ID, PhotoType: p.PhotoType, URL: url})
 	}

@@ -11,7 +11,8 @@ import (
 
 // mockR2Client はテスト用の R2 クライアントモック
 type mockR2Client struct {
-	putObjectFunc func(ctx context.Context, key, contentType string, body []byte) error
+	putObjectFunc    func(ctx context.Context, key, contentType string, body []byte) error
+	deleteObjectFunc func(ctx context.Context, key string) error
 }
 
 func (m *mockR2Client) PutObject(ctx context.Context, key, contentType string, body []byte) error {
@@ -23,6 +24,13 @@ func (m *mockR2Client) PutObject(ctx context.Context, key, contentType string, b
 
 func (m *mockR2Client) PresignGetURL(key string, ttl time.Duration) (string, error) {
 	return "https://r2.example/" + key, nil
+}
+
+func (m *mockR2Client) DeleteObject(ctx context.Context, key string) error {
+	if m.deleteObjectFunc != nil {
+		return m.deleteObjectFunc(ctx, key)
+	}
+	return nil
 }
 
 // mockPhotoRepository はテスト用の写真リポジトリモック

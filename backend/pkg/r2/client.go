@@ -31,6 +31,8 @@ type Client interface {
 	PutObject(ctx context.Context, key, contentType string, body []byte) error
 	// PresignGetURL は key を取得するための署名付き URL を生成する（ttl の間有効）。
 	PresignGetURL(key string, ttl time.Duration) (string, error)
+	// DeleteObject は key で指定されたオブジェクトを R2 から削除する。
+	DeleteObject(ctx context.Context, key string) error
 }
 
 // client は Client インターフェースの実装
@@ -98,6 +100,34 @@ func (c *client) PutObject(ctx context.Context, key, contentType string, body []
 		buf := new(bytes.Buffer)
 		_, _ = buf.ReadFrom(resp.Body)
 		return fmt.Errorf("%w: status %d: %s", ErrUpload, resp.StatusCode, buf.String())
+	}
+	return nil
+}
+
+// DeleteObject は key で指定されたオブジェクトを R2 から削除する
+func (c *client) DeleteObject(ctx context.Context, key string) error {
+	host := c.endpointHost()
+	uri := c.canonicalURI(key)
+	urlStr := "https://" + host + uri
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("r2: failed to create delete request: %w", err)
+	}
+
+	payloadHash := sha256Hex([]byte{})
+	c.signHeader(req, host, uri, payloadHash, c.now().UTC())
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("r2: delete request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(resp.Body)
+		return fmt.Errorf("r2: delete failed with status %d: %s", resp.StatusCode, buf.String())
 	}
 	return nil
 }

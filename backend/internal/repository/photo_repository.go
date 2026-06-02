@@ -56,8 +56,10 @@ func scanPhoto(row map[string]interface{}) *model.Photo {
 
 // Create は photos テーブルにレコードを挿入し、作成後の行を返す
 func (r *photoRepository) Create(ctx context.Context, photo *model.Photo) (*model.Photo, error) {
-	_, err := r.db.Exec(ctx,
-		`INSERT INTO photos (post_id, r2_key, photo_type) VALUES (?, ?, ?)`,
+	rows, err := r.db.Query(ctx,
+		`INSERT INTO photos (post_id, r2_key, photo_type)
+		 VALUES (?, ?, ?)
+		 RETURNING id, post_id, r2_key, photo_type, created_at`,
 		[]interface{}{photo.PostID, photo.R2Key, photo.PhotoType},
 	)
 	if err != nil {
@@ -66,14 +68,8 @@ func (r *photoRepository) Create(ctx context.Context, photo *model.Photo) (*mode
 		}
 		return nil, fmt.Errorf("photo_repository: Create failed: %w", err)
 	}
-
-	rows, err := r.db.Query(ctx,
-		`SELECT id, post_id, r2_key, photo_type, created_at
-		 FROM photos WHERE post_id = ? AND r2_key = ? ORDER BY id DESC LIMIT 1`,
-		[]interface{}{photo.PostID, photo.R2Key},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("photo_repository: Create fetch after insert failed: %w", err)
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("photo_repository: Create returned no rows")
 	}
 	return scanPhoto(rows[0]), nil
 }
