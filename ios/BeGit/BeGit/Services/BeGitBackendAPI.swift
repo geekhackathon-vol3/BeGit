@@ -90,14 +90,21 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         )
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         let payload = try ok.body.json
-        let user = payload.user
+
+        // 必須フィールドの検証
+        guard let token = payload.token, !token.isEmpty else {
+            throw BeGitAPIError.invalidResponse
+        }
+        guard let user = payload.user, let userId = user.id, let userLogin = user.login else {
+            throw BeGitAPIError.invalidResponse
+        }
 
         return AuthResponse(
-            accessToken: payload.token ?? "",
+            accessToken: token,
             githubUser: GitHubUser(
-                id: user?.id ?? 0,
-                login: user?.login ?? "",
-                avatarURL: user?.avatarUrl.flatMap { URL(string: $0) },
+                id: userId,
+                login: userLogin,
+                avatarURL: user.avatarUrl.flatMap { URL(string: $0) },
                 email: nil
             )
         )
