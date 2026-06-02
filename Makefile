@@ -24,6 +24,7 @@ openapi:
 IOS_OPENAPI_DEST ?= ios/BeGit/BeGit/openapi.yaml
 openapi-sync: openapi
 	cp backend/docs/swagger.yaml $(IOS_OPENAPI_DEST)
+	./scripts/sanitize-openapi-for-ios.sh $(IOS_OPENAPI_DEST)
 	@echo "✅ OpenAPI 仕様を $(IOS_OPENAPI_DEST) へ同期しました（iOS をリビルドすると型が追随します）"
 
 # ローカル開発サーバー起動（.envrc の変数を使用）
