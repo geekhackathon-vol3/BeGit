@@ -11,7 +11,7 @@
   - `wrangler d1 migrations apply`（dev）でマイグレーションが適用でき、両変更がスキーマに反映されることを確認
   - _Requirements: 7.1, 3.3, 4.4, 9.4_
 
-- [ ] 1.2 (P) FCM クライアントの data メッセージ対応
+- [x] 1.2 (P) FCM クライアントの data メッセージ対応
   - 送信リクエストに `data`（文字列キー/文字列値の map）を併存させ、`notification`（title/body）と同時に送れるようにする
   - data が空の場合は従来どおり notification のみ送信する（既存 ① 通知の後方互換）
   - テスト: data 付き送信で FCM リクエストボディに data が含まれることを検証
