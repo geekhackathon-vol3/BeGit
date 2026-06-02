@@ -179,6 +179,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	}
 
 	// Bearer 認証が必要なエンドポイント
+	r.GET("/me", bearerAuth, authHandler.Me)
 	r.GET("/groups", bearerAuth, groupHandler.List)
 	r.POST("/groups", bearerAuth, groupHandler.Create)
 	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)

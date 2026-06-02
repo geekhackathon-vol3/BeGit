@@ -18,6 +18,7 @@ import (
 // mockAuthService はテスト用の認証サービスモック
 type mockAuthService struct {
 	exchangeCodeFunc func(ctx context.Context, code string) (*service.AuthResult, error)
+	getUserFunc      func(ctx context.Context, userID int64) (*model.User, error)
 }
 
 func (m *mockAuthService) ExchangeCode(ctx context.Context, code string) (*service.AuthResult, error) {
@@ -28,6 +29,13 @@ func (m *mockAuthService) ExchangeCode(ctx context.Context, code string) (*servi
 		User:  model.User{ID: 1, GitHubLogin: "testuser"},
 		Token: "valid_token",
 	}, nil
+}
+
+func (m *mockAuthService) GetUser(ctx context.Context, userID int64) (*model.User, error) {
+	if m.getUserFunc != nil {
+		return m.getUserFunc(ctx, userID)
+	}
+	return &model.User{ID: userID, GitHubLogin: "testuser"}, nil
 }
 
 // newAuthRouter は /auth/github を登録したテスト用 gin エンジンを作る
@@ -122,5 +130,60 @@ func TestAuthHandler_ContentTypeJSON(t *testing.T) {
 	contentType := rr.Header().Get("Content-Type")
 	if !strings.HasPrefix(contentType, "application/json") {
 		t.Errorf("expected Content-Type application/json, got %s", contentType)
+	}
+}
+
+// newMeRouter は GET /me を登録したテスト用 gin エンジンを作る。
+// bearerAuth の代わりに userID を直接コンテキストへ注入するミドルウェアを挟む
+// （userID 注入後のハンドラ挙動のみを検証するため）。
+func newMeRouter(svc service.AuthService, userID int64, authed bool) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/me", func(c *gin.Context) {
+		if authed {
+			c.Set(ctxUserID, userID)
+		}
+		c.Next()
+	}, NewAuthHandler(svc).Me)
+	return r
+}
+
+// TestAuthHandler_Me は認証済みユーザーの情報を 200 で返すことを確認する
+func TestAuthHandler_Me(t *testing.T) {
+	authSvc := &mockAuthService{
+		getUserFunc: func(ctx context.Context, userID int64) (*model.User, error) {
+			return &model.User{
+				ID:          userID,
+				GitHubLogin: "octocat",
+				GitHubName:  "The Octocat",
+				AvatarURL:   "https://example.com/octocat.png",
+			}, nil
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	rr := httptest.NewRecorder()
+	newMeRouter(authSvc, 7, true).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+	var got UserJSON
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if got.ID != 7 || got.Login != "octocat" || got.Name != "The Octocat" {
+		t.Errorf("unexpected user: %+v", got)
+	}
+}
+
+// TestAuthHandler_Me_Unauthorized は userID 未注入時に 401 を返すことを確認する
+func TestAuthHandler_Me_Unauthorized(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/me", nil)
+	rr := httptest.NewRecorder()
+	newMeRouter(&mockAuthService{}, 0, false).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rr.Code)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/internal/service"
 )
 
@@ -84,5 +85,43 @@ func (h *AuthHandler) GitHub(c *gin.Context) {
 			Name:      result.User.GitHubName,
 		},
 		Token: result.Token,
+	})
+}
+
+// Me は現在ログイン中のユーザー情報を返す
+//
+//	@Summary		現在のユーザー情報
+//	@Description	Bearer トークンで認証されたユーザー自身の情報を返す
+//	@Tags			auth
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Success		200	{object}	UserJSON
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		404	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/me [get]
+func (h *AuthHandler) Me(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	user, err := h.authService.GetUser(c.Request.Context(), userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			respondError(c, http.StatusNotFound, "not found")
+			return
+		}
+		log.Printf("get me failed: %v", err)
+		respondError(c, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	c.JSON(http.StatusOK, UserJSON{
+		ID:        user.ID,
+		Login:     user.GitHubLogin,
+		AvatarURL: user.AvatarURL,
+		Name:      user.GitHubName,
 	})
 }

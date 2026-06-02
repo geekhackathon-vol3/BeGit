@@ -15,6 +15,7 @@ type UserRepository interface {
 	GetByEncryptedToken(ctx context.Context, encryptedToken string) (*model.User, error)
 	UpsertUser(ctx context.Context, user *model.User) (*model.User, error)
 	GetByGitHubLogin(ctx context.Context, login string) (*model.User, error)
+	GetByID(ctx context.Context, id int64) (*model.User, error)
 }
 
 // userRepository は UserRepository インターフェースの実装
@@ -103,6 +104,22 @@ func (r *userRepository) UpsertUser(ctx context.Context, user *model.User) (*mod
 
 	// 挿入後のレコードを取得して返す
 	return r.GetByGitHubLogin(ctx, user.GitHubLogin)
+}
+
+// GetByID は id でユーザーを検索する
+func (r *userRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
+	rows, err := r.db.Query(ctx,
+		"SELECT id, github_id, github_login, github_name, avatar_url, encrypted_access_token, created_at FROM users WHERE id = ? LIMIT 1",
+		[]interface{}{id},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("user_repository: GetByID failed: %w", err)
+	}
+
+	return scanUser(rows[0])
 }
 
 // GetByGitHubLogin は github_login でユーザーを検索する

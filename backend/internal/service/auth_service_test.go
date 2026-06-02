@@ -83,6 +83,14 @@ type mockUserRepository struct {
 	getByEncryptedTokenFunc func(ctx context.Context, encryptedToken string) (*model.User, error)
 	upsertUserFunc          func(ctx context.Context, user *model.User) (*model.User, error)
 	getByGitHubLoginFunc    func(ctx context.Context, login string) (*model.User, error)
+	getByIDFunc             func(ctx context.Context, id int64) (*model.User, error)
+}
+
+func (m *mockUserRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, id)
+	}
+	return nil, errors.New("not found")
 }
 
 func (m *mockUserRepository) GetByEncryptedToken(ctx context.Context, encryptedToken string) (*model.User, error) {

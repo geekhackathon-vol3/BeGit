@@ -34,6 +34,10 @@ func (r *fakeUserRepo) GetByGitHubLogin(ctx context.Context, login string) (*mod
 	return nil, nil
 }
 
+func (r *fakeUserRepo) GetByID(ctx context.Context, id int64) (*model.User, error) {
+	return nil, nil
+}
+
 const testEncKey = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
 
 // newDevAuthRouter は /auth/dev を登録したテスト用 gin エンジンを作る。
