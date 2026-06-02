@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 )
@@ -63,5 +65,33 @@ func TestConfigValidation_MissingRequired(t *testing.T) {
 	_, err := loadConfig()
 	if err == nil {
 		t.Error("loadConfig() should fail when required env vars are missing")
+	}
+}
+
+func TestBuildHandler_AllowsMissingR2Credentials(t *testing.T) {
+	srv := &server{
+		cfg: &Config{
+			GitHubClientID:      "test_client_id",
+			GitHubClientSecret:  "test_client_secret",
+			GitHubWebhookSecret: "test_webhook_secret",
+			DBEncryptionKey:     "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+			CFAccountID:         "test_account_id",
+			D1DatabaseID:        "test_database_id",
+			CFAPIToken:          "test_api_token",
+			AppBaseURL:          "https://example.com",
+		},
+	}
+
+	handler, err := srv.buildHandler()
+	if err != nil {
+		t.Fatalf("buildHandler() should not require R2 credentials for auth routes: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected healthz status 200, got %d", rr.Code)
 	}
 }

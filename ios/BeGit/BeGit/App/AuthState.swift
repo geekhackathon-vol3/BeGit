@@ -13,6 +13,7 @@ final class AuthState: ObservableObject {
     @Published var githubUser: GitHubUser?  // ログイン中のGitHubユーザー情報
 
     private let keychainManager: KeychainManaging   // トークン保存用Keychain
+    private let savedGitHubUserKey = "savedGitHubUser"
 
     init(keychainManager: any KeychainManaging) {
         self.keychainManager = keychainManager
@@ -24,7 +25,7 @@ final class AuthState: ObservableObject {
         let restoredSavedSession = restoreSavedSession()
 
 #if DEBUG
-        if devSessionEnabled || !restoredSavedSession {
+        if devSessionEnabled && !restoredSavedSession {
             applyDevSession()
         }
 #endif
@@ -33,10 +34,12 @@ final class AuthState: ObservableObject {
     private func restoreSavedSession() -> Bool {
         do {
             accessToken = try keychainManager.readAccessToken()
+            githubUser = restoreSavedGitHubUser()
             isLoggedIn = accessToken != nil
             return isLoggedIn
         } catch {
             accessToken = nil
+            githubUser = nil
             isLoggedIn = false
             return false
         }
@@ -47,6 +50,12 @@ final class AuthState: ObservableObject {
         accessToken = response.accessToken
         githubUser = response.githubUser
         isLoggedIn = true
+        saveGitHubUser(response.githubUser)
+    }
+
+    func updateGitHubUser(_ githubUser: GitHubUser) {
+        self.githubUser = githubUser
+        saveGitHubUser(githubUser)
     }
 
     //  ログアウト処理
@@ -60,6 +69,7 @@ final class AuthState: ObservableObject {
         accessToken = nil
         githubUser = nil
         isLoggedIn = false
+        UserDefaults.standard.removeObject(forKey: savedGitHubUserKey)
     }
 
     private func applyDevSession() {
@@ -76,5 +86,45 @@ final class AuthState: ObservableObject {
     private var devSessionEnabled: Bool {
         let environmentValue = ProcessInfo.processInfo.environment["BEGIT_DEV_SESSION_ENABLED"]
         return environmentValue == "1" || UserDefaults.standard.bool(forKey: "devSessionEnabled")
+    }
+
+    private func restoreSavedGitHubUser() -> GitHubUser? {
+        guard let data = UserDefaults.standard.data(forKey: savedGitHubUserKey),
+              let savedUser = try? JSONDecoder().decode(SavedGitHubUser.self, from: data) else {
+            return nil
+        }
+
+        return savedUser.githubUser
+    }
+
+    private func saveGitHubUser(_ githubUser: GitHubUser) {
+        guard let data = try? JSONEncoder().encode(SavedGitHubUser(githubUser: githubUser)) else {
+            return
+        }
+
+        UserDefaults.standard.set(data, forKey: savedGitHubUserKey)
+    }
+}
+
+private struct SavedGitHubUser: Codable {
+    let id: Int
+    let login: String
+    let avatarURLString: String?
+    let email: String?
+
+    init(githubUser: GitHubUser) {
+        id = githubUser.id
+        login = githubUser.login
+        avatarURLString = githubUser.avatarURL?.absoluteString
+        email = githubUser.email
+    }
+
+    var githubUser: GitHubUser {
+        GitHubUser(
+            id: id,
+            login: login,
+            avatarURL: avatarURLString.flatMap(URL.init(string:)),
+            email: email
+        )
     }
 }

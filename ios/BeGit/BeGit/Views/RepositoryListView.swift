@@ -9,15 +9,18 @@ struct RepositoryListView: View {
     @EnvironmentObject private var authState: AuthState         //  アプリ全体で共有される認証状態
     @StateObject private var viewModel: RepositoryListViewModel //  Repository一覧状態を管理するViewModel
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
+    private let githubUserAPI: any GitHubUserAPI
 
     //  デフォルトViewModelで初期化
-    init() {
+    init(githubUserAPI: any GitHubUserAPI = GitHubUserClient()) {
         _viewModel = StateObject(wrappedValue: RepositoryListViewModel())
+        self.githubUserAPI = githubUserAPI
     }
 
     //  外部ViewModel注入用
-    init(viewModel: RepositoryListViewModel) {
+    init(viewModel: RepositoryListViewModel, githubUserAPI: any GitHubUserAPI = GitHubUserClient()) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.githubUserAPI = githubUserAPI
     }
 
     var body: some View {
@@ -98,10 +101,12 @@ struct RepositoryListView: View {
                 destination(for: route)
             }
             .task {
+                await refreshLoggedInUserIfNeeded(accessToken: authState.accessToken)
                 await viewModel.loadRepositories(accessToken: authState.accessToken)
             }
             .onChange(of: authState.accessToken) { _, accessToken in
                 Task {
+                    await refreshLoggedInUserIfNeeded(accessToken: accessToken)
                     await viewModel.loadRepositories(accessToken: accessToken)
                 }
             }
@@ -191,6 +196,21 @@ struct RepositoryListView: View {
             .foregroundStyle(.white.opacity(0.62))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
+    }
+
+    private func refreshLoggedInUserIfNeeded(accessToken: String?) async {
+        guard authState.githubUser == nil,
+              let accessToken,
+              accessToken.isEmpty == false else {
+            return
+        }
+
+        do {
+            let githubUser = try await githubUserAPI.getAuthenticatedUser(accessToken: accessToken)
+            authState.updateGitHubUser(githubUser)
+        } catch {
+            // Repository一覧取得側で認証エラーを表示するため、ここではユーザー補完だけを諦める
+        }
     }
 
     //  routeに応じて遷移先Viewを生成
