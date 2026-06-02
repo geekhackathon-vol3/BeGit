@@ -1079,20 +1079,16 @@ paths:
           type: integer
       requestBody:
         content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - title: main
+                type: file
+              - title: front
+                type: file
           multipart/form-data:
             schema:
               type: object
-              properties:
-                main:
-                  type: string
-                  contentMediaType: image/jpeg
-                  description: 背面写真（image/jpeg, image/png, image/heic）
-                front:
-                  type: string
-                  contentMediaType: image/jpeg
-                  description: 前面写真（任意）
-              required:
-                - main
         description: 背面写真（image/jpeg, image/png, image/heic） | 前面写真（任意）
       responses:
         "201":
