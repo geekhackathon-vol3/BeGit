@@ -3,10 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
 [vars]
-CF_ACCOUNT_ID = ""
+CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 R2_BUCKET = "begit-photos"
-APP_BASE_URL = ""
+APP_BASE_URL = "https://begit.118029-ichikama.workers.dev"
 
 # R2 への S3 互換アクセス用シークレット（CF_API_TOKEN とは別物）。
 # R2 ダッシュボード「Manage R2 API Tokens」で Access Key を発行し、本番に登録する:

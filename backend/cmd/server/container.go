@@ -65,12 +65,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	case cfg.R2AccessKeyID != "" && cfg.R2SecretAccessKey != "":
 		r2Client = r2.NewClient(cfg.CFAccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, r2Bucket)
 		log.Printf("R2 client configured (bucket=%s)", r2Bucket)
-	case cfg.DevMode:
-		r2Client = r2.NewStubClient()
-		log.Printf("DEV_MODE: R2 credentials not set, using stub R2 client")
 	default:
-		// 本番で認証情報が無い場合はサーバー起動を中断する
-		return nil, fmt.Errorf("R2 credentials (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) are required in production mode")
+		r2Client = r2.NewStubClient()
+		log.Printf("Warning: R2 credentials not set, using stub R2 client (photo upload is disabled)")
 	}
 
 	// Repository 層の初期化

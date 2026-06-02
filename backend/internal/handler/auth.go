@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,7 @@ func (h *AuthHandler) GitHub(c *gin.Context) {
 			respondError(c, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		log.Printf("auth github exchange failed: %v", err)
 		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
 	}

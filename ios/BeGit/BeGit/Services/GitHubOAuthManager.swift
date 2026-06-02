@@ -7,6 +7,7 @@ import Foundation
 import UIKit
 
 //  GitHubログイン機能のインターフェース
+@MainActor
 protocol GitHubOAuthManaging: AnyObject, ObservableObject {
     var activeAlert: OAuthAlertContext? { get }
     func startLogin()
@@ -27,6 +28,7 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
     private var authState: AuthState?
     private var authAPI: any AuthAPI = MockAuthAPI()
+    private var githubUserAPI: any GitHubUserAPI = GitHubUserClient()
     private var keychainManager: any KeychainManaging = KeychainManager()
     private var authenticationSession: ASWebAuthenticationSession?
     private var currentOAuthState = UUID().uuidString   //  ログインごとに新しいstateを生成
@@ -35,10 +37,12 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
     func configure(
         authState: AuthState,
         authAPI: any AuthAPI,
+        githubUserAPI: any GitHubUserAPI = GitHubUserClient(),
         keychainManager: any KeychainManaging
     ) {
         self.authState = authState
         self.authAPI = authAPI
+        self.githubUserAPI = githubUserAPI
         self.keychainManager = keychainManager
     }
 
@@ -68,9 +72,11 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
                 do {
                     let code = try self.extractCode(from: callbackURL)
-                    let response = try await self.authAPI.exchangeCode(code: code)  //  認証コードをアクセストークンへ交換
-                    try self.keychainManager.saveAccessToken(response.accessToken)  //  アクセストークンをKeychainへ保存
-                    self.authState?.completeLogin(response: response)               //  ログイン状態へ更新
+                    let authResponse = try await self.authAPI.exchangeCode(code: code)  //  認証コードをアクセストークンへ交換
+                    let githubUser = try await self.githubUserAPI.getAuthenticatedUser(accessToken: authResponse.accessToken)
+                    let response = AuthResponse(accessToken: authResponse.accessToken, githubUser: githubUser)
+                    try self.keychainManager.saveAccessToken(response.accessToken)       //  アクセストークンをKeychainへ保存
+                    self.authState?.completeLogin(response: response)                    //  ログイン状態へ更新
                 } catch {
                     self.activeAlert = .init(error: self.mapFlowError(error))
                 }

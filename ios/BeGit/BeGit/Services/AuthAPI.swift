@@ -27,6 +27,11 @@ protocol AuthAPI: Sendable {
     func exchangeCode(code: String) async throws -> AuthResponse
 }
 
+// GitHubのログイン中ユーザー情報を取得するAPIインターフェース
+protocol GitHubUserAPI: Sendable {
+    func getAuthenticatedUser(accessToken: String) async throws -> GitHubUser
+}
+
 // リポジトリ関連APIインターフェース
 protocol RepositoryAPI: Sendable {
     // 参加中のリポジトリ一覧を取得
@@ -39,6 +44,39 @@ protocol RepositoryAPI: Sendable {
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
     // メンバーへ通知を送信     
     func sendNotification(repositoryID: Int64, accessToken: String) async throws
+}
+
+// GitHub REST APIを使うログイン中ユーザー取得クライアント
+struct GitHubUserClient: GitHubUserAPI {
+    private let apiBaseURL = URL(string: "https://api.github.com")!
+    private let session: URLSession
+    private let decoder: JSONDecoder
+
+    init(session: URLSession = .shared) {
+        self.session = session
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        self.decoder = decoder
+    }
+
+    func getAuthenticatedUser(accessToken: String) async throws -> GitHubUser {
+        var request = URLRequest(url: apiBaseURL.appending(path: "user"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: nil)
+        }
+
+        return try decoder.decode(AuthenticatedGitHubUserResponse.self, from: data).githubUser
+    }
 }
 
 // BeGitバックエンドとの通信を行う実装
@@ -212,6 +250,22 @@ struct MockAuthAPI: AuthAPI {
 // GitHub認証リクエストDTO
 private struct AuthRequestDTO: Encodable {
     let code: String
+}
+
+private struct AuthenticatedGitHubUserResponse: Decodable {
+    let id: Int
+    let login: String
+    let avatarUrl: String?
+    let email: String?
+
+    var githubUser: GitHubUser {
+        GitHubUser(
+            id: id,
+            login: login,
+            avatarURL: avatarUrl.flatMap(URL.init(string:)),
+            email: email
+        )
+    }
 }
 
 private struct EmptyRequestDTO: Encodable {}
