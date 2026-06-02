@@ -76,6 +76,24 @@ type PostFeed struct {
 	Login     string
 	AvatarURL string
 	Blurred   bool
+	// Photos は投稿に紐づく写真（presigned URL 付き）。ぼかし対象では空にする。
+	Photos []FeedPhoto
+}
+
+// Photo は posts に紐づく写真。R2 バケット "begit-photos" のオブジェクトキーを保持する。
+type Photo struct {
+	ID        int64
+	PostID    int64
+	R2Key     string
+	PhotoType string // "main"（背面） | "front"（前面）
+	CreatedAt time.Time
+}
+
+// FeedPhoto はフィード返却用の写真（presigned GET URL 付き）
+type FeedPhoto struct {
+	ID        int64
+	PhotoType string
+	URL       string
 }
 
 // Reaction は投稿へのリアクション。UNIQUE(post_id, user_id, reaction_type)。
