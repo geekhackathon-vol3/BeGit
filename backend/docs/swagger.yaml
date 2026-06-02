@@ -190,6 +190,15 @@ components:
         notification_id:
           type: integer
       type: object
+    handler.PhotoJSON:
+      properties:
+        id:
+          type: integer
+        photo_type:
+          type: string
+        url:
+          type: string
+      type: object
     handler.PostFeedJSON:
       properties:
         additions:
@@ -210,6 +219,11 @@ components:
           type: string
         login:
           type: string
+        photos:
+          items:
+            $ref: '#/components/schemas/handler.PhotoJSON'
+          type: array
+          uniqueItems: false
         post_type:
           type: string
         repo_full_name:
@@ -305,6 +319,14 @@ components:
         fcm_token:
           example: fcm-device-token
           type: string
+      type: object
+    handler.UploadPhotosResponse:
+      properties:
+        photos:
+          items:
+            $ref: '#/components/schemas/handler.PhotoJSON'
+          type: array
+          uniqueItems: false
       type: object
     handler.UserJSON:
       properties:
@@ -1039,6 +1061,95 @@ paths:
       summary: コメント削除
       tags:
       - comments
+  /groups/{id}/posts/{postId}/photos:
+    post:
+      description: 投稿に main（背面・必須）/ front（前面・任意）の写真を multipart で紐付け、R2 に保存する
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - title: main
+                type: file
+              - title: front
+                type: file
+          multipart/form-data:
+            schema:
+              type: object
+        description: 背面写真（image/jpeg, image/png, image/heic） | 前面写真（任意）
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.UploadPhotosResponse'
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "413":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Request Entity Too Large
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: 写真アップロード
+      tags:
+      - photos
   /groups/{id}/posts/{postId}/reactions:
     get:
       parameters:

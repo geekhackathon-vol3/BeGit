@@ -3,11 +3,16 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
 	githubpkg "github.com/irj0927/begit/pkg/github"
+	"github.com/irj0927/begit/pkg/r2"
 )
+
+// feedPhotoURLTTL はフィードで返す presigned GET URL の有効期限
+const feedPhotoURLTTL = time.Hour
 
 // CreatePostRequest は投稿作成リクエスト
 type CreatePostRequest struct {
@@ -30,20 +35,27 @@ type postService struct {
 	sprintRepo   repository.SprintRepository
 	postRepo     repository.PostRepository
 	groupRepo    repository.GroupRepository
+	photoRepo    repository.PhotoRepository
+	r2Client     r2.Client
 }
 
-// NewPostService は PostService を作成する
+// NewPostService は PostService を作成する。
+// photoRepo / r2Client はフィードに写真の presigned URL を付与するために使う（nil 可）。
 func NewPostService(
 	githubClient githubpkg.Client,
 	sprintRepo repository.SprintRepository,
 	postRepo repository.PostRepository,
 	groupRepo repository.GroupRepository,
+	photoRepo repository.PhotoRepository,
+	r2Client r2.Client,
 ) PostService {
 	return &postService{
 		githubClient: githubClient,
 		sprintRepo:   sprintRepo,
 		postRepo:     postRepo,
 		groupRepo:    groupRepo,
+		photoRepo:    photoRepo,
+		r2Client:     r2Client,
 	}
 }
 
@@ -122,7 +134,21 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		}
 	}
 
-	// Step 5: PostFeed を構築し、ぼかし制御を適用
+	// Step 5: 投稿に紐づく写真をまとめて取得（N+1 回避）
+	photoMap := make(map[int64][]model.Photo)
+	if s.photoRepo != nil && len(posts) > 0 {
+		postIDs := make([]int64, 0, len(posts))
+		for _, p := range posts {
+			postIDs = append(postIDs, p.ID)
+		}
+		m, err := s.photoRepo.ListByPostIDs(ctx, postIDs)
+		if err != nil {
+			return nil, fmt.Errorf("post_service: ListByPostIDs failed: %w", err)
+		}
+		photoMap = m
+	}
+
+	// Step 6: PostFeed を構築し、ぼかし制御を適用
 	feeds := make([]model.PostFeed, 0, len(posts))
 	for _, post := range posts {
 		feed := model.PostFeed{
@@ -142,10 +168,34 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 			feed.Body = nil
 			feed.RepoFullName = nil
 			feed.LatestCommitMessage = nil
+			// ぼかし対象は写真も返さない
+		} else {
+			feed.Photos = s.buildFeedPhotos(photoMap[post.ID])
 		}
 
 		feeds = append(feeds, feed)
 	}
 
 	return feeds, nil
+}
+
+// buildFeedPhotos は写真に presigned GET URL を付与してフィード用に変換する。
+// r2Client が未設定、または URL 生成に失敗した写真はスキップする。
+func (s *postService) buildFeedPhotos(photos []model.Photo) []model.FeedPhoto {
+	if s.r2Client == nil || len(photos) == 0 {
+		return nil
+	}
+	out := make([]model.FeedPhoto, 0, len(photos))
+	for _, p := range photos {
+		url, err := s.r2Client.PresignGetURL(p.R2Key, feedPhotoURLTTL)
+		if err != nil {
+			continue
+		}
+		out = append(out, model.FeedPhoto{
+			ID:        p.ID,
+			PhotoType: p.PhotoType,
+			URL:       url,
+		})
+	}
+	return out
 }

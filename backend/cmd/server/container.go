@@ -16,6 +16,7 @@ import (
 	"github.com/irj0927/begit/pkg/d1"
 	"github.com/irj0927/begit/pkg/fcm"
 	githubpkg "github.com/irj0927/begit/pkg/github"
+	"github.com/irj0927/begit/pkg/r2"
 )
 
 // buildHandler は依存関係を接続してルーターを構築する。
@@ -49,6 +50,29 @@ func (s *server) buildHandler() (http.Handler, error) {
 		}
 	}
 
+	// R2 クライアント。
+	// R2 認証情報（R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY）が設定されていれば実 R2 を使う。
+	// DEV_MODE かつ認証情報が無い場合のみスタブ（実 R2 なしでローカル/dev が起動できる）。
+	// begit-dev で実 R2(begit-photos) を検証する場合は secret を登録する:
+	//   cd backend && npx wrangler secret put R2_ACCESS_KEY_ID --env dev
+	//   cd backend && npx wrangler secret put R2_SECRET_ACCESS_KEY --env dev
+	r2Bucket := cfg.R2Bucket
+	if r2Bucket == "" {
+		r2Bucket = "begit-photos"
+	}
+	var r2Client r2.Client
+	switch {
+	case cfg.R2AccessKeyID != "" && cfg.R2SecretAccessKey != "":
+		r2Client = r2.NewClient(cfg.CFAccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, r2Bucket)
+		log.Printf("R2 client configured (bucket=%s)", r2Bucket)
+	case cfg.DevMode:
+		r2Client = r2.NewStubClient()
+		log.Printf("DEV_MODE: R2 credentials not set, using stub R2 client")
+	default:
+		// 本番で認証情報が無い場合はサーバー起動を中断する
+		return nil, fmt.Errorf("R2 credentials (R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) are required in production mode")
+	}
+
 	// Repository 層の初期化
 	userRepo := repository.NewUserRepository(d1Client)
 	groupRepo := repository.NewGroupRepository(d1Client)
@@ -59,6 +83,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	fcmTokenRepo := repository.NewFCMTokenRepository(d1Client)
 	reactionRepo := repository.NewReactionRepository(d1Client)
 	commentRepo := repository.NewCommentRepository(d1Client)
+	photoRepo := repository.NewPhotoRepository(d1Client)
 
 	// Service 層の初期化
 	authSvc := service.NewAuthService(
@@ -90,7 +115,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 		postRepo,
 	)
 
-	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo)
+	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client)
+
+	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo)
 
 	webhookSvc := service.NewWebhookService(groupRepo, sprintRepo)
 
@@ -107,6 +134,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	groupHandler := handler.NewGroupHandler(groupSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	postHandler := handler.NewPostHandler(postSvc)
+	photoHandler := handler.NewPhotoHandler(photoSvc, r2Client)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, webhookRepo, cfg.GitHubWebhookSecret)
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc)
 	reactionHandler := handler.NewReactionHandler(reactionSvc)
@@ -167,6 +195,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupMember, photoHandler.Upload)
 	r.POST("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.Create)
 	r.DELETE("/groups/:id/posts/:postId/reactions/:reactionType", bearerAuth, groupMember, reactionHandler.Delete)
 	r.GET("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.List)

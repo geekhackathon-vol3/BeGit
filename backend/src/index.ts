@@ -11,9 +11,13 @@ interface Env {
   FIREBASE_SERVICE_ACCOUNT_JSON: string;
   DB_ENCRYPTION_KEY: string;
   CF_API_TOKEN: string;
+  // R2 S3 互換 API 認証情報（Secrets）。R2 ダッシュボードで発行する Access Key。
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
   // [vars] in wrangler.toml
   CF_ACCOUNT_ID: string;
   D1_DATABASE_ID: string;
+  R2_BUCKET: string;
   APP_BASE_URL: string;
   // dev 環境でのみ "true"（[env.dev.vars]）。dev 認証バイパスを有効化する。
   DEV_MODE: string;
@@ -38,6 +42,9 @@ export default {
         'X-Internal-CF-Account-Id': env.CF_ACCOUNT_ID ?? '',
         'X-Internal-D1-Database-Id': env.D1_DATABASE_ID ?? '',
         'X-Internal-CF-Api-Token': env.CF_API_TOKEN ?? '',
+        'X-Internal-R2-Access-Key-Id': env.R2_ACCESS_KEY_ID ?? '',
+        'X-Internal-R2-Secret-Access-Key': env.R2_SECRET_ACCESS_KEY ?? '',
+        'X-Internal-R2-Bucket': env.R2_BUCKET ?? '',
         'X-Internal-App-Base-URL': env.APP_BASE_URL ?? '',
         'X-Internal-Dev-Mode': env.DEV_MODE ?? '',
       }

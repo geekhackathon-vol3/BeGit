@@ -37,8 +37,9 @@ type PostJSON struct {
 // PostFeedJSON はフィードレスポンス型
 type PostFeedJSON struct {
 	PostJSON
-	Login     string `json:"login"`
-	AvatarURL string `json:"avatar_url"`
+	Login     string      `json:"login"`
+	AvatarURL string      `json:"avatar_url"`
+	Photos    []PhotoJSON `json:"photos"`
 }
 
 // PostListResponse は GET /groups/:id/posts のレスポンス
@@ -156,6 +157,10 @@ func (h *PostHandler) List(c *gin.Context) {
 
 	result := make([]PostFeedJSON, 0, len(feeds))
 	for _, feed := range feeds {
+		photos := make([]PhotoJSON, 0, len(feed.Photos))
+		for _, p := range feed.Photos {
+			photos = append(photos, PhotoJSON{ID: p.ID, PhotoType: p.PhotoType, URL: p.URL})
+		}
 		result = append(result, PostFeedJSON{
 			PostJSON: PostJSON{
 				ID:                  feed.ID,
@@ -172,6 +177,7 @@ func (h *PostHandler) List(c *gin.Context) {
 			},
 			Login:     feed.Login,
 			AvatarURL: feed.AvatarURL,
+			Photos:    photos,
 		})
 	}
 
