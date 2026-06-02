@@ -3,6 +3,7 @@
 //  生成型のプロパティは Optional・整数は Int なので、ここで既定値補完や Int64 変換を行う。
 
 import Foundation
+import BeGitOpenAPIClient
 
 // 共有 ISO8601 フォーマッタ：小数秒あり・なし両対応
 private let sharedISO8601DateFormatter: ISO8601DateFormatter = {

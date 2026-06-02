@@ -7,6 +7,7 @@ import Foundation
 import OpenAPIRuntime
 import OpenAPIURLSession
 import HTTPTypes
+import BeGitOpenAPIClient
 
 // Authorization: Bearer を全リクエストへ付与する。
 private struct AuthMiddleware: ClientMiddleware {
@@ -160,6 +161,8 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     }
 }
 
-private struct ErrorResponseDTO: Decodable {
+// nonisolated 指定：アプリは MainActor 既定隔離のため、これを付けないと Decodable 適合も
+// MainActor 隔離になり、上の nonisolated な ErrorThrowingMiddleware から decode できない。
+private nonisolated struct ErrorResponseDTO: Decodable {
     let error: String
 }
