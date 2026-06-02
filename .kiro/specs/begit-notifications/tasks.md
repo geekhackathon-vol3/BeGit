@@ -64,7 +64,7 @@
   - _Boundary: notification_payload_
   - _Depends: 1.2_
 
-- [ ] 3.2 ① BeGit Time! 発行への時間的非共存ルール追加
+- [x] 3.2 ① BeGit Time! 発行への時間的非共存ルール追加
   - 発行時にアクティブな（`sent_at + 1h > now()`）チャレンジが存在すれば 409 Conflict を返す（サービス層判定）
   - `UNIQUE(sprint_id, sent_by)` 違反も従来どおり 409。発行成功時は `type=begit_time` の data 付き FCM をグループ全員へ送る
   - テスト: アクティブ通知ありで 409、無しで発行成功＋begit_time data 送信、同一ユーザー再発行の扱いを検証

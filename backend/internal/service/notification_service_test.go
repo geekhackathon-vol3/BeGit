@@ -8,6 +8,7 @@ import (
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
+	"github.com/irj0927/begit/pkg/fcm"
 )
 
 // mockSprintRepository はテスト用のスプリントリポジトリモック
@@ -191,15 +192,25 @@ func (m *mockFCMTokenRepository) DeleteByUserID(ctx context.Context, userID int6
 	return nil
 }
 
-// mockFCMClient はテスト用の FCM クライアントモック
-type mockFCMClient struct {
-	sendToTokensFunc func(ctx context.Context, tokens []string, notification fcmNotification) error
+// fakeFCMClient は pkg/fcm.Client を実装するテスト用クライアント。
+// 送信された data を捕捉して検証に使う。
+type fakeFCMClient struct {
+	withDataCalls []fcmWithDataCall
 }
 
-// fcmNotification はモックで使う通知型（pkg/fcm の Notification と分離）
-type fcmNotification struct {
-	Title string
-	Body  string
+type fcmWithDataCall struct {
+	tokens       []string
+	notification fcm.Notification
+	data         map[string]string
+}
+
+func (f *fakeFCMClient) SendToTokens(ctx context.Context, tokens []string, notification fcm.Notification) error {
+	return f.SendToTokensWithData(ctx, tokens, notification, nil)
+}
+
+func (f *fakeFCMClient) SendToTokensWithData(ctx context.Context, tokens []string, notification fcm.Notification, data map[string]string) error {
+	f.withDataCalls = append(f.withDataCalls, fcmWithDataCall{tokens: tokens, notification: notification, data: data})
+	return nil
 }
 
 // TestNotificationService_SendNotification_Conflict は同一スプリントで2回目の通知発行を試みると ErrConflict が返ることを確認する
@@ -217,6 +228,80 @@ func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	_, err := svc.SendNotification(context.Background(), 1, 2)
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict, got %v", err)
+	}
+}
+
+// TestNotificationService_SendNotification_ActiveConflict はアクティブ通知が存在する場合に 409(ErrConflict) を返すことを確認する
+func TestNotificationService_SendNotification_ActiveConflict(t *testing.T) {
+	sprintRepo := &mockSprintRepository{}
+	createCalled := false
+	notifRepo := &mockNotificationRepository{
+		hasActiveInSprintFunc: func(ctx context.Context, sprintID int64) (bool, error) {
+			return true, nil
+		},
+		createFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+			createCalled = true
+			return notif, nil
+		},
+	}
+	fcmTokenRepo := &mockFCMTokenRepository{}
+	fcmClient := &fakeFCMClient{}
+
+	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, fcmClient)
+
+	_, err := svc.SendNotification(context.Background(), 1, 2)
+	if !errors.Is(err, ErrConflict) {
+		t.Errorf("expected ErrConflict when active challenge exists, got %v", err)
+	}
+	if createCalled {
+		t.Error("expected Create NOT to be called when an active challenge exists")
+	}
+	if len(fcmClient.withDataCalls) != 0 {
+		t.Error("expected no FCM send when conflicting")
+	}
+}
+
+// TestNotificationService_SendNotification_SuccessSendsBeGitTimeData は発行成功で begit_time data がグループ全員へ送られることを確認する
+func TestNotificationService_SendNotification_SuccessSendsBeGitTimeData(t *testing.T) {
+	sprintRepo := &mockSprintRepository{
+		getOrCreateFunc: func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error) {
+			return &model.Sprint{ID: 7, GroupID: groupID}, nil
+		},
+	}
+	notifRepo := &mockNotificationRepository{
+		hasActiveInSprintFunc: func(ctx context.Context, sprintID int64) (bool, error) {
+			return false, nil
+		},
+		createFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+			notif.ID = 345
+			return notif, nil
+		},
+	}
+	fcmTokenRepo := &mockFCMTokenRepository{
+		getTokensByGroupIDFunc: func(ctx context.Context, groupID int64) ([]string, error) {
+			return []string{"tokenA", "tokenB"}, nil
+		},
+	}
+	fcmClient := &fakeFCMClient{}
+
+	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, fcmClient)
+
+	notif, err := svc.SendNotification(context.Background(), 12, 2)
+	if err != nil {
+		t.Fatalf("SendNotification() failed: %v", err)
+	}
+	if notif.ID != 345 {
+		t.Errorf("expected notif id=345, got %d", notif.ID)
+	}
+	if len(fcmClient.withDataCalls) != 1 {
+		t.Fatalf("expected 1 FCM send, got %d", len(fcmClient.withDataCalls))
+	}
+	call := fcmClient.withDataCalls[0]
+	if len(call.tokens) != 2 {
+		t.Errorf("expected send to 2 tokens (whole group), got %d", len(call.tokens))
+	}
+	if call.data["type"] != "begit_time" || call.data["notification_id"] != "345" || call.data["sprint_id"] != "7" || call.data["group_id"] != "12" {
+		t.Errorf("unexpected begit_time data: %v", call.data)
 	}
 }
 

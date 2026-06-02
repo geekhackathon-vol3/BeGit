@@ -89,7 +89,7 @@ func NewNotificationServiceFull(
 	}
 }
 
-// SendNotification は現スプリントの取得/作成 → 通知 INSERT → FCM 送信を行う
+// SendNotification は現スプリントの取得/作成 → 時間非共存判定 → 通知 INSERT → FCM 送信を行う
 func (s *notificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
 	// Step 1: 現在のスプリントを取得または作成
 	sprint, err := s.sprintRepo.GetOrCreateCurrentSprint(ctx, groupID, 7)
@@ -97,7 +97,18 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		return nil, fmt.Errorf("notification_service: get/create sprint failed: %w", err)
 	}
 
-	// Step 2: 通知レコードを INSERT（UNIQUE 違反 → ErrConflict）
+	// Step 2: 時間的非共存ルール（Req1.3/1.5）。
+	// 同一スプリント内に sent_at + 1h > now() のアクティブな BeGit Time! が存在する間は新規発行不可。
+	// UNIQUE 制約では表現できないためサービス層で評価する。
+	active, err := s.notifRepo.HasActiveInSprint(ctx, sprint.ID)
+	if err != nil {
+		return nil, fmt.Errorf("notification_service: HasActiveInSprint failed: %w", err)
+	}
+	if active {
+		return nil, ErrConflict
+	}
+
+	// Step 3: 通知レコードを INSERT（UNIQUE(sprint_id,sent_by) 違反 → ErrConflict）
 	notif, err := s.notifRepo.Create(ctx, &model.Notification{
 		SprintID: sprint.ID,
 		SentBy:   userID,
@@ -110,14 +121,12 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		return nil, fmt.Errorf("notification_service: create notification failed: %w", err)
 	}
 
-	// Step 3: FCM でグループ全メンバーに Push 通知送信（エラーは無視）
+	// Step 4: FCM でグループ全メンバーに begit_time data メッセージ送信（ベストエフォート）
 	if s.fcmTokenRepo != nil && s.fcmClient != nil {
 		tokens, err := s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
 		if err == nil && len(tokens) > 0 {
-			_ = s.fcmClient.SendToTokens(ctx, tokens, fcm.Notification{
-				Title: "BeGit Time!",
-				Body:  "今なに作ってる？チームへの通知が届きました",
-			})
+			payload := BuildBeGitTime(groupID, notif.ID, sprint.ID)
+			_ = s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data)
 		}
 	}
 
