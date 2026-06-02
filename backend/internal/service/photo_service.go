@@ -128,6 +128,10 @@ func (s *photoService) UploadPhotos(ctx context.Context, req UploadPhotosRequest
 			for _, k := range uploadedKeys {
 				_ = s.r2Client.DeleteObject(ctx, k)
 			}
+			// Rollback: delete already created DB records
+			for _, id := range createdIDs {
+				_ = s.photoRepo.Delete(ctx, id)
+			}
 			return nil, fmt.Errorf("%w: r2 put failed: %v", ErrExternalAPI, err)
 		}
 		uploadedKeys = append(uploadedKeys, v.key)
@@ -143,8 +147,10 @@ func (s *photoService) UploadPhotos(ctx context.Context, req UploadPhotosRequest
 			for _, k := range uploadedKeys {
 				_ = s.r2Client.DeleteObject(ctx, k)
 			}
-			// Note: DB rollback would require transaction support or manual cleanup
-			// For now we rely on application-level retry logic
+			// Rollback: delete already created DB records
+			for _, id := range createdIDs {
+				_ = s.photoRepo.Delete(ctx, id)
+			}
 			return nil, fmt.Errorf("photo_service: Create failed: %w", err)
 		}
 		createdIDs = append(createdIDs, created.ID)

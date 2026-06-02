@@ -17,6 +17,7 @@ type PhotoRepository interface {
 	ListByPostID(ctx context.Context, postID int64) ([]model.Photo, error)
 	// ListByPostIDs は複数投稿の写真をまとめて取得し post_id ごとにグルーピングする（フィードの N+1 回避）
 	ListByPostIDs(ctx context.Context, postIDs []int64) (map[int64][]model.Photo, error)
+	Delete(ctx context.Context, photoID int64) error
 }
 
 // photoRepository は PhotoRepository インターフェースの実装
@@ -126,4 +127,16 @@ func (r *photoRepository) ListByPostIDs(ctx context.Context, postIDs []int64) (m
 		result[p.PostID] = append(result[p.PostID], *p)
 	}
 	return result, nil
+}
+
+// Delete は指定された photo_id のレコードを削除する
+func (r *photoRepository) Delete(ctx context.Context, photoID int64) error {
+	_, err := r.db.Query(ctx,
+		`DELETE FROM photos WHERE id = ?`,
+		[]interface{}{photoID},
+	)
+	if err != nil {
+		return fmt.Errorf("photo_repository: Delete failed: %w", err)
+	}
+	return nil
 }
