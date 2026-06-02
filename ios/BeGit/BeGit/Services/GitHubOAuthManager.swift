@@ -28,7 +28,7 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
     private var authState: AuthState?
     private var authAPI: any AuthAPI = MockAuthAPI()
-    private var githubUserAPI: any GitHubUserAPI = GitHubUserClient()
+    private var currentUserAPI: any CurrentUserAPI = BeGitBackendAPI()
     private var keychainManager: any KeychainManaging = KeychainManager()
     private var authenticationSession: ASWebAuthenticationSession?
     private var currentOAuthState = UUID().uuidString   //  ログインごとに新しいstateを生成
@@ -37,12 +37,12 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
     func configure(
         authState: AuthState,
         authAPI: any AuthAPI,
-        githubUserAPI: any GitHubUserAPI = GitHubUserClient(),
+        currentUserAPI: any CurrentUserAPI = BeGitBackendAPI(),
         keychainManager: any KeychainManaging
     ) {
         self.authState = authState
         self.authAPI = authAPI
-        self.githubUserAPI = githubUserAPI
+        self.currentUserAPI = currentUserAPI
         self.keychainManager = keychainManager
     }
 
@@ -73,7 +73,7 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
                 do {
                     let code = try self.extractCode(from: callbackURL)
                     let authResponse = try await self.authAPI.exchangeCode(code: code)  //  認証コードをアクセストークンへ交換
-                    let githubUser = try await self.githubUserAPI.getAuthenticatedUser(accessToken: authResponse.accessToken)
+                    let githubUser = try await self.currentUserAPI.getCurrentUser(accessToken: authResponse.accessToken)  //  /me で現在ユーザーを取得
                     let response = AuthResponse(accessToken: authResponse.accessToken, githubUser: githubUser)
                     try self.keychainManager.saveAccessToken(response.accessToken)       //  アクセストークンをKeychainへ保存
                     self.authState?.completeLogin(response: response)                    //  ログイン状態へ更新

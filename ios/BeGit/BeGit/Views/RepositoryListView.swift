@@ -9,18 +9,18 @@ struct RepositoryListView: View {
     @EnvironmentObject private var authState: AuthState         //  アプリ全体で共有される認証状態
     @StateObject private var viewModel: RepositoryListViewModel //  Repository一覧状態を管理するViewModel
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
-    private let githubUserAPI: any GitHubUserAPI
+    private let currentUserAPI: any CurrentUserAPI
 
     //  デフォルトViewModelで初期化
-    init(githubUserAPI: any GitHubUserAPI = GitHubUserClient()) {
+    init(currentUserAPI: any CurrentUserAPI = BeGitBackendAPI()) {
         _viewModel = StateObject(wrappedValue: RepositoryListViewModel())
-        self.githubUserAPI = githubUserAPI
+        self.currentUserAPI = currentUserAPI
     }
 
     //  外部ViewModel注入用
-    init(viewModel: RepositoryListViewModel, githubUserAPI: any GitHubUserAPI = GitHubUserClient()) {
+    init(viewModel: RepositoryListViewModel, currentUserAPI: any CurrentUserAPI = BeGitBackendAPI()) {
         _viewModel = StateObject(wrappedValue: viewModel)
-        self.githubUserAPI = githubUserAPI
+        self.currentUserAPI = currentUserAPI
     }
 
     var body: some View {
@@ -206,7 +206,7 @@ struct RepositoryListView: View {
         }
 
         do {
-            let githubUser = try await githubUserAPI.getAuthenticatedUser(accessToken: accessToken)
+            let githubUser = try await currentUserAPI.getCurrentUser(accessToken: accessToken)
             authState.updateGitHubUser(githubUser)
         } catch {
             // Repository一覧取得側で認証エラーを表示するため、ここではユーザー補完だけを諦める

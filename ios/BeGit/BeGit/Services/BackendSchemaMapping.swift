@@ -4,6 +4,17 @@
 
 import Foundation
 
+extension Components.Schemas.Handler_UserJSON {
+    func toGitHubUser() -> GitHubUser {
+        GitHubUser(
+            id: id ?? 0,
+            login: login ?? "",
+            avatarURL: avatarUrl.flatMap { URL(string: $0) },
+            email: nil
+        )
+    }
+}
+
 extension Components.Schemas.Handler_GroupJSON {
     func toRepository(members: [RepositoryMember]) -> Repository {
         let fullName = repoFullName ?? ""

@@ -11,6 +11,7 @@ namingStrategy: idiomatic
 filter:
   paths:
     - /auth/github
+    - /me
     - /groups
     - /groups/{id}
     - /groups/{id}/posts
