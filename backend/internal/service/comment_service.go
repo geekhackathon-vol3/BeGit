@@ -7,6 +7,7 @@ import (
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
+	"github.com/irj0927/begit/pkg/fcm"
 )
 
 // CommentService はコメントサービスインターフェース
@@ -23,9 +24,13 @@ type CommentService interface {
 type commentService struct {
 	commentRepo repository.CommentRepository
 	postRepo    repository.PostRepository
+	// ⑦ 通知用の依存（nil 可。未設定なら通知を送らない）
+	userRepo     userByIDRepo
+	fcmTokenRepo repository.FCMTokenRepository
+	fcmClient    fcm.Client
 }
 
-// NewCommentService は CommentService を作成する
+// NewCommentService は CommentService を作成する（通知無し。既存配線互換）
 func NewCommentService(
 	commentRepo repository.CommentRepository,
 	postRepo repository.PostRepository,
@@ -36,30 +41,58 @@ func NewCommentService(
 	}
 }
 
-// verifyPostInGroup は postID がそのグループに属することを確認する。
-func (s *commentService) verifyPostInGroup(ctx context.Context, groupID, postID int64) error {
+// NewCommentServiceWithNotifications は ⑦ コメント通知付きの CommentService を作成する
+func NewCommentServiceWithNotifications(
+	commentRepo repository.CommentRepository,
+	postRepo repository.PostRepository,
+	userRepo userByIDRepo,
+	fcmTokenRepo repository.FCMTokenRepository,
+	fcmClient fcm.Client,
+) CommentService {
+	return &commentService{
+		commentRepo:  commentRepo,
+		postRepo:     postRepo,
+		userRepo:     userRepo,
+		fcmTokenRepo: fcmTokenRepo,
+		fcmClient:    fcmClient,
+	}
+}
+
+// getPostInGroup は postID がそのグループに属することを確認し、投稿を返す。
+func (s *commentService) getPostInGroup(ctx context.Context, groupID, postID int64) (*model.Post, error) {
 	post, err := s.postRepo.GetByID(ctx, postID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return ErrNotFound
+			return nil, ErrNotFound
 		}
-		return fmt.Errorf("comment_service: verifyPostInGroup failed: %w", err)
+		return nil, fmt.Errorf("comment_service: getPostInGroup failed: %w", err)
 	}
 	if post.GroupID != groupID {
-		return ErrNotFound
+		return nil, ErrNotFound
 	}
-	return nil
+	return post, nil
+}
+
+// verifyPostInGroup は postID がそのグループに属することを確認する。
+func (s *commentService) verifyPostInGroup(ctx context.Context, groupID, postID int64) error {
+	_, err := s.getPostInGroup(ctx, groupID, postID)
+	return err
 }
 
 // CreateComment はコメントを作成して返す。
 func (s *commentService) CreateComment(ctx context.Context, groupID, postID, userID int64, body string) (*model.Comment, error) {
-	if err := s.verifyPostInGroup(ctx, groupID, postID); err != nil {
+	post, err := s.getPostInGroup(ctx, groupID, postID)
+	if err != nil {
 		return nil, err
 	}
 	comment, err := s.commentRepo.Create(ctx, postID, userID, body)
 	if err != nil {
 		return nil, fmt.Errorf("comment_service: CreateComment failed: %w", err)
 	}
+
+	// ⑦ 投稿者本人へ comment 通知（自己抑制・ベストエフォート）
+	notifyPostAuthor(ctx, s.userRepo, s.fcmTokenRepo, s.fcmClient, post, userID, BuildComment)
+
 	return comment, nil
 }
 

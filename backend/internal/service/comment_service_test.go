@@ -45,6 +45,54 @@ func (m *mockCommentRepository) Delete(ctx context.Context, commentID int64) err
 	return nil
 }
 
+// TestComment_NotifiesAuthor_OnOtherUser は他者操作で投稿者へ comment を送ることを確認する
+func TestComment_NotifiesAuthor_OnOtherUser(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 99}, nil
+		},
+	}
+	userRepo := &mockUserByID{
+		getByIDFunc: func(ctx context.Context, id int64) (*model.User, error) {
+			return &model.User{ID: id, GitHubLogin: "octocat"}, nil
+		},
+	}
+	ft := &mockFCMTokenRepository{
+		getTokensByUserIDFunc: func(ctx context.Context, userID int64) ([]string, error) {
+			return []string{"author-tok"}, nil
+		},
+	}
+	fc := &fakeFCMClient{}
+
+	svc := NewCommentServiceWithNotifications(&mockCommentRepository{}, postRepo, userRepo, ft, fc)
+	if _, err := svc.CreateComment(context.Background(), 12, 890, 2, "nice"); err != nil {
+		t.Fatalf("CreateComment() failed: %v", err)
+	}
+	if len(fc.withDataCalls) != 1 {
+		t.Fatalf("expected 1 comment notification, got %d", len(fc.withDataCalls))
+	}
+	if fc.withDataCalls[0].data["type"] != "comment" || fc.withDataCalls[0].data["actor_login"] != "octocat" {
+		t.Errorf("unexpected comment data: %v", fc.withDataCalls[0].data)
+	}
+}
+
+// TestComment_SelfSuppression は自己コメントで送信しないことを確認する
+func TestComment_SelfSuppression(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 5}, nil
+		},
+	}
+	fc := &fakeFCMClient{}
+	svc := NewCommentServiceWithNotifications(&mockCommentRepository{}, postRepo, &mockUserByID{}, &mockFCMTokenRepository{}, fc)
+	if _, err := svc.CreateComment(context.Background(), 12, 890, 5, "self"); err != nil {
+		t.Fatalf("CreateComment() failed: %v", err)
+	}
+	if len(fc.withDataCalls) != 0 {
+		t.Error("expected no self-notification")
+	}
+}
+
 func postInGroupRepo(groupID int64) *mockPostRepository {
 	return &mockPostRepository{
 		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {

@@ -245,6 +245,17 @@ func (f *fakeFCMClient) SendToTokensWithData(ctx context.Context, tokens []strin
 	return nil
 }
 
+// failingFCMClient は常に送信失敗する fcm.Client（ベストエフォート検証用）
+type failingFCMClient struct{}
+
+func (f *failingFCMClient) SendToTokens(ctx context.Context, tokens []string, notification fcm.Notification) error {
+	return errors.New("fcm down")
+}
+
+func (f *failingFCMClient) SendToTokensWithData(ctx context.Context, tokens []string, notification fcm.Notification, data map[string]string) error {
+	return errors.New("fcm down")
+}
+
 // TestNotificationService_SendNotification_Conflict は同一スプリントで2回目の通知発行を試みると ErrConflict が返ることを確認する
 func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	sprintRepo := &mockSprintRepository{}
