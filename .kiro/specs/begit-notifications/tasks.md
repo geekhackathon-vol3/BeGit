@@ -18,7 +18,7 @@
   - _Requirements: 6.1, 6.2, 6.4_
   - _Boundary: pkg/fcm_
 
-- [ ] 1.3 (P) Webhook 登録イベントに issues を追加
+- [x] 1.3 (P) Webhook 登録イベントに issues を追加
   - グループ作成時の GitHub Webhook 登録イベントへ `issues` を加える（既存 push / pull_request_review に追加）
   - テスト: 登録ペイロードの events に push / pull_request_review / issues の3種が含まれることを検証
   - _Requirements: 8.1_

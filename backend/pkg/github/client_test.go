@@ -165,6 +165,43 @@ func TestRegisterWebhook(t *testing.T) {
 	}
 }
 
+// TestRegisterWebhook_Events は登録ペイロードの events に push / pull_request_review / issues が含まれることを検証する
+func TestRegisterWebhook_Events(t *testing.T) {
+	var captured map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{"id": float64(1)})
+	}))
+	defer server.Close()
+
+	client := &githubClient{
+		httpClient:    server.Client(),
+		oauthEndpoint: server.URL,
+		apiEndpoint:   server.URL,
+	}
+
+	if err := client.RegisterWebhook(context.Background(), "owner/repo", "tok", "https://example.com/webhook/github", "secret"); err != nil {
+		t.Fatalf("RegisterWebhook() failed: %v", err)
+	}
+
+	rawEvents, ok := captured["events"].([]interface{})
+	if !ok {
+		t.Fatalf("expected events array, got: %v", captured["events"])
+	}
+	got := map[string]bool{}
+	for _, e := range rawEvents {
+		if s, ok := e.(string); ok {
+			got[s] = true
+		}
+	}
+	for _, want := range []string{"push", "pull_request_review", "issues"} {
+		if !got[want] {
+			t.Errorf("expected events to contain %q, got: %v", want, rawEvents)
+		}
+	}
+}
+
 // TestGetRecentCommits はコミット情報を正しく返すことを確認する
 func TestGetRecentCommits(t *testing.T) {
 	callCount := 0
