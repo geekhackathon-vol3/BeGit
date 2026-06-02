@@ -4,6 +4,13 @@
 
 import Foundation
 
+// 共有 ISO8601 フォーマッタ：小数秒あり・なし両対応
+private let sharedISO8601DateFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+}()
+
 extension Components.Schemas.Handler_GroupJSON {
     func toRepository(members: [RepositoryMember]) -> Repository {
         let fullName = repoFullName ?? ""
@@ -46,7 +53,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
         RepositoryActivity(
             type: activityType,
             title: activityTitle(fallbackRepository: fallbackRepository),
-            date: createdAt.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date(),
+            date: createdAt.flatMap { sharedISO8601DateFormatter.date(from: $0) } ?? Date(),
             imageName: "begit_timeline_mock",
             author: RepositoryMember(
                 backendUserID: userId.map(Int64.init),
@@ -89,7 +96,8 @@ extension Components.Schemas.Handler_PostFeedJSON {
         }
         let commits = commitCount ?? 0
         if commits > 0 {
-            return "\(commits) commits in \(repoFullName ?? fallbackRepository.name)"
+            let displayRepoName = (repoFullName?.isEmpty ?? true) ? fallbackRepository.name : repoFullName!
+            return "\(commits) commits in \(displayRepoName)"
         }
         return status ?? "No activity yet"
     }

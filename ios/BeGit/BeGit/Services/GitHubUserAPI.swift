@@ -13,13 +13,9 @@ protocol GitHubUserAPI: Sendable {
 struct GitHubUserClient: GitHubUserAPI {
     private let apiBaseURL = URL(string: "https://api.github.com")!
     private let session: URLSession
-    private let decoder: JSONDecoder
 
     init(session: URLSession = .shared) {
         self.session = session
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        self.decoder = decoder
     }
 
     func getAuthenticatedUser(accessToken: String) async throws -> GitHubUser {
@@ -38,6 +34,8 @@ struct GitHubUserClient: GitHubUserAPI {
             throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: nil)
         }
 
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(AuthenticatedGitHubUserResponse.self, from: data).githubUser
     }
 }
