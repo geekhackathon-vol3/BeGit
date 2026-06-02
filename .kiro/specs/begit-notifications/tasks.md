@@ -99,7 +99,7 @@
 
 ## 4. Integration: 配線とエンドポイント
 
-- [ ] 4.1 Webhook サービスへ issues 受理と ② 委譲を統合
+- [x] 4.1 Webhook サービスへ issues 受理と ② 委譲を統合
   - `issues`(action=opened) を処理対象に追加し、push/issues/pull_request_review でグループ・メンバー判定後に Nice Work! 発火サービスへ委譲する
   - delivery_id 冪等・署名検証・対応グループ無し時 200 の既存挙動を維持
   - テスト: 3イベントで ② が駆動されること、非メンバー/グループ無しで 200 skip、重複 delivery で skip を検証
