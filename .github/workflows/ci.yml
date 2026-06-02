@@ -38,6 +38,9 @@ jobs:
           # （未コミットのうちは git diff が空 = スキップされる）。
           if git ls-files --error-unmatch ios/BeGit/BeGit/openapi.yaml >/dev/null 2>&1; then
             cp backend/docs/swagger.yaml ios/BeGit/BeGit/openapi.yaml
+            # iOS の spec は swaggo の不正な OpenAPI 3.1 を補正してコミットしているため、
+            # 比較対象も同じサニタイズを通す（= make openapi-sync と同手順）。
+            ./scripts/sanitize-openapi-for-ios.sh ios/BeGit/BeGit/openapi.yaml
           fi
           git diff --exit-code -- backend/docs/ ios/BeGit/BeGit/openapi.yaml \
             || { echo "::error::OpenAPI 仕様が古いです。'make openapi-sync' を実行してコミットしてください"; exit 1; }
