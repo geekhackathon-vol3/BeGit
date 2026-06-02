@@ -38,6 +38,7 @@ type mockPhotoRepository struct {
 	createFunc        func(ctx context.Context, photo *model.Photo) (*model.Photo, error)
 	listByPostIDFunc  func(ctx context.Context, postID int64) ([]model.Photo, error)
 	listByPostIDsFunc func(ctx context.Context, postIDs []int64) (map[int64][]model.Photo, error)
+	deleteFunc        func(ctx context.Context, photoID int64) error
 }
 
 func (m *mockPhotoRepository) Create(ctx context.Context, photo *model.Photo) (*model.Photo, error) {
@@ -60,6 +61,13 @@ func (m *mockPhotoRepository) ListByPostIDs(ctx context.Context, postIDs []int64
 		return m.listByPostIDsFunc(ctx, postIDs)
 	}
 	return map[int64][]model.Photo{}, nil
+}
+
+func (m *mockPhotoRepository) Delete(ctx context.Context, photoID int64) error {
+	if m.deleteFunc != nil {
+		return m.deleteFunc(ctx, photoID)
+	}
+	return nil
 }
 
 func jpegFile() *UploadFile {
