@@ -28,6 +28,11 @@ func (m *mockDeliveryRepo) MarkSent(ctx context.Context, kind string, refID int6
 	return false, nil
 }
 
+// HasBeenSent は (kind, ref_id) が記録済みかを返す（マークはしない）。
+func (m *mockDeliveryRepo) HasBeenSent(ctx context.Context, kind string, refID int64) (bool, error) {
+	return m.sent[kind+":"+itoa(refID)], nil
+}
+
 func itoa(v int64) string {
 	return s(v)
 }

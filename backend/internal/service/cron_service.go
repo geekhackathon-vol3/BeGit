@@ -127,6 +127,17 @@ func (s *cronService) runDaily(ctx context.Context) error {
 		return fmt.Errorf("cron_service: ListEnded failed: %w", err)
 	}
 	for _, sp := range ended {
+		// sprint_end が既に配信済みなら missed 確定もスキップ（delivery 冪等で「1回のみ実行」を担保）。
+		// 未ガードだと終了スプリントが ListEnded に残り続ける限り毎日 missed 確定が走り、
+		// 二重起動・連日実行で冗長な書き込みが発生する。
+		alreadySent, err := s.deliveryRepo.HasBeenSent(ctx, deliverySprintEnd, sp.ID)
+		if err != nil {
+			log.Printf("cron_service: HasBeenSent sprint_end %d failed: %v", sp.ID, err)
+			continue
+		}
+		if alreadySent {
+			continue
+		}
 		// missed 確定（⑤ で初めて永続化）
 		s.finalizeMissed(ctx, sp)
 		// FCM 送信成功後に delivery INSERT で冪等化

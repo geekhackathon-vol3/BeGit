@@ -74,11 +74,17 @@ func TestPostService_ConfirmPost_Idempotent(t *testing.T) {
 	if _, err := svc.ConfirmPost(context.Background(), ConfirmPostRequest{}, 12, 890, 7); err != nil {
 		t.Fatalf("ConfirmPost() #1 failed: %v", err)
 	}
-	if _, err := svc.ConfirmPost(context.Background(), ConfirmPostRequest{}, 12, 890, 7); err != nil {
+	// 2回目は既に確定済み（is_draft=0）なので短絡し、成功を返す（べき等）。
+	confirmed, err := svc.ConfirmPost(context.Background(), ConfirmPostRequest{}, 12, 890, 7)
+	if err != nil {
 		t.Fatalf("ConfirmPost() #2 (idempotent) failed: %v", err)
 	}
-	if confirmCalls != 2 {
-		t.Errorf("expected ConfirmDraft called twice (idempotent at repo level), got %d", confirmCalls)
+	// 確定済みへの再確定は no-op（ConfirmDraft を再呼び出ししない＝サービス層で短絡）。
+	if confirmCalls != 1 {
+		t.Errorf("expected ConfirmDraft called once (service-level short-circuit on already-confirmed), got %d", confirmCalls)
+	}
+	if confirmed.IsDraft {
+		t.Errorf("expected confirmed post to be non-draft, got is_draft=true")
 	}
 }
 

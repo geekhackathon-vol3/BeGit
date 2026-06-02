@@ -278,7 +278,7 @@ func (f *failingFCMClient) SendToTokensWithData(ctx context.Context, tokens []st
 func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	sprintRepo := &mockSprintRepository{}
 	notifRepo := &mockNotificationRepository{
-		createFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+		createIfNoActiveFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
 			return nil, repository.ErrConstraintViolation
 		},
 	}
@@ -295,14 +295,10 @@ func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 // TestNotificationService_SendNotification_ActiveConflict はアクティブ通知が存在する場合に 409(ErrConflict) を返すことを確認する
 func TestNotificationService_SendNotification_ActiveConflict(t *testing.T) {
 	sprintRepo := &mockSprintRepository{}
-	createCalled := false
 	notifRepo := &mockNotificationRepository{
-		hasActiveInSprintFunc: func(ctx context.Context, sprintID int64) (bool, error) {
-			return true, nil
-		},
-		createFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
-			createCalled = true
-			return notif, nil
+		// アクティブ通知が存在する状況は CreateIfNoActive が原子的に ErrConstraintViolation を返して表現する
+		createIfNoActiveFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+			return nil, repository.ErrConstraintViolation
 		},
 	}
 	fcmTokenRepo := &mockFCMTokenRepository{}
@@ -313,9 +309,6 @@ func TestNotificationService_SendNotification_ActiveConflict(t *testing.T) {
 	_, err := svc.SendNotification(context.Background(), 1, 2)
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict when active challenge exists, got %v", err)
-	}
-	if createCalled {
-		t.Error("expected Create NOT to be called when an active challenge exists")
 	}
 	if len(fcmClient.withDataCalls) != 0 {
 		t.Error("expected no FCM send when conflicting")
@@ -330,10 +323,7 @@ func TestNotificationService_SendNotification_SuccessSendsBeGitTimeData(t *testi
 		},
 	}
 	notifRepo := &mockNotificationRepository{
-		hasActiveInSprintFunc: func(ctx context.Context, sprintID int64) (bool, error) {
-			return false, nil
-		},
-		createFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+		createIfNoActiveFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
 			notif.ID = 345
 			return notif, nil
 		},

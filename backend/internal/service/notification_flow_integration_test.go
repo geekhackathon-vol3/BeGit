@@ -100,7 +100,10 @@ func TestIntegration_BeGitTime_NonCoexistence_409(t *testing.T) {
 		},
 	}
 	notifRepo := &mockNotificationRepository{
-		hasActiveInSprintFunc: func(ctx context.Context, sprintID int64) (bool, error) { return true, nil },
+		// 時間的非共存は CreateIfNoActive が原子的に ErrConstraintViolation を返して表現する
+		createIfNoActiveFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+			return nil, repository.ErrConstraintViolation
+		},
 	}
 	fc := &fakeFCMClient{}
 	svc := NewNotificationService(sprintRepo, notifRepo, &mockFCMTokenRepository{}, fc)
