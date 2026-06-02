@@ -1,0 +1,17 @@
+# swift-openapi-generator 設定（ビルド時プラグインが読み込む）。
+# openapi.yaml から Swift の型(Components.Schemas.*)と API クライアント(Client)を自動生成する。
+generate:
+  - types
+  - client
+accessModifier: public
+# operationId が無いため、idiomatic で path からメソッド名を生成する
+# （例: postAuthGithub / getGroups / getGroupsId）。defensive だと post_sol_... の醜名になる。
+namingStrategy: idiomatic
+# iOS が実際に使うエンドポイントのみ生成（multipart 写真投稿などは対象外）。
+filter:
+  paths:
+    - /auth/github
+    - /groups
+    - /groups/{id}
+    - /groups/{id}/posts
+    - /groups/{id}/notifications

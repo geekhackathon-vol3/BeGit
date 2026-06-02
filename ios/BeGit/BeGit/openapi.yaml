@@ -345,9 +345,6 @@ components:
       in: header
       name: Authorization
       type: apiKey
-externalDocs:
-  description: ""
-  url: ""
 info:
   description: BeGit バックエンド API。GitHub と連携したリポジトリ単位のグループ・通知・投稿機能を提供する。
   title: BeGit API
@@ -1083,9 +1080,9 @@ paths:
             schema:
               oneOf:
               - title: main
-                type: file
+                type: string
               - title: front
-                type: file
+                type: string
           multipart/form-data:
             schema:
               type: object
