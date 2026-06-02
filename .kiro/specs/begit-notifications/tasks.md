@@ -56,7 +56,7 @@
 
 ## 3. Core: サービス層（発火ロジック）
 
-- [ ] 3.1 通知ペイロードビルダ（type 別 data 構築）
+- [x] 3.1 通知ペイロードビルダ（type 別 data 構築）
   - ①〜⑦ の各 `type` に対し ios-guide §2 準拠の data（共通 `type`/`group_id` ＋ type 別フィールド）を構築する。数値は文字列化する
   - 各 type に対応する表示用 notification（title/body）も組み立てる
   - テスト: 各 type の data フィールドが ios-guide §2 と一致し、全値が文字列であることを検証
