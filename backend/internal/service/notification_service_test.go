@@ -69,6 +69,7 @@ type mockNotificationRepository struct {
 	getByIDFunc                 func(ctx context.Context, notifID int64) (*model.Notification, error)
 	getLatestInSprintBeforeFunc func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
 	hasActiveInSprintFunc       func(ctx context.Context, sprintID int64) (bool, error)
+	createIfNoActiveFunc        func(ctx context.Context, notif *model.Notification) (*model.Notification, error)
 	listChallengeEndDueFunc     func(ctx context.Context) ([]model.Notification, error)
 	listBySprintIDFunc          func(ctx context.Context, sprintID int64) ([]model.Notification, error)
 }
@@ -115,6 +116,15 @@ func (m *mockNotificationRepository) HasActiveInSprint(ctx context.Context, spri
 		return m.hasActiveInSprintFunc(ctx, sprintID)
 	}
 	return false, nil
+}
+
+func (m *mockNotificationRepository) CreateIfNoActive(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+	if m.createIfNoActiveFunc != nil {
+		return m.createIfNoActiveFunc(ctx, notif)
+	}
+	notif.ID = 1
+	notif.SentAt = time.Now()
+	return notif, nil
 }
 
 // mockPostRepository はテスト用の投稿リポジトリモック

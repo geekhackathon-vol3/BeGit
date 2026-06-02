@@ -153,7 +153,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 	}
 
 	// INSERT with conditional WHERE NOT EXISTS to ensure atomicity
-	result, err := r.db.Exec(ctx,
+	rowsAffected, err := r.db.Exec(ctx,
 		`INSERT INTO notifications (sprint_id, sent_by, message)
 		 SELECT ?, ?, ?
 		 WHERE NOT EXISTS (
@@ -174,7 +174,12 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 	}
 
 	// Check if the INSERT succeeded (affected rows should be 1)
-	// D1 Exec doesn't return affected rows, so we need to fetch the created record
+	if rowsAffected == 0 {
+		// INSERT was blocked by WHERE NOT EXISTS (active notification exists or UNIQUE violation)
+		return nil, ErrConstraintViolation
+	}
+
+	// Fetch the created record
 	rows, err := r.db.Query(ctx,
 		`SELECT id, sprint_id, sent_by, message, sent_at
 		 FROM notifications
@@ -183,18 +188,9 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 		[]interface{}{notif.SprintID, notif.SentBy},
 	)
 	if err != nil {
-		if errors.Is(err, d1.ErrNotFound) {
-			// INSERT was blocked by WHERE NOT EXISTS (active notification exists or UNIQUE violation)
-			return nil, ErrConstraintViolation
-		}
 		return nil, fmt.Errorf("notification_repository: CreateIfNoActive fetch after insert failed: %w", err)
 	}
 
-	if len(rows) == 0 {
-		return nil, ErrConstraintViolation
-	}
-
-	_ = result // suppress unused variable warning
 	return scanNotification(rows[0])
 }
 
