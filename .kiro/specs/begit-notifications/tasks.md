@@ -140,7 +140,7 @@
   - _Requirements: 1.1, 1.3, 2.1, 2.6, 2.8, 5.1, 5.3, 7.3, 7.4_
   - _Depends: 4.1, 4.2_
 
-- [ ] 5.2 Cron 冪等 E2E
+- [x] 5.2 Cron 冪等 E2E
   - `--test-scheduled` 経由で minutely → challenge_end が1回のみ送信（再実行で skip）、daily → sprint_reminder/end/start が各1回、③ が missed を永続化せず ⑤ で確定することを検証
   - 観察可能: Cron 二重起動シナリオでも notification_deliveries により重複送信ゼロ
   - _Requirements: 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 9.2, 9.3, 9.4_
