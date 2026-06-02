@@ -112,7 +112,7 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 	notif, err := s.notifRepo.Create(ctx, &model.Notification{
 		SprintID: sprint.ID,
 		SentBy:   userID,
-		Message:  "今なに作ってる？",
+		Message:  "今、なに作ってる？",
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrConstraintViolation) {

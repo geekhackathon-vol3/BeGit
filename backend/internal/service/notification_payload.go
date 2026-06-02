@@ -35,8 +35,8 @@ func s(v int64) string {
 func BuildBeGitTime(groupID, notifID, sprintID int64) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "BeGit Time!",
-			Body:  "今なに作ってる？チームへの通知が届きました",
+			Title: "🐙 BeGit Time!",
+			Body:  "今、なに作ってる？チームへの通知が届きました",
 		},
 		Data: map[string]string{
 			"type":            "begit_time",
@@ -50,10 +50,10 @@ func BuildBeGitTime(groupID, notifID, sprintID int64) Payload {
 // BuildNiceWork は ② nice_work のペイロードを構築する。
 // data: type, group_id, notification_id(anchor), draft_post_id, status(on_time|late)
 func BuildNiceWork(groupID, notifID, draftPostID int64, status string) Payload {
-	body := "いい仕事！写真を撮って投稿しよう"
+	body := "いい仕事！写真を撮ってチームへシェアしよう"
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "Nice Work!",
+			Title: "🎉 Nice Work!",
 			Body:  body,
 		},
 		Data: map[string]string{
@@ -71,7 +71,7 @@ func BuildNiceWork(groupID, notifID, draftPostID int64, status string) Payload {
 func BuildChallengeEnd(groupID, notifID int64) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "チャレンジ終了",
+			Title: "🏁 チャレンジ終了",
 			Body:  "結果が出ました。みんなの様子を見てみよう",
 		},
 		Data: map[string]string{
@@ -87,7 +87,7 @@ func BuildChallengeEnd(groupID, notifID int64) Payload {
 func BuildSprintReminder(groupID, sprintID int64) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "スプリント終了3日前",
+			Title: "⏳ スプリント終了3日前",
 			Body:  "ラストスパート！残り3日です",
 		},
 		Data: map[string]string{
@@ -103,7 +103,7 @@ func BuildSprintReminder(groupID, sprintID int64) Payload {
 func BuildSprintEnd(groupID, sprintID int64) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "スプリント終了",
+			Title: "🏆 スプリント終了",
 			Body:  "今回の結果をチェックしよう",
 		},
 		Data: map[string]string{
@@ -119,7 +119,7 @@ func BuildSprintEnd(groupID, sprintID int64) Payload {
 func BuildSprintStart(groupID, sprintID int64) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "新スプリント開始",
+			Title: "🚀 新スプリント開始",
 			Body:  "新しいスプリントが始まりました",
 		},
 		Data: map[string]string{
@@ -135,7 +135,7 @@ func BuildSprintStart(groupID, sprintID int64) Payload {
 func BuildReaction(groupID, postID int64, actorLogin string) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "リアクションが届きました",
+			Title: "❤️ リアクションが届きました",
 			Body:  actorLogin + " があなたの投稿に反応しました",
 		},
 		Data: map[string]string{
@@ -152,7 +152,7 @@ func BuildReaction(groupID, postID int64, actorLogin string) Payload {
 func BuildComment(groupID, postID int64, actorLogin string) Payload {
 	return Payload{
 		Notification: fcm.Notification{
-			Title: "コメントが届きました",
+			Title: "💬 コメントが届きました",
 			Body:  actorLogin + " があなたの投稿にコメントしました",
 		},
 		Data: map[string]string{

@@ -69,7 +69,7 @@ func scanNotification(row map[string]interface{}) (*model.Notification, error) {
 func (r *notificationRepository) Create(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
 	message := notif.Message
 	if message == "" {
-		message = "今なに作ってる？"
+		message = "今、なに作ってる？"
 	}
 
 	_, err := r.db.Exec(ctx,
