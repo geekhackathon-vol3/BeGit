@@ -87,6 +87,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	reactionRepo := repository.NewReactionRepository(d1Client)
 	commentRepo := repository.NewCommentRepository(d1Client)
 	photoRepo := repository.NewPhotoRepository(d1Client)
+	deliveryRepo := repository.NewNotificationDeliveryRepository(d1Client)
 
 	// Service 層の初期化
 	authSvc := service.NewAuthService(
@@ -122,13 +123,20 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo)
 
-	webhookSvc := service.NewWebhookService(groupRepo, sprintRepo)
+	// ② Nice Work! 発火サービス（webhook_service から委譲される）
+	niceWorkSvc := service.NewNiceWorkService(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient)
+
+	webhookSvc := service.NewWebhookServiceWithNiceWork(groupRepo, sprintRepo, niceWorkSvc)
 
 	fcmTokenSvc := service.NewFCMTokenService(fcmTokenRepo)
 
-	reactionSvc := service.NewReactionService(reactionRepo, postRepo)
+	// ⑦ ソーシャル通知付き（fcm 依存注入）
+	reactionSvc := service.NewReactionServiceWithNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient)
 
-	commentSvc := service.NewCommentService(commentRepo, postRepo)
+	commentSvc := service.NewCommentServiceWithNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient)
+
+	// ③④⑤⑥ Cron サービス
+	cronSvc := service.NewCronService(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient)
 
 	githubSvc := service.NewGitHubService(githubClient, groupRepo)
 
@@ -143,6 +151,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	reactionHandler := handler.NewReactionHandler(reactionSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)
 	githubHandler := handler.NewGitHubHandler(githubSvc)
+	cronHandler := handler.NewCronHandler(cronSvc, cfg.CronSecret)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -177,6 +186,10 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// 認証不要エンドポイント
 	r.POST("/auth/github", authHandler.GitHub)
 	r.POST("/webhook/github", webhookHandler.Receive)
+
+	// 内部 Cron エンドポイント（bearer 不要。X-Cron-Secret 一致時のみ受理。
+	// Workers scheduled() 経由でのみ到達する想定で公開はしない）。
+	r.POST("/internal/cron", cronHandler.Run)
 
 	// dev 専用ログイン（DEV_MODE=true のときだけ登録。false なら未登録＝404）
 	if cfg.DevMode {

@@ -115,7 +115,7 @@
   - _Boundary: post_service, handler_
   - _Depends: 2.3_
 
-- [ ] 4.3 Cron エンドポイントとサービス配線
+- [x] 4.3 Cron エンドポイントとサービス配線
   - `POST /internal/cron?kind=` を `X-Cron-Secret` 一致時のみ受理（bearer 不要、公開ルーティングに載せない、定数時間比較）し cron_service を呼ぶ
   - 新 service/repository（payload/nicework/cron/delivery）と social/notification への FCM 依存注入を buildHandler に配線。Config に CronSecret を追加し X-Cron-Secret ヘッダーから補完
   - テスト: secret 一致で 200・kind 振り分け、secret 不一致で 403、kind 不正で 400 を検証

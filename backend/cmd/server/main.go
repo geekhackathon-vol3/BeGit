@@ -33,6 +33,10 @@ type Config struct {
 	// Application
 	AppBaseURL string
 
+	// CronSecret は内部 Cron エンドポイント（POST /internal/cron）の起動シークレット。
+	// Workers scheduled() が X-Cron-Secret ヘッダーで付与する。未設定なら Cron 経路は常に 403。
+	CronSecret string
+
 	// DevMode が true のとき dev 認証バイパス（POST /auth/dev）と
 	// スタブ GitHub クライアントを有効化する。本番では未設定＝false。
 	DevMode bool
@@ -54,6 +58,7 @@ func loadConfig() (*Config, error) {
 		R2SecretAccessKey:          os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2Bucket:                   os.Getenv("R2_BUCKET"),
 		AppBaseURL:                 os.Getenv("APP_BASE_URL"),
+		CronSecret:                 os.Getenv("CRON_SECRET"),
 		DevMode:                    os.Getenv("DEV_MODE") == "true",
 	}
 
@@ -117,6 +122,10 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	}
 	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
 		cfg.AppBaseURL = v
+	}
+	// Cron シークレットは X-Cron-Secret ヘッダー（Workers scheduled が付与）から補完する
+	if v := r.Header.Get("X-Cron-Secret"); v != "" {
+		cfg.CronSecret = v
 	}
 	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
 		cfg.DevMode = v == "true"

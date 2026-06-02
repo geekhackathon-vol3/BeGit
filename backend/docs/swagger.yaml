@@ -1502,6 +1502,52 @@ paths:
       summary: メンバー同期
       tags:
       - groups
+  /internal/cron:
+    post:
+      description: X-Cron-Secret 一致時のみ受理し kind(minutely|daily) を cron_service へ振り分ける
+      parameters:
+      - description: minutely | daily
+        in: query
+        name: kind
+        required: true
+        schema:
+          type: string
+      - description: Cron 起動シークレット
+        in: header
+        name: X-Cron-Secret
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      summary: 内部 Cron 起動（サーバ間）
+      tags:
+      - internal
   /me:
     get:
       description: Bearer トークンで認証されたユーザー自身の情報を返す
