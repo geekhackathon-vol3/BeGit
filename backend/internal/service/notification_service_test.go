@@ -40,8 +40,10 @@ func (m *mockSprintRepository) GetByID(ctx context.Context, sprintID int64) (*mo
 
 // mockNotificationRepository はテスト用の通知リポジトリモック
 type mockNotificationRepository struct {
-	createFunc  func(ctx context.Context, notif *model.Notification) (*model.Notification, error)
-	getByIDFunc func(ctx context.Context, notifID int64) (*model.Notification, error)
+	createFunc                  func(ctx context.Context, notif *model.Notification) (*model.Notification, error)
+	getByIDFunc                 func(ctx context.Context, notifID int64) (*model.Notification, error)
+	getLatestInSprintBeforeFunc func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
+	hasActiveInSprintFunc       func(ctx context.Context, sprintID int64) (bool, error)
 }
 
 func (m *mockNotificationRepository) Create(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
@@ -58,6 +60,20 @@ func (m *mockNotificationRepository) GetByID(ctx context.Context, notifID int64)
 		return m.getByIDFunc(ctx, notifID)
 	}
 	return nil, repository.ErrNotFound
+}
+
+func (m *mockNotificationRepository) GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
+	if m.getLatestInSprintBeforeFunc != nil {
+		return m.getLatestInSprintBeforeFunc(ctx, sprintID, before)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockNotificationRepository) HasActiveInSprint(ctx context.Context, sprintID int64) (bool, error) {
+	if m.hasActiveInSprintFunc != nil {
+		return m.hasActiveInSprintFunc(ctx, sprintID)
+	}
+	return false, nil
 }
 
 // mockPostRepository はテスト用の投稿リポジトリモック

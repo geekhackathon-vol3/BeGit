@@ -14,6 +14,12 @@ import (
 type NotificationRepository interface {
 	Create(ctx context.Context, notif *model.Notification) (*model.Notification, error)
 	GetByID(ctx context.Context, notifID int64) (*model.Notification, error)
+	// GetLatestInSprintBefore は同一スプリント内・指定時刻以前(sent_at <= before)で最新の通知を返す。
+	// ② Nice Work! の anchor 特定に使用する。該当が無ければ ErrNotFound。
+	GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
+	// HasActiveInSprint は同一スプリント内に sent_at + 1h > now() を満たすアクティブ通知が存在するかを返す。
+	// ① BeGit Time! の時間的非共存判定に使用する。
+	HasActiveInSprint(ctx context.Context, sprintID int64) (bool, error)
 }
 
 // notificationRepository は NotificationRepository インターフェースの実装
@@ -86,6 +92,48 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 	}
 
 	return scanNotification(rows[0])
+}
+
+// GetLatestInSprintBefore は同一スプリント内・指定時刻以前で最新の通知を返す
+func (r *notificationRepository) GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, sprint_id, sent_by, message, sent_at
+		 FROM notifications
+		 WHERE sprint_id = ? AND sent_at <= datetime(?)
+		 ORDER BY sent_at DESC, id DESC
+		 LIMIT 1`,
+		[]interface{}{sprintID, before.UTC().Format("2006-01-02 15:04:05")},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("notification_repository: GetLatestInSprintBefore failed: %w", err)
+	}
+
+	return scanNotification(rows[0])
+}
+
+// HasActiveInSprint は同一スプリント内に sent_at + 1h > now() のアクティブ通知が存在するかを返す
+func (r *notificationRepository) HasActiveInSprint(ctx context.Context, sprintID int64) (bool, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT COUNT(*) as count
+		 FROM notifications
+		 WHERE sprint_id = ? AND datetime(sent_at, '+1 hour') > datetime('now')`,
+		[]interface{}{sprintID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("notification_repository: HasActiveInSprint failed: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return false, nil
+	}
+	count, _ := rows[0]["count"].(float64)
+	return count > 0, nil
 }
 
 // GetByID は notifID で通知を取得する
