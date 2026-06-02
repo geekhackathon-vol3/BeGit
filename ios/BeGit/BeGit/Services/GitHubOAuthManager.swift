@@ -20,7 +20,7 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
     @Published private(set) var activeAlert: OAuthAlertContext? //  画面へ表示するエラー情報
 
-    private let clientID = "Ov23li1y8CYBKRtrFgzW"       //  GitHub OAuth Client ID
+    private let clientID = "Ov23lilFdIRDnZUp0ai7"       //  GitHub OAuth Client ID
     private let callbackScheme = "begit"                //  OAuthコールバック用URLスキーム
     private let callbackHost = "oauth-callback"         //  OAuthコールバック用ホスト名
     private let redirectURI = "begit://oauth-callback"  //  GitHubに登録したリダイレクトURI
@@ -28,7 +28,6 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
     private var authState: AuthState?
     private var authAPI: any AuthAPI = MockAuthAPI()
-    private var currentUserAPI: any CurrentUserAPI = BeGitBackendAPI()
     private var keychainManager: any KeychainManaging = KeychainManager()
     private var authenticationSession: ASWebAuthenticationSession?
     private var currentOAuthState = UUID().uuidString   //  ログインごとに新しいstateを生成
@@ -37,12 +36,10 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
     func configure(
         authState: AuthState,
         authAPI: any AuthAPI,
-        currentUserAPI: any CurrentUserAPI = BeGitBackendAPI(),
         keychainManager: any KeychainManaging
     ) {
         self.authState = authState
         self.authAPI = authAPI
-        self.currentUserAPI = currentUserAPI
         self.keychainManager = keychainManager
     }
 
@@ -72,12 +69,13 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
                 do {
                     let code = try self.extractCode(from: callbackURL)
-                    let authResponse = try await self.authAPI.exchangeCode(code: code)  //  認証コードをアクセストークンへ交換
-                    let githubUser = try await self.currentUserAPI.getCurrentUser(accessToken: authResponse.accessToken)  //  /me で現在ユーザーを取得
-                    let response = AuthResponse(accessToken: authResponse.accessToken, githubUser: githubUser)
-                    try self.keychainManager.saveAccessToken(response.accessToken)       //  アクセストークンをKeychainへ保存
-                    self.authState?.completeLogin(response: response)                    //  ログイン状態へ更新
+                    //  /auth/github の応答に実ユーザー情報が含まれるため、ここで /me を追加で叩く必要はない。
+                    let response = try await self.authAPI.exchangeCode(code: code)  //  認証コードをトークン＋ユーザーへ交換
+                    try self.keychainManager.saveAccessToken(response.accessToken)   //  アクセストークンをKeychainへ保存
+                    self.authState?.completeLogin(response: response)               //  ログイン状態へ更新
                 } catch {
+                    //  原因切り分け用：Xcode コンソールに生エラーを出す（BeGitAPIError なら status/メッセージ付き）。
+                    print("🛑 BeGit login failed: \(error) | localizedDescription=\(error.localizedDescription)")
                     self.activeAlert = .init(error: self.mapFlowError(error))
                 }
             }
@@ -152,7 +150,9 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
     }
 
     private func mapFlowError(_ error: Error) -> Error {
-        if error is GitHubOAuthError || error is KeychainError {
+        // BeGitAPIError はステータスコード/サーバメッセージを持つので、汎用の
+        // networkFailure に潰さずそのまま見せる（原因が分かるようにする）。
+        if error is GitHubOAuthError || error is KeychainError || error is BeGitAPIError {
             return error
         }
 
@@ -224,8 +224,9 @@ enum GitHubOAuthError: LocalizedError {
             return "GitHubログインがキャンセルされました。"
         case .sessionStartFailed:
             return "認証セッションを開始できませんでした。"
-        case .networkFailure:
-            return "認証情報の取得に失敗しました。通信状態を確認してください。"
+        case let .networkFailure(underlying):
+            // 原因切り分けのため underlying をそのまま見せる（コンソールが無くても画面で分かる）。
+            return "認証情報の取得に失敗しました: \(underlying.localizedDescription)"
         }
     }
 }
