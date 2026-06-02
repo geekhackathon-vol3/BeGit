@@ -150,7 +150,7 @@ erDiagram
 | `pull_request` | PR オープン / レビュー | `arrow.triangle.pull` | lgtm / review / merge |
 | `issue` | Issue 対応 | `exclamationmark.circle` | lgtm / watching |
 | `review` | コードレビュー完了 | `eye` | lgtm / review |
-| `comment` | 進捗メッセージ（今は作業できないが近況を共有） | `text.bubble` | heart / check |
+| `memo` | 進捗メッセージ（今は作業できないが近況を共有） | `text.bubble` | heart / check |
 
 ---
 

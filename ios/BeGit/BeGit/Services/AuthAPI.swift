@@ -297,7 +297,7 @@ private struct PostsResponseDTO: Decodable {
 private struct PostDTO: Decodable {
     let id: Int64               // 投稿ID
     let userId: Int64           // 投稿ユーザーID
-    let postType: String        // 投稿種別(commit / pull_request / sorry)
+    let postType: String        // 投稿種別(commit / pull_request / memo)
     let body: String?           // 投稿本文
     let repoFullName: String?   // リポジトリ名
     let commitCount: Int        // コミット数
@@ -330,8 +330,9 @@ private struct PostDTO: Decodable {
         switch postType {
         case "pull_request", "pullRequest":
             return .pullRequest
-        case "sorry":
-            return .sorry
+        // "memo" が正。"sorry"/"comment" は旧名称・旧データ互換のため受理
+        case "memo", "sorry", "comment":
+            return .memo
         default:
             return .commit
         }
@@ -344,7 +345,7 @@ private struct PostDTO: Decodable {
             return .check
         case .pullRequest:
             return .heart
-        case .sorry:
+        case .memo:
             return .sorry
         }
     }

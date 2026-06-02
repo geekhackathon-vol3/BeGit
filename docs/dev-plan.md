@@ -297,7 +297,7 @@ iOS RepositoryMember        → DB users
   .avatarURL                → .avatar_url   ← 旧スキーマに存在しなかった
 
 iOS RepositoryActivity      → DB posts
-  .type (.commit/.pullRequest/.comment) → .post_type ('commit'|'pull_request'|'comment')
+  .type (.commit/.pullRequest/.memo) → .post_type ('commit'|'pull_request'|'memo')
   .title                    → .latest_commit_message or body の先頭
   .comment                  → .body         ← 投稿文 "認証入れたよ〜"
   .date                     → .created_at
@@ -323,7 +323,7 @@ iOS RepositoryNotification  → DB notifications
 | `pull_request` | PR オープン / レビュー | lgtm / review / merge | `arrow.triangle.pull` |
 | `issue` | Issue 対応 | lgtm / watching | `exclamationmark.circle` |
 | `review` | コードレビュー完了 | lgtm / review | `eye` |
-| `comment` | 進捗メッセージ（作業はできないが近況を共有） | heart / check | `text.bubble` |
+| `memo` | 進捗メッセージ（作業はできないが近況を共有） | heart / check | `text.bubble` |
 
 ### API レスポンス形式
 

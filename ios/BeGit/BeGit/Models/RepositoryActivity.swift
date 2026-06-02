@@ -36,7 +36,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 enum RepositoryActivityType: String, CaseIterable, Hashable, Sendable {
     case commit         //  commit activity
     case pullRequest    //  Pull Request activity
-    case sorry          //  謝罪・障害報告activity
+    case memo           //  進捗メモ投稿（今は作業できないが近況だけ共有）
 }
 
 //  activityリアクション種別
@@ -74,9 +74,9 @@ extension RepositoryActivity {
                 author: members[min(1, members.count - 1)],
                 reaction: .heart
             ),
-            //  障害・謝罪activity mock
+            //  進捗メモ投稿 mock
             RepositoryActivity(
-                type: .sorry,
+                type: .memo,
                 title: "Sorry, build was red for 12 minutes",
                 date: calendar.date(byAdding: .hour, value: -76, to: Date()) ?? Date(),
                 imageName: "begit_timeline_mock",
