@@ -12,9 +12,12 @@ import (
 
 // mockSprintRepository はテスト用のスプリントリポジトリモック
 type mockSprintRepository struct {
-	getOrCreateFunc    func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error)
-	getCurrentFunc     func(ctx context.Context, groupID int64) (*model.Sprint, error)
-	getByIDFunc        func(ctx context.Context, sprintID int64) (*model.Sprint, error)
+	getOrCreateFunc     func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error)
+	getCurrentFunc      func(ctx context.Context, groupID int64) (*model.Sprint, error)
+	getByIDFunc         func(ctx context.Context, sprintID int64) (*model.Sprint, error)
+	listReminderDueFunc func(ctx context.Context) ([]model.Sprint, error)
+	listEndedFunc       func(ctx context.Context) ([]model.Sprint, error)
+	listActiveFunc      func(ctx context.Context) ([]model.Sprint, error)
 }
 
 func (m *mockSprintRepository) GetOrCreateCurrentSprint(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error) {
@@ -36,6 +39,27 @@ func (m *mockSprintRepository) GetByID(ctx context.Context, sprintID int64) (*mo
 		return m.getByIDFunc(ctx, sprintID)
 	}
 	return &model.Sprint{ID: sprintID, GroupID: 1}, nil
+}
+
+func (m *mockSprintRepository) ListReminderDue(ctx context.Context) ([]model.Sprint, error) {
+	if m.listReminderDueFunc != nil {
+		return m.listReminderDueFunc(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockSprintRepository) ListEnded(ctx context.Context) ([]model.Sprint, error) {
+	if m.listEndedFunc != nil {
+		return m.listEndedFunc(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockSprintRepository) ListActive(ctx context.Context) ([]model.Sprint, error) {
+	if m.listActiveFunc != nil {
+		return m.listActiveFunc(ctx)
+	}
+	return nil, nil
 }
 
 // mockNotificationRepository はテスト用の通知リポジトリモック
