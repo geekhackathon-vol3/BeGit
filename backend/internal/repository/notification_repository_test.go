@@ -127,6 +127,44 @@ func TestNotificationRepository_HasActiveInSprint_False(t *testing.T) {
 	}
 }
 
+// TestNotificationRepository_ListChallengeEndDue は sent_at+1h 到達の通知を返すクエリを確認する
+func TestNotificationRepository_ListChallengeEndDue(t *testing.T) {
+	var capturedSQL string
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			capturedSQL = sql
+			return []map[string]interface{}{
+				{"id": float64(345), "sprint_id": float64(7), "sent_by": float64(1), "message": "m", "sent_at": "2026-06-02T08:00:00Z"},
+			}, nil
+		},
+	}
+	repo := NewNotificationRepository(mock)
+	notifs, err := repo.ListChallengeEndDue(context.Background())
+	if err != nil {
+		t.Fatalf("ListChallengeEndDue() failed: %v", err)
+	}
+	if len(notifs) != 1 || notifs[0].ID != 345 {
+		t.Errorf("expected 1 notif id=345, got %v", notifs)
+	}
+	if !contains(capturedSQL, "+1 hour") {
+		t.Errorf("expected +1 hour boundary in SQL: %s", capturedSQL)
+	}
+}
+
+// TestPostRepository_CreateMissed_Conflict は既投稿で UNIQUE 違反を返すことを確認する（skip 用）
+func TestPostRepository_CreateMissed_Conflict(t *testing.T) {
+	mock := &mockD1Client{
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			return 0, d1.ErrConstraintViolation
+		},
+	}
+	repo := NewPostRepository(mock)
+	err := repo.CreateMissed(context.Background(), 100, 1, 12)
+	if err != ErrConstraintViolation {
+		t.Errorf("expected ErrConstraintViolation, got %v", err)
+	}
+}
+
 // TestWebhookRepository_InsertDelivery_Duplicate は同じ delivery_id で2回呼んだとき isDuplicate=true が返ることを確認する
 func TestWebhookRepository_InsertDelivery_Duplicate(t *testing.T) {
 	callCount := 0

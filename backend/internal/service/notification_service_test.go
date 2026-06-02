@@ -69,6 +69,22 @@ type mockNotificationRepository struct {
 	getByIDFunc                 func(ctx context.Context, notifID int64) (*model.Notification, error)
 	getLatestInSprintBeforeFunc func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
 	hasActiveInSprintFunc       func(ctx context.Context, sprintID int64) (bool, error)
+	listChallengeEndDueFunc     func(ctx context.Context) ([]model.Notification, error)
+	listBySprintIDFunc          func(ctx context.Context, sprintID int64) ([]model.Notification, error)
+}
+
+func (m *mockNotificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
+	if m.listChallengeEndDueFunc != nil {
+		return m.listChallengeEndDueFunc(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockNotificationRepository) ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error) {
+	if m.listBySprintIDFunc != nil {
+		return m.listBySprintIDFunc(ctx, sprintID)
+	}
+	return nil, nil
 }
 
 func (m *mockNotificationRepository) Create(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
@@ -110,6 +126,14 @@ type mockPostRepository struct {
 	getByIDFunc           func(ctx context.Context, postID int64) (*model.Post, error)
 	createDraftFunc       func(ctx context.Context, post *model.Post) (*model.Post, error)
 	confirmDraftFunc      func(ctx context.Context, postID int64) error
+	createMissedFunc      func(ctx context.Context, notifID, userID, groupID int64) error
+}
+
+func (m *mockPostRepository) CreateMissed(ctx context.Context, notifID, userID, groupID int64) error {
+	if m.createMissedFunc != nil {
+		return m.createMissedFunc(ctx, notifID, userID, groupID)
+	}
+	return nil
 }
 
 func (m *mockPostRepository) CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error) {

@@ -80,7 +80,7 @@
   - _Boundary: nicework_service_
   - _Depends: 2.2, 2.3, 3.1_
 
-- [ ] 3.4 ③④⑤⑥ Cron サービス
+- [x] 3.4 ③④⑤⑥ Cron サービス
   - kind=minutely: `sent_at+1h` 到達かつ未送信の anchor を抽出 → サマリ算出（On Time/Late/Missed、既存ステータス算出を共通化再利用）→ delivery INSERT 成功時のみ全員へ `challenge_end`
   - kind=daily: ④ 3日前→`sprint_reminder`、⑤ 終了→missed 確定＋まとめ→`sprint_end`、⑥ 新スプリント→`sprint_start`。各々 `notification_deliveries` で冪等
   - ③ 時点では missed を永続化しない（確定は ⑤）。FCM 失敗はベストエフォート（Cron 実行は失敗にしない）

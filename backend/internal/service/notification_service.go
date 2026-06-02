@@ -164,36 +164,47 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 		return nil, fmt.Errorf("notification_service: GetMembers failed: %w", err)
 	}
 
-	// 各メンバーの投稿ステータスを算出
-	memberStatuses := make([]MemberStatus, 0, len(members))
+	// 各メンバーの投稿ステータスを算出（③/⑤ Cron サマリと共通）
+	memberStatuses := computeMemberStatuses(ctx, s.postRepo, notif, members)
+
+	return &NotificationStatus{
+		NotificationID: notifID,
+		Members:        memberStatuses,
+	}, nil
+}
+
+// computeMemberStatuses は1通知に対する各メンバーの On Time / Late / Missed を算出する。
+// GetNotificationStatus（API）と Cron（③/⑤ サマリ）で共通利用する（Req3.4）。
+// 判定基準: post.created_at <= notif.sent_at + 1h → On Time、超過 → Late、投稿無し → Missed。
+func computeMemberStatuses(
+	ctx context.Context,
+	postRepo repository.PostRepository,
+	notif *model.Notification,
+	members []model.GroupMember,
+) []MemberStatus {
+	deadline := notif.SentAt.Add(challengeWindow)
+	statuses := make([]MemberStatus, 0, len(members))
 	for _, member := range members {
-		post, err := s.postRepo.GetByUserAndNotification(ctx, member.UserID, notifID)
+		post, err := postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)
 
 		var status string
-		if errors.Is(err, repository.ErrNotFound) || post == nil {
+		switch {
+		case err != nil || post == nil:
 			status = "Missed"
-		} else if err != nil {
+		case post.Status != nil && *post.Status == "missed":
 			status = "Missed"
-		} else {
-			// post.created_at と notif.sent_at + 1h を比較
-			deadline := notif.SentAt.Add(3600e9) // 1時間 = 3600秒
-			if post.CreatedAt.After(deadline) {
-				status = "Late"
-			} else {
-				status = "On Time"
-			}
+		case post.CreatedAt.After(deadline):
+			status = "Late"
+		default:
+			status = "On Time"
 		}
 
-		memberStatuses = append(memberStatuses, MemberStatus{
+		statuses = append(statuses, MemberStatus{
 			UserID:    member.UserID,
 			Login:     member.Login,
 			AvatarURL: member.AvatarURL,
 			Status:    status,
 		})
 	}
-
-	return &NotificationStatus{
-		NotificationID: notifID,
-		Members:        memberStatuses,
-	}, nil
+	return statuses
 }

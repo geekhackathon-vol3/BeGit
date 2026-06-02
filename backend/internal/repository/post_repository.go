@@ -22,6 +22,9 @@ type PostRepository interface {
 	CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error)
 	// ConfirmDraft は draft を確定（is_draft=0 へ更新）する。べき等（既確定でもエラーにしない）。
 	ConfirmDraft(ctx context.Context, postID int64) error
+	// CreateMissed は (notification_id, user_id) に status='missed' の投稿を INSERT する（⑤ で未投稿者を確定）。
+	// 既に投稿/draft が存在する場合は UNIQUE 違反となり ErrConstraintViolation を返す（呼び出し側は skip）。
+	CreateMissed(ctx context.Context, notifID, userID, groupID int64) error
 }
 
 // postRepository は PostRepository インターフェースの実装
@@ -245,6 +248,23 @@ func (r *postRepository) ConfirmDraft(ctx context.Context, postID int64) error {
 	)
 	if err != nil {
 		return fmt.Errorf("post_repository: ConfirmDraft failed: %w", err)
+	}
+	return nil
+}
+
+// CreateMissed は status='missed' の投稿を INSERT する（⑤ 未投稿者の確定）。
+// UNIQUE(notification_id, user_id) 違反時は ErrConstraintViolation（既に投稿/draft 有り → skip）。
+func (r *postRepository) CreateMissed(ctx context.Context, notifID, userID, groupID int64) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO posts (notification_id, user_id, group_id, post_type, status, is_draft)
+		 VALUES (?, ?, ?, 'missed', 'missed', 0)`,
+		[]interface{}{notifID, userID, groupID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrConstraintViolation) {
+			return ErrConstraintViolation
+		}
+		return fmt.Errorf("post_repository: CreateMissed failed: %w", err)
 	}
 	return nil
 }

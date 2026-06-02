@@ -20,6 +20,10 @@ type NotificationRepository interface {
 	// HasActiveInSprint は同一スプリント内に sent_at + 1h > now() を満たすアクティブ通知が存在するかを返す。
 	// ① BeGit Time! の時間的非共存判定に使用する。
 	HasActiveInSprint(ctx context.Context, sprintID int64) (bool, error)
+	// ListChallengeEndDue は sent_at + 1h <= now() に到達した通知を返す（③ challenge_end の対象抽出）。
+	ListChallengeEndDue(ctx context.Context) ([]model.Notification, error)
+	// ListBySprintID は指定スプリントの全通知を返す（⑤ サマリ算出用）。
+	ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error)
 }
 
 // notificationRepository は NotificationRepository インターフェースの実装
@@ -134,6 +138,52 @@ func (r *notificationRepository) HasActiveInSprint(ctx context.Context, sprintID
 	}
 	count, _ := rows[0]["count"].(float64)
 	return count > 0, nil
+}
+
+// ListChallengeEndDue は sent_at + 1h <= now() に到達した通知を返す（③ challenge_end 対象）
+func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, sprint_id, sent_by, message, sent_at
+		 FROM notifications
+		 WHERE datetime(sent_at, '+1 hour') <= datetime('now')`,
+		[]interface{}{},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []model.Notification{}, nil
+		}
+		return nil, fmt.Errorf("notification_repository: ListChallengeEndDue failed: %w", err)
+	}
+	return scanNotifications(rows)
+}
+
+// ListBySprintID は指定スプリントの全通知を返す
+func (r *notificationRepository) ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, sprint_id, sent_by, message, sent_at
+		 FROM notifications WHERE sprint_id = ?`,
+		[]interface{}{sprintID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []model.Notification{}, nil
+		}
+		return nil, fmt.Errorf("notification_repository: ListBySprintID failed: %w", err)
+	}
+	return scanNotifications(rows)
+}
+
+// scanNotifications は複数行をスライスへ変換する
+func scanNotifications(rows []map[string]interface{}) ([]model.Notification, error) {
+	out := make([]model.Notification, 0, len(rows))
+	for _, row := range rows {
+		n, err := scanNotification(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *n)
+	}
+	return out, nil
 }
 
 // GetByID は notifID で通知を取得する
