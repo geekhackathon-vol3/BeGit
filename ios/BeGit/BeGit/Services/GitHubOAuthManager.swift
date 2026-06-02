@@ -74,8 +74,6 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
                     try self.keychainManager.saveAccessToken(response.accessToken)   //  アクセストークンをKeychainへ保存
                     self.authState?.completeLogin(response: response)               //  ログイン状態へ更新
                 } catch {
-                    //  原因切り分け用：Xcode コンソールに生エラーを出す（BeGitAPIError なら status/メッセージ付き）。
-                    print("🛑 BeGit login failed: \(error) | localizedDescription=\(error.localizedDescription)")
                     self.activeAlert = .init(error: self.mapFlowError(error))
                 }
             }
