@@ -294,8 +294,8 @@ private extension RepositoryActivityType {
             "commit"
         case .pullRequest:
             "PR"
-        case .sorry:
-            "sorry"
+        case .memo:
+            "memo"
         }
     }
 
@@ -306,7 +306,7 @@ private extension RepositoryActivityType {
             "begit_badge_commit"
         case .pullRequest:
             "begit_badge_pr"
-        case .sorry:
+        case .memo:
             "begit_badge_sorry"
         }
     }
@@ -318,7 +318,7 @@ private extension RepositoryActivityType {
             Color(red: 0.45, green: 0.94, blue: 0.67)
         case .pullRequest:
             Color(red: 1.00, green: 0.47, blue: 0.65)
-        case .sorry:
+        case .memo:
             Color(red: 0.47, green: 0.74, blue: 1.00)
         }
     }
@@ -330,7 +330,7 @@ private extension RepositoryActivityType {
             "checkmark.seal"
         case .pullRequest:
             "arrow.triangle.pull"
-        case .sorry:
+        case .memo:
             "hand.raised"
         }
     }

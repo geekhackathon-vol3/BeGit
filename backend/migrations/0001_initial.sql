@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 --   'pull_request' PR オープン / レビュー
 --   'issue'        Issue 対応
 --   'review'       コードレビュー完了
---   'comment'      進捗メッセージ（今は作業できないが近況を共有）
+--   'memo'         進捗メッセージ（今は作業できないが近況を共有）
 --
 -- status (on_time / late):
 --   notification_id != NULL のとき、
