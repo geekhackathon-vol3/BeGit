@@ -48,13 +48,12 @@ CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 R2_BUCKET = "begit-photos"
 APP_BASE_URL = "https://begit-dev.118029-ichikama.workers.dev"
-# dev 用ダミー値（スタブ GitHub を使うため実値は不要）
-DB_ENCRYPTION_KEY = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
-GITHUB_CLIENT_ID = "dev-dummy"
-GITHUB_CLIENT_SECRET = "dev-dummy"
-GITHUB_WEBHOOK_SECRET = "dev-webhook-secret"
-FIREBASE_SERVICE_ACCOUNT_JSON = '{"type":"service_account","project_id":"dummy"}'
-# CF_API_TOKEN のみ secret（Container が D1 REST を叩くのに必要）:
+# 実 GitHub OAuth を dev でも使う：GITHUB_CLIENT_ID は本物（iOS アプリと同じ公開 ID）。
+# GITHUB_CLIENT_SECRET は秘密なので var に置かず secret で登録する（var に置くと毎デプロイで上書きされる）:
+#   cd backend && npx wrangler secret put GITHUB_CLIENT_SECRET --env dev
+DB_ENCRYPTION_KEY = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"  # dev 用固定鍵（本番へ流用禁止）
+GITHUB_CLIENT_ID = "Ov23lilFdIRDnZUp0ai7"
+GITHUB_WEBHOOK_SECRET = "dev-webhook-secret"  # webhook は dev で未検証のためダミー
 #   cd backend && npx wrangler secret put CF_API_TOKEN --env dev
 #
 # R2 access key は dev でも secret として登録する（var に平文で置かない）。

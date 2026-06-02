@@ -23,3 +23,6 @@ ai_log/
 
 # macOS
 .DS_Store
+
+# Swift Package build artifacts (BeGitOpenAPIClient)
+ios/BeGit/BeGitOpenAPIClient/.build/
