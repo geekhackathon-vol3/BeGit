@@ -88,6 +88,7 @@ secrets-init:
 	@echo "  npx wrangler secret put GITHUB_WEBHOOK_SECRET"
 	@echo "  npx wrangler secret put FIREBASE_SERVICE_ACCOUNT_JSON"
 	@echo "  npx wrangler secret put DB_ENCRYPTION_KEY"
+	@echo "  npx wrangler secret put CRON_SECRET   # Cron 起動シークレット（例: openssl rand -hex 32。未登録だと /internal/cron が常に 403）"
 	@echo ""
 	@echo "各コマンド実行後、プロンプトに値を入力してください。"
 
