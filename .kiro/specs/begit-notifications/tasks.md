@@ -123,7 +123,7 @@
   - _Boundary: cron_handler, container.go, main.go_
   - _Depends: 3.4_
 
-- [ ] 4.4 Workers scheduled ハンドラと Cron トリガー設定
+- [x] 4.4 Workers scheduled ハンドラと Cron トリガー設定
   - `src/index.ts` に `scheduled()` を追加し、`X-Internal-*` ＋ `X-Cron-Secret` 付きで `POST /internal/cron?kind=minutely|daily` を Container へ転送（`controller.cron` で minutely/daily 振り分け）
   - `wrangler.toml` に `[triggers] crons`（毎分 + 日次）と X-Cron-Secret（dev は var、本番は secret 運用メモ）を追加
   - 観察可能: `wrangler dev --test-scheduled` の `/__scheduled` 経由で cron 経路が Container まで到達する
