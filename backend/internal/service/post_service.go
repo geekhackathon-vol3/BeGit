@@ -146,14 +146,19 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 		return nil, ErrForbidden
 	}
 
-	// 本文上書き（任意）
+	// 既に確定済み（is_draft=0）の場合は本文更新をスキップし、現在の状態を返す（べき等）。
+	if !post.IsDraft {
+		return post, nil
+	}
+
+	// 下書き状態の場合のみ本文上書きと確定処理を実行
 	if req.Body != nil {
 		if err := s.postRepo.UpdateBody(ctx, postID, *req.Body); err != nil {
 			return nil, fmt.Errorf("post_service: ConfirmPost UpdateBody failed: %w", err)
 		}
 	}
 
-	// draft 解除（べき等）
+	// draft 解除
 	if err := s.postRepo.ConfirmDraft(ctx, postID); err != nil {
 		return nil, fmt.Errorf("post_service: ConfirmPost ConfirmDraft failed: %w", err)
 	}

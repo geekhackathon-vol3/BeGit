@@ -210,8 +210,15 @@ func (h *PostHandler) Confirm(c *gin.Context) {
 	}
 
 	var req ConfirmPostRequest
-	// ボディは任意（空でも確定できる）
-	_ = c.ShouldBindJSON(&req)
+	// ボディは任意（空でも確定できる）。JSON パースエラーは 400 だが、空ボディは許可。
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 空リクエストボディの場合は err = EOF or io.EOF。それ以外は JSON パースエラー。
+		// Gin の ShouldBindJSON は空ボディでも成功するため、実パースエラーのみ弾く。
+		if c.Request.ContentLength > 0 {
+			respondError(c, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
 
 	post, err := h.postService.ConfirmPost(c.Request.Context(), service.ConfirmPostRequest{Body: req.Body}, groupID, postID, userID)
 	if err != nil {

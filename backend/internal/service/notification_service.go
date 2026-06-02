@@ -97,19 +97,10 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		return nil, fmt.Errorf("notification_service: get/create sprint failed: %w", err)
 	}
 
-	// Step 2: 時間的非共存ルール（Req1.3/1.5）。
-	// 同一スプリント内に sent_at + 1h > now() のアクティブな BeGit Time! が存在する間は新規発行不可。
-	// UNIQUE 制約では表現できないためサービス層で評価する。
-	active, err := s.notifRepo.HasActiveInSprint(ctx, sprint.ID)
-	if err != nil {
-		return nil, fmt.Errorf("notification_service: HasActiveInSprint failed: %w", err)
-	}
-	if active {
-		return nil, ErrConflict
-	}
-
-	// Step 3: 通知レコードを INSERT（UNIQUE(sprint_id,sent_by) 違反 → ErrConflict）
-	notif, err := s.notifRepo.Create(ctx, &model.Notification{
+	// Step 2 & 3: 時間的非共存 + UNIQUE 制約を原子的に保証する CREATE。
+	// CreateIfNoActive は同一スプリント内にアクティブ通知が無く、かつ UNIQUE(sprint_id,sent_by) を
+	// 満たす場合のみ INSERT する（WHERE NOT EXISTS で原子的）。
+	notif, err := s.notifRepo.CreateIfNoActive(ctx, &model.Notification{
 		SprintID: sprint.ID,
 		SentBy:   userID,
 		Message:  "今、なに作ってる？",
@@ -165,7 +156,10 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 	}
 
 	// 各メンバーの投稿ステータスを算出（③/⑤ Cron サマリと共通）
-	memberStatuses := computeMemberStatuses(ctx, s.postRepo, notif, members)
+	memberStatuses, err := computeMemberStatuses(ctx, s.postRepo, notif, members)
+	if err != nil {
+		return nil, fmt.Errorf("notification_service: computeMemberStatuses failed: %w", err)
+	}
 
 	return &NotificationStatus{
 		NotificationID: notifID,
@@ -176,26 +170,33 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 // computeMemberStatuses は1通知に対する各メンバーの On Time / Late / Missed を算出する。
 // GetNotificationStatus（API）と Cron（③/⑤ サマリ）で共通利用する（Req3.4）。
 // 判定基準: post.created_at <= notif.sent_at + 1h → On Time、超過 → Late、投稿無し → Missed。
+// repository エラーは errors.Is(err, repository.ErrNotFound) のみ Missed にマップし、それ以外はエラーを返す。
 func computeMemberStatuses(
 	ctx context.Context,
 	postRepo repository.PostRepository,
 	notif *model.Notification,
 	members []model.GroupMember,
-) []MemberStatus {
+) ([]MemberStatus, error) {
 	deadline := notif.SentAt.Add(challengeWindow)
 	statuses := make([]MemberStatus, 0, len(members))
 	for _, member := range members {
 		post, err := postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)
 
 		var status string
-		switch {
-		case err != nil || post == nil:
+		if err != nil {
+			// ErrNotFound は "Missed"（投稿無し）にマップ。それ以外のエラーは呼び出し側へ伝播。
+			if errors.Is(err, repository.ErrNotFound) {
+				status = "Missed"
+			} else {
+				return nil, fmt.Errorf("GetByUserAndNotification for user %d failed: %w", member.UserID, err)
+			}
+		} else if post == nil {
 			status = "Missed"
-		case post.Status != nil && *post.Status == "missed":
+		} else if post.Status != nil && *post.Status == "missed" {
 			status = "Missed"
-		case post.CreatedAt.After(deadline):
+		} else if post.CreatedAt.After(deadline) {
 			status = "Late"
-		default:
+		} else {
 			status = "On Time"
 		}
 
@@ -206,5 +207,5 @@ func computeMemberStatuses(
 			Status:    status,
 		})
 	}
-	return statuses
+	return statuses, nil
 }

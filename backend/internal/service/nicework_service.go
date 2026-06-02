@@ -24,6 +24,9 @@ type ActivityData struct {
 	RepoFullName        string
 	BranchName          string
 	LatestCommitMessage string
+	// DetectionTime はアクティビティ検知時刻（UTC）。anchor 特定と on_time/late 判定に使用する。
+	// ゼロ値の場合は time.Now() で補完される（後方互換）。
+	DetectionTime time.Time
 }
 
 // userByLoginRepo は login からユーザーを引く最小インターフェース（repository.UserRepository が満たす）
@@ -105,8 +108,12 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 
 	// Step 4: anchor 特定（検知時刻以前で最新の同一スプリント内 BeGit Time! 通知）。
 	// anchor 無し（チャレンジ未発行）は no-op（Req2.4）。
-	now := time.Now().UTC()
-	anchor, err := s.notifRepo.GetLatestInSprintBefore(ctx, sprint.ID, now)
+	detectionTime := detected.DetectionTime
+	if detectionTime.IsZero() {
+		// 後方互換: DetectionTime が未設定の場合は time.Now() で補完
+		detectionTime = time.Now().UTC()
+	}
+	anchor, err := s.notifRepo.GetLatestInSprintBefore(ctx, sprint.ID, detectionTime)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil
@@ -115,9 +122,11 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 	}
 
 	// Step 5: on_time / late を確定（検知時刻 vs anchor.sent_at + 1h）。
-	status := "on_time"
-	if now.After(anchor.SentAt.Add(challengeWindow)) {
-		status = "late"
+	status := NiceWorkStatusOnTime
+	statusStr := "on_time"
+	if detectionTime.After(anchor.SentAt.Add(challengeWindow)) {
+		status = NiceWorkStatusLate
+		statusStr = "late"
 	}
 
 	// Step 6: draft INSERT を UNIQUE(notification_id,user_id) で先取り。
@@ -136,7 +145,7 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 		Additions:           detected.Additions,
 		Deletions:           detected.Deletions,
 		LatestCommitMessage: strOrNil(latestMsg),
-		Status:              &status,
+		Status:              &statusStr,
 	}
 	created, err := s.postRepo.CreateDraft(ctx, draft)
 	if err != nil {

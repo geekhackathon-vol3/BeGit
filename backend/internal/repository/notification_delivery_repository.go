@@ -16,6 +16,8 @@ type NotificationDeliveryRepository interface {
 	// 既に送信済み（UNIQUE 違反）の場合は alreadySent=true を返し、新規 INSERT の場合は false を返す。
 	// 呼び出し側は alreadySent=false のときのみ FCM 送信する（冪等の要）。
 	MarkSent(ctx context.Context, kind string, refID int64) (alreadySent bool, err error)
+	// HasBeenSent は (kind, ref_id) が既に送信済みかをチェックする（SELECT）。
+	HasBeenSent(ctx context.Context, kind string, refID int64) (bool, error)
 }
 
 // notificationDeliveryRepository は NotificationDeliveryRepository インターフェースの実装
@@ -42,4 +44,23 @@ func (r *notificationDeliveryRepository) MarkSent(ctx context.Context, kind stri
 		return false, fmt.Errorf("notification_delivery_repository: MarkSent failed: %w", err)
 	}
 	return false, nil
+}
+
+// HasBeenSent は (kind, ref_id) が既に送信済みかをチェックする
+func (r *notificationDeliveryRepository) HasBeenSent(ctx context.Context, kind string, refID int64) (bool, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT COUNT(*) as count FROM notification_deliveries WHERE kind = ? AND ref_id = ?`,
+		[]interface{}{kind, refID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("notification_delivery_repository: HasBeenSent failed: %w", err)
+	}
+	if len(rows) == 0 {
+		return false, nil
+	}
+	count, _ := rows[0]["count"].(float64)
+	return count > 0, nil
 }

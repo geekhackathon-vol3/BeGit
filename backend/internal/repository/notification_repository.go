@@ -20,6 +20,9 @@ type NotificationRepository interface {
 	// HasActiveInSprint は同一スプリント内に sent_at + 1h > now() を満たすアクティブ通知が存在するかを返す。
 	// ① BeGit Time! の時間的非共存判定に使用する。
 	HasActiveInSprint(ctx context.Context, sprintID int64) (bool, error)
+	// CreateIfNoActive は同一スプリント内にアクティブ通知が無い場合のみ INSERT する（原子的）。
+	// アクティブ通知が既に存在する場合は ErrConstraintViolation を返す（時間的非共存保証）。
+	CreateIfNoActive(ctx context.Context, notif *model.Notification) (*model.Notification, error)
 	// ListChallengeEndDue は sent_at + 1h <= now() に到達した通知を返す（③ challenge_end の対象抽出）。
 	ListChallengeEndDue(ctx context.Context) ([]model.Notification, error)
 	// ListBySprintID は指定スプリントの全通知を返す（⑤ サマリ算出用）。
@@ -140,12 +143,72 @@ func (r *notificationRepository) HasActiveInSprint(ctx context.Context, sprintID
 	return count > 0, nil
 }
 
-// ListChallengeEndDue は sent_at + 1h <= now() に到達した通知を返す（③ challenge_end 対象）
+// CreateIfNoActive は同一スプリント内にアクティブ通知が無い場合のみ INSERT する（原子的）。
+// INSERT ... WHERE NOT EXISTS で時間的非共存を原子的に保証する。
+// アクティブ通知が既に存在する場合は INSERT が 0 行となり ErrConstraintViolation を返す。
+func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+	message := notif.Message
+	if message == "" {
+		message = "今、なに作ってる？"
+	}
+
+	// INSERT with conditional WHERE NOT EXISTS to ensure atomicity
+	result, err := r.db.Exec(ctx,
+		`INSERT INTO notifications (sprint_id, sent_by, message)
+		 SELECT ?, ?, ?
+		 WHERE NOT EXISTS (
+		   SELECT 1 FROM notifications
+		   WHERE sprint_id = ? AND datetime(sent_at, '+1 hour') > datetime('now')
+		 )
+		 AND NOT EXISTS (
+		   SELECT 1 FROM notifications
+		   WHERE sprint_id = ? AND sent_by = ?
+		 )`,
+		[]interface{}{notif.SprintID, notif.SentBy, message, notif.SprintID, notif.SprintID, notif.SentBy},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrConstraintViolation) {
+			return nil, ErrConstraintViolation
+		}
+		return nil, fmt.Errorf("notification_repository: CreateIfNoActive failed: %w", err)
+	}
+
+	// Check if the INSERT succeeded (affected rows should be 1)
+	// D1 Exec doesn't return affected rows, so we need to fetch the created record
+	rows, err := r.db.Query(ctx,
+		`SELECT id, sprint_id, sent_by, message, sent_at
+		 FROM notifications
+		 WHERE sprint_id = ? AND sent_by = ?
+		 ORDER BY id DESC LIMIT 1`,
+		[]interface{}{notif.SprintID, notif.SentBy},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			// INSERT was blocked by WHERE NOT EXISTS (active notification exists or UNIQUE violation)
+			return nil, ErrConstraintViolation
+		}
+		return nil, fmt.Errorf("notification_repository: CreateIfNoActive fetch after insert failed: %w", err)
+	}
+
+	if len(rows) == 0 {
+		return nil, ErrConstraintViolation
+	}
+
+	_ = result // suppress unused variable warning
+	return scanNotification(rows[0])
+}
+
+// ListChallengeEndDue は sent_at + 1h <= now() に到達した通知を返す（③ challenge_end 対象）。
+// 既に challenge_end として送信済み（notification_deliveries に記録済み）の通知は除外する。
 func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, sprint_id, sent_by, message, sent_at
 		 FROM notifications
-		 WHERE datetime(sent_at, '+1 hour') <= datetime('now')`,
+		 WHERE datetime(sent_at, '+1 hour') <= datetime('now')
+		 AND NOT EXISTS (
+		   SELECT 1 FROM notification_deliveries
+		   WHERE kind = 'challenge_end' AND ref_id = notifications.id
+		 )`,
 		[]interface{}{},
 	)
 	if err != nil {

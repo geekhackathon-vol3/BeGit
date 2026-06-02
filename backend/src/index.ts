@@ -82,7 +82,11 @@ export default {
     });
 
     ctx.waitUntil(
-      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then(() => undefined)
+      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then((response) => {
+        if (!response.ok) {
+          throw new Error(`Cron fetch failed: ${response.status} ${response.statusText} (url: ${url})`);
+        }
+      })
     );
   },
 };

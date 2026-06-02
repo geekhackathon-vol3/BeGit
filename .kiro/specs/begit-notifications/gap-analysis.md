@@ -20,6 +20,7 @@
 - 層依存方向は handler→service→repository を厳守。命名 snake_case（Go）。テストは各層 `_test.go` 同居。
 
 ### 再利用可能な既存資産
+
 | 資産 | 場所 | 流用可否 |
 |---|---|---|
 | BeGit Time! 発行 | `notification_service.SendNotification` | ◎ 拡張（非共存・data 化） |

@@ -7,6 +7,14 @@ import (
 	"github.com/irj0927/begit/pkg/fcm"
 )
 
+// NiceWorkStatus は ② Nice Work! の status（on_time / late）を表す型
+type NiceWorkStatus string
+
+const (
+	NiceWorkStatusOnTime NiceWorkStatus = "on_time"
+	NiceWorkStatusLate   NiceWorkStatus = "late"
+)
+
 // logFCMSend は FCM 送信結果をログに出す（ベストエフォート送信の可観測性向上）。
 // err が非 nil でも呼び出し側の処理は継続する（API/Cron を失敗させない）。
 // dev では `wrangler tail` でこのログを見て FCM 連携の生死を確認できる。
@@ -49,7 +57,14 @@ func BuildBeGitTime(groupID, notifID, sprintID int64) Payload {
 
 // BuildNiceWork は ② nice_work のペイロードを構築する。
 // data: type, group_id, notification_id(anchor), draft_post_id, status(on_time|late)
-func BuildNiceWork(groupID, notifID, draftPostID int64, status string) Payload {
+// status が不正な値の場合は on_time をデフォルトとして使用する（エラーにはしない）。
+func BuildNiceWork(groupID, notifID, draftPostID int64, status NiceWorkStatus) Payload {
+	// status の妥当性チェック
+	if status != NiceWorkStatusOnTime && status != NiceWorkStatusLate {
+		log.Printf("BuildNiceWork: invalid status %q, defaulting to on_time", status)
+		status = NiceWorkStatusOnTime
+	}
+
 	body := "いい仕事！写真を撮ってチームへシェアしよう"
 	return Payload{
 		Notification: fcm.Notification{
@@ -61,7 +76,7 @@ func BuildNiceWork(groupID, notifID, draftPostID int64, status string) Payload {
 			"group_id":        s(groupID),
 			"notification_id": s(notifID),
 			"draft_post_id":   s(draftPostID),
-			"status":          status,
+			"status":          string(status),
 		},
 	}
 }

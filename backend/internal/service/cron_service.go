@@ -88,27 +88,23 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 			continue
 		}
 
-		// 冪等: delivery INSERT が成功した場合のみ送信。再実行は UNIQUE 違反で skip。
-		alreadySent, err := s.deliveryRepo.MarkSent(ctx, deliveryChallengeEnd, notif.ID)
-		if err != nil {
-			log.Printf("cron_service: MarkSent challenge_end %d failed: %v", notif.ID, err)
-			continue
-		}
-		if alreadySent {
-			continue
-		}
-
 		// サマリ算出（On Time/Late/Missed）。③ 時点では missed を永続化しない（確定は ⑤）。
 		members, err := s.groupRepo.GetMembers(ctx, sprint.GroupID)
 		if err != nil {
 			log.Printf("cron_service: GetMembers group %d failed: %v", sprint.GroupID, err)
 		} else {
-			statuses := computeMemberStatuses(ctx, s.postRepo, &notif, members)
-			log.Printf("cron_service: challenge_end summary notif=%d %s", notif.ID, summarize(statuses))
+			statuses, err := computeMemberStatuses(ctx, s.postRepo, &notif, members)
+			if err != nil {
+				log.Printf("cron_service: computeMemberStatuses notif=%d failed: %v", notif.ID, err)
+			} else {
+				log.Printf("cron_service: challenge_end summary notif=%d %s", notif.ID, summarize(statuses))
+			}
 		}
 
-		// 全員へ challenge_end（ベストエフォート）
-		s.sendToGroup(ctx, sprint.GroupID, BuildChallengeEnd(sprint.GroupID, notif.ID))
+		// 全員へ challenge_end を送信（FCM 成功後に delivery INSERT で冪等化）
+		if err := s.sendToGroupIfNotSent(ctx, deliveryChallengeEnd, notif.ID, sprint.GroupID, BuildChallengeEnd(sprint.GroupID, notif.ID)); err != nil {
+			log.Printf("cron_service: sendToGroupIfNotSent challenge_end %d failed: %v", notif.ID, err)
+		}
 	}
 
 	return nil
@@ -131,17 +127,12 @@ func (s *cronService) runDaily(ctx context.Context) error {
 		return fmt.Errorf("cron_service: ListEnded failed: %w", err)
 	}
 	for _, sp := range ended {
-		alreadySent, err := s.deliveryRepo.MarkSent(ctx, deliverySprintEnd, sp.ID)
-		if err != nil {
-			log.Printf("cron_service: MarkSent sprint_end %d failed: %v", sp.ID, err)
-			continue
-		}
-		if alreadySent {
-			continue
-		}
 		// missed 確定（⑤ で初めて永続化）
 		s.finalizeMissed(ctx, sp)
-		s.sendToGroup(ctx, sp.GroupID, BuildSprintEnd(sp.GroupID, sp.ID))
+		// FCM 送信成功後に delivery INSERT で冪等化
+		if err := s.sendToGroupIfNotSent(ctx, deliverySprintEnd, sp.ID, sp.GroupID, BuildSprintEnd(sp.GroupID, sp.ID)); err != nil {
+			log.Printf("cron_service: sendToGroupIfNotSent sprint_end %d failed: %v", sp.ID, err)
+		}
 	}
 
 	// ⑥ 新スプリント開始（アクティブスプリント。冪等は deliveries で担保）
@@ -156,17 +147,11 @@ func (s *cronService) runDaily(ctx context.Context) error {
 	return nil
 }
 
-// fireSprintNotification は delivery INSERT 成功時のみグループ全員へ送信する（冪等）。
+// fireSprintNotification は FCM 送信成功後に delivery INSERT で冪等化する。
 func (s *cronService) fireSprintNotification(ctx context.Context, kind string, sp model.Sprint, payload Payload) {
-	alreadySent, err := s.deliveryRepo.MarkSent(ctx, kind, sp.ID)
-	if err != nil {
-		log.Printf("cron_service: MarkSent %s sprint %d failed: %v", kind, sp.ID, err)
-		return
+	if err := s.sendToGroupIfNotSent(ctx, kind, sp.ID, sp.GroupID, payload); err != nil {
+		log.Printf("cron_service: sendToGroupIfNotSent %s sprint %d failed: %v", kind, sp.ID, err)
 	}
-	if alreadySent {
-		return
-	}
-	s.sendToGroup(ctx, sp.GroupID, payload)
 }
 
 // finalizeMissed は終了スプリントの各通知について未投稿メンバーを missed として確定する。
@@ -207,6 +192,49 @@ func (s *cronService) sendToGroup(ctx context.Context, groupID int64, payload Pa
 		return
 	}
 	logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
+}
+
+// sendToGroupIfNotSent は配信済みチェック → FCM 送信 → MarkSent の順で実行し、FCM 成功時のみ配信記録を残す。
+// 既送信の場合は何もせず nil を返す（冪等）。
+func (s *cronService) sendToGroupIfNotSent(ctx context.Context, kind string, refID, groupID int64, payload Payload) error {
+	// Step 1: 配信済みチェック（SELECT で確認）
+	alreadySent, err := s.deliveryRepo.HasBeenSent(ctx, kind, refID)
+	if err != nil {
+		return fmt.Errorf("HasBeenSent check failed: %w", err)
+	}
+	if alreadySent {
+		// 既に送信済み（冪等 skip）
+		return nil
+	}
+
+	// Step 2: FCM 送信を試行
+	if s.fcmTokenRepo == nil || s.fcmClient == nil {
+		// FCM 未設定の場合は送信スキップ（配信記録も残さない = 次回リトライ可能）
+		return nil
+	}
+	tokens, err := s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("GetTokensByGroupID failed: %w", err)
+	}
+	if len(tokens) == 0 {
+		// トークン無しの場合も送信スキップ（配信記録を残さない = 次回リトライ可能）
+		return nil
+	}
+
+	// Step 3: FCM 送信
+	if err := s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data); err != nil {
+		log.Printf("cron_service: FCM send failed (type=%s, tokens=%d): %v (will retry next run)", payload.Data["type"], len(tokens), err)
+		return fmt.Errorf("FCM send failed: %w", err)
+	}
+
+	// Step 4: FCM 送信成功後に配信記録を残す（次回 skip される）
+	if _, err := s.deliveryRepo.MarkSent(ctx, kind, refID); err != nil {
+		log.Printf("cron_service: MarkSent after successful send failed (type=%s): %v (sent but not marked, may duplicate)", payload.Data["type"], err)
+		return fmt.Errorf("MarkSent failed: %w", err)
+	}
+
+	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
+	return nil
 }
 
 // summarize は集計結果を簡潔な文字列にする（ログ用）。

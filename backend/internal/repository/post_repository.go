@@ -215,7 +215,7 @@ func (r *postRepository) CreateDraft(ctx context.Context, post *model.Post) (*mo
 
 	_, err := r.db.Exec(ctx,
 		`INSERT INTO posts (notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
 		[]interface{}{
 			notifID, post.UserID, post.GroupID, post.PostType,
 			post.Body, post.RepoFullName, post.BranchName,

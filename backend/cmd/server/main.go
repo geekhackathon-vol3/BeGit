@@ -123,10 +123,6 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
 		cfg.AppBaseURL = v
 	}
-	// Cron シークレットは X-Cron-Secret ヘッダー（Workers scheduled が付与）から補完する
-	if v := r.Header.Get("X-Cron-Secret"); v != "" {
-		cfg.CronSecret = v
-	}
 	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
 		cfg.DevMode = v == "true"
 	}
