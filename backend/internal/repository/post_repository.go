@@ -25,6 +25,8 @@ type PostRepository interface {
 	// CreateMissed は (notification_id, user_id) に status='missed' の投稿を INSERT する（⑤ で未投稿者を確定）。
 	// 既に投稿/draft が存在する場合は UNIQUE 違反となり ErrConstraintViolation を返す（呼び出し側は skip）。
 	CreateMissed(ctx context.Context, notifID, userID, groupID int64) error
+	// UpdateBody は投稿の body を更新する（下書き確定時の本文上書き用）。
+	UpdateBody(ctx context.Context, postID int64, body string) error
 }
 
 // postRepository は PostRepository インターフェースの実装
@@ -265,6 +267,18 @@ func (r *postRepository) CreateMissed(ctx context.Context, notifID, userID, grou
 			return ErrConstraintViolation
 		}
 		return fmt.Errorf("post_repository: CreateMissed failed: %w", err)
+	}
+	return nil
+}
+
+// UpdateBody は投稿の body を更新する
+func (r *postRepository) UpdateBody(ctx context.Context, postID int64, body string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE posts SET body = ? WHERE id = ?`,
+		[]interface{}{body, postID},
+	)
+	if err != nil {
+		return fmt.Errorf("post_repository: UpdateBody failed: %w", err)
 	}
 	return nil
 }

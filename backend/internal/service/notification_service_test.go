@@ -127,11 +127,19 @@ type mockPostRepository struct {
 	createDraftFunc       func(ctx context.Context, post *model.Post) (*model.Post, error)
 	confirmDraftFunc      func(ctx context.Context, postID int64) error
 	createMissedFunc      func(ctx context.Context, notifID, userID, groupID int64) error
+	updateBodyFunc        func(ctx context.Context, postID int64, body string) error
 }
 
 func (m *mockPostRepository) CreateMissed(ctx context.Context, notifID, userID, groupID int64) error {
 	if m.createMissedFunc != nil {
 		return m.createMissedFunc(ctx, notifID, userID, groupID)
+	}
+	return nil
+}
+
+func (m *mockPostRepository) UpdateBody(ctx context.Context, postID int64, body string) error {
+	if m.updateBodyFunc != nil {
+		return m.updateBodyFunc(ctx, postID, body)
 	}
 	return nil
 }

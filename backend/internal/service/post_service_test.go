@@ -10,6 +10,78 @@ import (
 	githubpkg "github.com/irj0927/begit/pkg/github"
 )
 
+// TestPostService_GetDraft_Success は本人の draft を取得できることを確認する
+func TestPostService_GetDraft_Success(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 7, IsDraft: true}, nil
+		},
+	}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	post, err := svc.GetDraft(context.Background(), 12, 890, 7)
+	if err != nil {
+		t.Fatalf("GetDraft() failed: %v", err)
+	}
+	if post.ID != 890 || !post.IsDraft {
+		t.Errorf("unexpected draft: %+v", post)
+	}
+}
+
+// TestPostService_GetDraft_Forbidden は他人の draft 取得で ErrForbidden を返すことを確認する
+func TestPostService_GetDraft_Forbidden(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 99, IsDraft: true}, nil
+		},
+	}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	_, err := svc.GetDraft(context.Background(), 12, 890, 7)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+}
+
+// TestPostService_GetDraft_NotDraft は確定済み投稿の draft 取得で ErrNotFound を返すことを確認する
+func TestPostService_GetDraft_NotDraft(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 7, IsDraft: false}, nil
+		},
+	}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	_, err := svc.GetDraft(context.Background(), 12, 890, 7)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound for non-draft, got %v", err)
+	}
+}
+
+// TestPostService_ConfirmPost_Idempotent は確定でフィード表示可能になり、再確定が no-op であることを確認する
+func TestPostService_ConfirmPost_Idempotent(t *testing.T) {
+	confirmCalls := 0
+	state := true // is_draft
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 7, IsDraft: state}, nil
+		},
+		confirmDraftFunc: func(ctx context.Context, postID int64) error {
+			confirmCalls++
+			state = false
+			return nil
+		},
+	}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+
+	if _, err := svc.ConfirmPost(context.Background(), ConfirmPostRequest{}, 12, 890, 7); err != nil {
+		t.Fatalf("ConfirmPost() #1 failed: %v", err)
+	}
+	if _, err := svc.ConfirmPost(context.Background(), ConfirmPostRequest{}, 12, 890, 7); err != nil {
+		t.Fatalf("ConfirmPost() #2 (idempotent) failed: %v", err)
+	}
+	if confirmCalls != 2 {
+		t.Errorf("expected ConfirmDraft called twice (idempotent at repo level), got %d", confirmCalls)
+	}
+}
+
 // TestPostService_ListPosts_Blurred はリクエストユーザーが未投稿の場合に他メンバーの sensitive フィールドが nil で返ることを確認する
 func TestPostService_ListPosts_Blurred(t *testing.T) {
 	requestUserID := int64(1)

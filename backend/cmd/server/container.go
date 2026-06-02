@@ -199,6 +199,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.GET("/groups/:id/posts/:postId/draft", bearerAuth, groupMember, postHandler.GetDraft)
+	r.POST("/groups/:id/posts/:postId/confirm", bearerAuth, groupMember, postHandler.Confirm)
 	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupMember, photoHandler.Upload)
 	r.POST("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.Create)
 	r.DELETE("/groups/:id/posts/:postId/reactions/:reactionType", bearerAuth, groupMember, reactionHandler.Delete)

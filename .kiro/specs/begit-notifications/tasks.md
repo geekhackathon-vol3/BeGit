@@ -107,7 +107,7 @@
   - _Boundary: webhook_service_
   - _Depends: 3.3, 1.3_
 
-- [ ] 4.2 下書き取得・確定エンドポイントと feed 除外の公開
+- [x] 4.2 下書き取得・確定エンドポイントと feed 除外の公開
   - 下書き取得 API と確定 API（draft 解除）を追加し、フィード一覧が draft を除外することをエンドポイント経由で保証する
   - OpenAPI（openapi.yaml）に両エンドポイントと is_draft 挙動を反映する
   - テスト: 確定前は feed 非表示・取得可能、確定後は feed 表示、確定のべき等を API レベルで検証

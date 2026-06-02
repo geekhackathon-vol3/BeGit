@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -23,10 +24,19 @@ type CreatePostRequest struct {
 	RepoFullName   string
 }
 
+// ConfirmPostRequest は下書き確定リクエスト（確定時に本文を上書きできる）
+type ConfirmPostRequest struct {
+	Body *string
+}
+
 // PostService は投稿・フィードサービスインターフェース
 type PostService interface {
 	CreatePost(ctx context.Context, req CreatePostRequest, groupID, userID int64) (*model.Post, error)
 	ListPosts(ctx context.Context, groupID, userID int64) ([]model.PostFeed, error)
+	// GetDraft は下書き投稿を取得する（② プレフィル元）。本人以外/別グループ/draft でない場合はエラー。
+	GetDraft(ctx context.Context, groupID, postID, userID int64) (*model.Post, error)
+	// ConfirmPost は下書きを確定（is_draft=0）してフィード表示可能にする。べき等。
+	ConfirmPost(ctx context.Context, req ConfirmPostRequest, groupID, postID, userID int64) (*model.Post, error)
 }
 
 // postService は PostService インターフェースの実装
@@ -95,6 +105,65 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	}
 
 	return created, nil
+}
+
+// GetDraft は下書き投稿を取得する（② プレフィル元）。
+// 別グループ → ErrNotFound、本人以外 → ErrForbidden、draft でない → ErrNotFound。
+func (s *postService) GetDraft(ctx context.Context, groupID, postID, userID int64) (*model.Post, error) {
+	post, err := s.postRepo.GetByID(ctx, postID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("post_service: GetDraft failed: %w", err)
+	}
+	if post.GroupID != groupID {
+		return nil, ErrNotFound
+	}
+	if post.UserID != userID {
+		return nil, ErrForbidden
+	}
+	if !post.IsDraft {
+		// 既に確定済み（draft ではない）
+		return nil, ErrNotFound
+	}
+	return post, nil
+}
+
+// ConfirmPost は下書きを確定（is_draft=0）してフィード表示可能にする。べき等（既確定でもエラーにしない）。
+func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, groupID, postID, userID int64) (*model.Post, error) {
+	post, err := s.postRepo.GetByID(ctx, postID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("post_service: ConfirmPost failed: %w", err)
+	}
+	if post.GroupID != groupID {
+		return nil, ErrNotFound
+	}
+	if post.UserID != userID {
+		return nil, ErrForbidden
+	}
+
+	// 本文上書き（任意）
+	if req.Body != nil {
+		if err := s.postRepo.UpdateBody(ctx, postID, *req.Body); err != nil {
+			return nil, fmt.Errorf("post_service: ConfirmPost UpdateBody failed: %w", err)
+		}
+	}
+
+	// draft 解除（べき等）
+	if err := s.postRepo.ConfirmDraft(ctx, postID); err != nil {
+		return nil, fmt.Errorf("post_service: ConfirmPost ConfirmDraft failed: %w", err)
+	}
+
+	// 確定後の状態を取得して返す
+	confirmed, err := s.postRepo.GetByID(ctx, postID)
+	if err != nil {
+		return nil, fmt.Errorf("post_service: ConfirmPost re-fetch failed: %w", err)
+	}
+	return confirmed, nil
 }
 
 // ListPosts はグループのフィードを取得し、リクエストユーザーの投稿状況によってぼかし制御を適用する

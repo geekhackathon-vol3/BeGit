@@ -97,6 +97,14 @@
                 },
                 "type": "object"
             },
+            "handler.ConfirmPostRequest": {
+                "properties": {
+                    "body": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "handler.CreateCommentRequest": {
                 "properties": {
                     "body": {
@@ -1720,6 +1728,187 @@
                 "summary": "コメント削除",
                 "tags": [
                     "comments"
+                ]
+            }
+        },
+        "/groups/{id}/posts/{postId}/confirm": {
+            "post": {
+                "description": "下書きを確定し is_draft を解除する。べき等。",
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "投稿 ID",
+                        "in": "path",
+                        "name": "postId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.ConfirmPostRequest",
+                                        "summary": "request",
+                                        "description": "確定内容（本文の上書き等）"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "確定内容（本文の上書き等）"
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.PostJSON"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "下書き確定",
+                "tags": [
+                    "posts"
+                ]
+            }
+        },
+        "/groups/{id}/posts/{postId}/draft": {
+            "get": {
+                "description": "② Nice Work! 通知の draft_post_id に対応する下書きを取得する",
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "投稿 ID",
+                        "in": "path",
+                        "name": "postId",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.PostJSON"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "下書き取得",
+                "tags": [
+                    "posts"
                 ]
             }
         },
