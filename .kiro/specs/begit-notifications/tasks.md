@@ -5,7 +5,7 @@
 
 ## 1. Foundation: スキーマと外部連携の土台
 
-- [ ] 1.1 D1 マイグレーション 0003（draft 列 + notification_deliveries）
+- [x] 1.1 D1 マイグレーション 0003（draft 列 + notification_deliveries）
   - `posts` に `is_draft INTEGER NOT NULL DEFAULT 0` を追加（既存行はデフォルト 0 で後方互換）
   - `notification_deliveries(id, kind, ref_id, sent_at, UNIQUE(kind, ref_id))` を新規作成
   - `wrangler d1 migrations apply`（dev）でマイグレーションが適用でき、両変更がスキーマに反映されることを確認
