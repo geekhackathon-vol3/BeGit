@@ -25,6 +25,11 @@ type Config struct {
 	D1DatabaseID    string
 	CFAPIToken      string
 
+	// Cloudflare R2（S3 互換 API 認証情報。CF_API_TOKEN とは別物で R2 ダッシュボードで発行する）
+	R2AccessKeyID     string
+	R2SecretAccessKey string
+	R2Bucket          string
+
 	// Application
 	AppBaseURL string
 
@@ -45,6 +50,9 @@ func loadConfig() (*Config, error) {
 		CFAccountID:                os.Getenv("CF_ACCOUNT_ID"),
 		D1DatabaseID:               os.Getenv("D1_DATABASE_ID"),
 		CFAPIToken:                 os.Getenv("CF_API_TOKEN"),
+		R2AccessKeyID:              os.Getenv("R2_ACCESS_KEY_ID"),
+		R2SecretAccessKey:          os.Getenv("R2_SECRET_ACCESS_KEY"),
+		R2Bucket:                   os.Getenv("R2_BUCKET"),
 		AppBaseURL:                 os.Getenv("APP_BASE_URL"),
 		DevMode:                    os.Getenv("DEV_MODE") == "true",
 	}
@@ -97,6 +105,15 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	}
 	if v := r.Header.Get("X-Internal-CF-Api-Token"); v != "" {
 		cfg.CFAPIToken = v
+	}
+	if v := r.Header.Get("X-Internal-R2-Access-Key-Id"); v != "" {
+		cfg.R2AccessKeyID = v
+	}
+	if v := r.Header.Get("X-Internal-R2-Secret-Access-Key"); v != "" {
+		cfg.R2SecretAccessKey = v
+	}
+	if v := r.Header.Get("X-Internal-R2-Bucket"); v != "" {
+		cfg.R2Bucket = v
 	}
 	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
 		cfg.AppBaseURL = v

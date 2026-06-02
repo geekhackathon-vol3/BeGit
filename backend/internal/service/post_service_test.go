@@ -48,7 +48,7 @@ func TestPostService_ListPosts_Blurred(t *testing.T) {
 		},
 	}
 
-	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo)
+	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo, nil, nil)
 
 	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
 	if err != nil {
@@ -112,7 +112,7 @@ func TestPostService_ListPosts_NotBlurred(t *testing.T) {
 		},
 	}
 
-	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo)
+	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo, nil, nil)
 
 	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestPostService_ListPosts_OwnPost(t *testing.T) {
 		},
 	}
 
-	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo)
+	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo, nil, nil)
 
 	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
 	if err != nil {
@@ -192,7 +192,7 @@ func TestPostService_CreatePost_GitHubAPIFailed(t *testing.T) {
 	postRepo := &mockPostRepository{}
 	groupRepo := &mockGroupRepository{}
 
-	svc := NewPostService(githubClientFail, sprintRepo, postRepo, groupRepo)
+	svc := NewPostService(githubClientFail, sprintRepo, postRepo, groupRepo, nil, nil)
 
 	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
 		Body:         nil,
