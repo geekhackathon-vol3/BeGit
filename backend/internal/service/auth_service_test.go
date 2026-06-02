@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/irj0927/begit/internal/model"
+	"github.com/irj0927/begit/internal/repository"
 	githubpkg "github.com/irj0927/begit/pkg/github"
 )
 
@@ -90,7 +91,7 @@ func (m *mockUserRepository) GetByID(ctx context.Context, id int64) (*model.User
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(ctx, id)
 	}
-	return nil, errors.New("not found")
+	return nil, repository.ErrNotFound
 }
 
 func (m *mockUserRepository) GetByEncryptedToken(ctx context.Context, encryptedToken string) (*model.User, error) {

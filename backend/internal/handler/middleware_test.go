@@ -26,7 +26,7 @@ func (m *mockUserRepoForHandler) GetByID(ctx context.Context, id int64) (*model.
 	if m.getByIDFunc != nil {
 		return m.getByIDFunc(ctx, id)
 	}
-	return nil, errors.New("not found")
+	return nil, repository.ErrNotFound
 }
 
 func (m *mockUserRepoForHandler) GetByEncryptedToken(ctx context.Context, encryptedToken string) (*model.User, error) {
