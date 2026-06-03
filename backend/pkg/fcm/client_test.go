@@ -35,6 +35,73 @@ func TestSendToTokens_EmptyTokens(t *testing.T) {
 	}
 }
 
+// TestSendToTokens_WithData は data 付き送信で FCM リクエストボディに data が含まれることを検証する
+func TestSendToTokens_WithData(t *testing.T) {
+	var captured map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := &fcmClient{
+		httpClient:  server.Client(),
+		fcmEndpoint: server.URL + "/v1/projects/{project_id}/messages:send",
+		projectID:   "test-project",
+		accessToken: "test_token",
+	}
+
+	data := map[string]string{"type": "nice_work", "group_id": "12", "draft_post_id": "890"}
+	err := client.SendToTokensWithData(context.Background(), []string{"token1"}, Notification{Title: "Nice Work!", Body: "x"}, data)
+	if err != nil {
+		t.Fatalf("SendToTokensWithData() failed: %v", err)
+	}
+
+	msg, ok := captured["message"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected message object, got: %v", captured)
+	}
+	gotData, ok := msg["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected data object in message, got: %v", msg)
+	}
+	if gotData["type"] != "nice_work" || gotData["group_id"] != "12" || gotData["draft_post_id"] != "890" {
+		t.Errorf("data fields mismatch: %v", gotData)
+	}
+	// notification も併存していること
+	notif, ok := msg["notification"].(map[string]interface{})
+	if !ok || notif["title"] != "Nice Work!" {
+		t.Errorf("expected notification title=Nice Work!, got: %v", msg["notification"])
+	}
+}
+
+// TestSendToTokens_NoDataOmitsDataField は data が空の場合に従来どおり notification のみ送信することを検証する
+func TestSendToTokens_NoDataOmitsDataField(t *testing.T) {
+	var captured map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&captured)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := &fcmClient{
+		httpClient:  server.Client(),
+		fcmEndpoint: server.URL + "/v1/projects/{project_id}/messages:send",
+		projectID:   "test-project",
+		accessToken: "test_token",
+	}
+
+	err := client.SendToTokens(context.Background(), []string{"token1"}, Notification{Title: "BeGit Time!", Body: "x"})
+	if err != nil {
+		t.Fatalf("SendToTokens() failed: %v", err)
+	}
+
+	msg, _ := captured["message"].(map[string]interface{})
+	if _, exists := msg["data"]; exists {
+		t.Errorf("expected no data field when data is empty, got: %v", msg["data"])
+	}
+}
+
 // TestSendToTokens_Success は FCM 送信が正常完了することを確認する
 func TestSendToTokens_Success(t *testing.T) {
 	callCount := 0

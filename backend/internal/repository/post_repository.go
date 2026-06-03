@@ -17,6 +17,16 @@ type PostRepository interface {
 	HasPostedInSprint(ctx context.Context, userID, sprintID int64) (bool, error)
 	GetByUserAndNotification(ctx context.Context, userID, notifID int64) (*model.Post, error)
 	GetByID(ctx context.Context, postID int64) (*model.Post, error)
+	// CreateDraft は ② Nice Work! の検知データを draft 状態（is_draft=1）で作成する。
+	// UNIQUE(notification_id, user_id) 違反時は ErrConstraintViolation（既発火＝冪等 skip 用）。
+	CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error)
+	// ConfirmDraft は draft を確定（is_draft=0 へ更新）する。べき等（既確定でもエラーにしない）。
+	ConfirmDraft(ctx context.Context, postID int64) error
+	// CreateMissed は (notification_id, user_id) に status='missed' の投稿を INSERT する（⑤ で未投稿者を確定）。
+	// 既に投稿/draft が存在する場合は UNIQUE 違反となり ErrConstraintViolation を返す（呼び出し側は skip）。
+	CreateMissed(ctx context.Context, notifID, userID, groupID int64) error
+	// UpdateBody は投稿の body を更新する（下書き確定時の本文上書き用）。
+	UpdateBody(ctx context.Context, postID int64, body string) error
 }
 
 // postRepository は PostRepository インターフェースの実装
@@ -73,6 +83,9 @@ func scanPost(row map[string]interface{}) (*model.Post, error) {
 	if v, ok := row["status"].(string); ok {
 		p.Status = &v
 	}
+	if v, ok := row["is_draft"].(float64); ok {
+		p.IsDraft = v != 0
+	}
 	if v, ok := row["created_at"].(string); ok {
 		t, err := time.Parse(time.RFC3339, v)
 		if err != nil {
@@ -110,7 +123,7 @@ func (r *postRepository) Create(ctx context.Context, post *model.Post) (*model.P
 
 	// 作成後に取得
 	rows, err := r.db.Query(ctx,
-		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, created_at
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
 		 FROM posts WHERE user_id = ? AND group_id = ? ORDER BY id DESC LIMIT 1`,
 		[]interface{}{post.UserID, post.GroupID},
 	)
@@ -121,11 +134,12 @@ func (r *postRepository) Create(ctx context.Context, post *model.Post) (*model.P
 	return scanPost(rows[0])
 }
 
-// ListByGroupID はグループのフィード一覧を投稿日時の降順で取得する
+// ListByGroupID はグループのフィード一覧を投稿日時の降順で取得する。
+// draft（is_draft=1）は確定前のためフィードから除外する。
 func (r *postRepository) ListByGroupID(ctx context.Context, groupID int64) ([]model.Post, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, created_at
-		 FROM posts WHERE group_id = ? ORDER BY created_at DESC`,
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
+		 FROM posts WHERE group_id = ? AND is_draft = 0 ORDER BY created_at DESC`,
 		[]interface{}{groupID},
 	)
 	if err != nil {
@@ -149,7 +163,7 @@ func (r *postRepository) ListByGroupID(ctx context.Context, groupID int64) ([]mo
 // GetByID は postID で投稿を取得する
 func (r *postRepository) GetByID(ctx context.Context, postID int64) (*model.Post, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, created_at
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
 		 FROM posts WHERE id = ? LIMIT 1`,
 		[]interface{}{postID},
 	)
@@ -191,10 +205,88 @@ func (r *postRepository) HasPostedInSprint(ctx context.Context, userID, sprintID
 	return count > 0, nil
 }
 
+// CreateDraft は ② Nice Work! の検知データを draft 状態（is_draft=1）で作成する。
+// UNIQUE(notification_id, user_id) 違反時は ErrConstraintViolation を返す（既発火＝冪等 skip）。
+func (r *postRepository) CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error) {
+	var notifID interface{} = nil
+	if post.NotificationID != nil {
+		notifID = *post.NotificationID
+	}
+
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO posts (notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+		[]interface{}{
+			notifID, post.UserID, post.GroupID, post.PostType,
+			post.Body, post.RepoFullName, post.BranchName,
+			post.CommitCount, post.Additions, post.Deletions,
+			post.LatestCommitMessage, post.Status,
+		},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrConstraintViolation) {
+			return nil, ErrConstraintViolation
+		}
+		return nil, fmt.Errorf("post_repository: CreateDraft failed: %w", err)
+	}
+
+	rows, err := r.db.Query(ctx,
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
+		 FROM posts WHERE user_id = ? AND notification_id = ? LIMIT 1`,
+		[]interface{}{post.UserID, notifID},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("post_repository: CreateDraft fetch after insert failed: %w", err)
+	}
+
+	return scanPost(rows[0])
+}
+
+// ConfirmDraft は draft を確定（is_draft=0 へ更新）する。べき等（既確定でも 0 行更新でエラーにしない）。
+func (r *postRepository) ConfirmDraft(ctx context.Context, postID int64) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE posts SET is_draft = 0 WHERE id = ?`,
+		[]interface{}{postID},
+	)
+	if err != nil {
+		return fmt.Errorf("post_repository: ConfirmDraft failed: %w", err)
+	}
+	return nil
+}
+
+// CreateMissed は status='missed' の投稿を INSERT する（⑤ 未投稿者の確定）。
+// UNIQUE(notification_id, user_id) 違反時は ErrConstraintViolation（既に投稿/draft 有り → skip）。
+func (r *postRepository) CreateMissed(ctx context.Context, notifID, userID, groupID int64) error {
+	_, err := r.db.Exec(ctx,
+		`INSERT INTO posts (notification_id, user_id, group_id, post_type, status, is_draft)
+		 VALUES (?, ?, ?, 'missed', 'missed', 0)`,
+		[]interface{}{notifID, userID, groupID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrConstraintViolation) {
+			return ErrConstraintViolation
+		}
+		return fmt.Errorf("post_repository: CreateMissed failed: %w", err)
+	}
+	return nil
+}
+
+// UpdateBody は投稿の body を更新する
+func (r *postRepository) UpdateBody(ctx context.Context, postID int64, body string) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE posts SET body = ? WHERE id = ?`,
+		[]interface{}{body, postID},
+	)
+	if err != nil {
+		return fmt.Errorf("post_repository: UpdateBody failed: %w", err)
+	}
+	return nil
+}
+
 // GetByUserAndNotification はユーザーと通知 ID で投稿を取得する
 func (r *postRepository) GetByUserAndNotification(ctx context.Context, userID, notifID int64) (*model.Post, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, created_at
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
 		 FROM posts WHERE user_id = ? AND notification_id = ? LIMIT 1`,
 		[]interface{}{userID, notifID},
 	)

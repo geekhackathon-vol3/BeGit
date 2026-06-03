@@ -21,9 +21,12 @@ type Notification struct {
 
 // Client は FCM HTTP v1 API インターフェース
 type Client interface {
-	// SendToTokens は tokens の各デバイスへ Push 通知を送信する
+	// SendToTokens は tokens の各デバイスへ Push 通知（notification のみ）を送信する
 	// tokens が空の場合は何もせず正常終了する
 	SendToTokens(ctx context.Context, tokens []string, notification Notification) error
+	// SendToTokensWithData は notification に加えて data メッセージ（文字列キー/値）を併送する
+	// data が空の場合は notification のみ送信する（SendToTokens と等価）
+	SendToTokensWithData(ctx context.Context, tokens []string, notification Notification, data map[string]string) error
 }
 
 // fcmClient は Client インターフェースの実装
@@ -76,6 +79,8 @@ type fcmMessageRequest struct {
 			Title string `json:"title"`
 			Body  string `json:"body"`
 		} `json:"notification"`
+		// Data は FCM data メッセージ（文字列キー/値）。空の場合は省略する。
+		Data map[string]string `json:"data,omitempty"`
 	} `json:"message"`
 }
 
@@ -89,6 +94,11 @@ func (c *fcmClient) getEndpoint() string {
 
 // SendToTokens は tokens の各デバイスへ Push 通知を送信する
 func (c *fcmClient) SendToTokens(ctx context.Context, tokens []string, notification Notification) error {
+	return c.SendToTokensWithData(ctx, tokens, notification, nil)
+}
+
+// SendToTokensWithData は notification に加えて data メッセージを併送する
+func (c *fcmClient) SendToTokensWithData(ctx context.Context, tokens []string, notification Notification, data map[string]string) error {
 	if len(tokens) == 0 {
 		return nil
 	}
@@ -97,7 +107,7 @@ func (c *fcmClient) SendToTokens(ctx context.Context, tokens []string, notificat
 	var lastErr error
 	successCount := 0
 	for _, token := range tokens {
-		if err := c.sendToToken(ctx, token, notification); err != nil {
+		if err := c.sendToToken(ctx, token, notification, data); err != nil {
 			// 個別トークンの失敗はログに記録するが続行する
 			lastErr = err
 			continue
@@ -114,19 +124,22 @@ func (c *fcmClient) SendToTokens(ctx context.Context, tokens []string, notificat
 }
 
 // sendToToken は1つのデバイストークンへ Push 通知を送信する
-func (c *fcmClient) sendToToken(ctx context.Context, token string, notification Notification) error {
+func (c *fcmClient) sendToToken(ctx context.Context, token string, notification Notification, data map[string]string) error {
 	var req fcmMessageRequest
 	req.Message.Token = token
 	req.Message.Notification.Title = notification.Title
 	req.Message.Notification.Body = notification.Body
+	if len(data) > 0 {
+		req.Message.Data = data
+	}
 
-	data, err := json.Marshal(req)
+	body, err := json.Marshal(req)
 	if err != nil {
 		return fmt.Errorf("fcm: failed to marshal request: %w", err)
 	}
 
 	endpoint := c.getEndpoint()
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("fcm: failed to create request: %w", err)
 	}

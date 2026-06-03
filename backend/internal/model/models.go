@@ -67,7 +67,10 @@ type Post struct {
 	Deletions           int
 	LatestCommitMessage *string
 	Status              *string
-	CreatedAt           time.Time
+	// IsDraft は draft 状態（true でフィード除外）。② Nice Work! の検知データを
+	// 確定前に保持する。写真の有無とは独立した明示的なフラグ。
+	IsDraft   bool
+	CreatedAt time.Time
 }
 
 // PostFeed はフィード表示用の投稿（ぼかし制御フラグ付き）
