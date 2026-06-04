@@ -1584,7 +1584,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.UpdateFCMTokenRequest'
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.UpdateFCMTokenRequest'
+                description: FCM トークン
+                summary: request
         description: FCM トークン
         required: true
       responses:
