@@ -13,7 +13,8 @@ final class FCMTokenRegistrar {
     static let shared = FCMTokenRegistrar()
 
     private let api: any CurrentUserAPI
-    private var lastSentToken: String?
+    //  ユーザーごとに送信済みトークンを記録（キー: userID、値: FCM token）
+    private var lastSentTokenByUser: [Int: String] = [:]
 
     init(api: any CurrentUserAPI = BeGitBackendAPI()) {
         self.api = api
@@ -34,18 +35,28 @@ final class FCMTokenRegistrar {
         }
     }
 
-    //  ログイン済みなら DB へ保存。直近送信済みと同一トークンなら skip。
+    //  ログアウト時にキャッシュをクリアする（AuthState.logout から呼ぶ）
+    func clearCache() {
+        lastSentTokenByUser.removeAll()
+    }
+
+    //  ログイン済みなら DB へ保存。同一ユーザーに対して直近送信済みと同一トークンなら skip。
     private func send(token: String) {
         guard let accessToken = AuthState.shared.accessToken,
               accessToken.isEmpty == false,
-              token != lastSentToken else {
+              let userId = AuthState.shared.githubUser?.id else {
+            return
+        }
+
+        //  このユーザーに対して既に同じトークンを送信済みなら skip
+        if lastSentTokenByUser[userId] == token {
             return
         }
 
         Task {
             do {
                 try await api.updateFCMToken(token, accessToken: accessToken)
-                lastSentToken = token
+                lastSentTokenByUser[userId] = token
             } catch {
                 //  失敗しても次回のトークン更新／再ログインで再送される
             }

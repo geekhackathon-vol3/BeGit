@@ -72,6 +72,8 @@ final class AuthState: ObservableObject {
         githubUser = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: savedGitHubUserKey)
+        //  FCM トークンのキャッシュをクリアして、次のユーザーログイン時に再送信されるようにする
+        FCMTokenRegistrar.shared.clearCache()
     }
 
     private func applyDevSession() {
