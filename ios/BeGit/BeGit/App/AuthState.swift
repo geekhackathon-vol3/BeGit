@@ -77,6 +77,7 @@ final class AuthState: ObservableObject {
         githubUser = GitHubUser(
             id: 1,
             login: "dev_alice",
+            name: "dev_alice (dev)",
             avatarURL: nil,
             email: nil
         )
@@ -109,12 +110,14 @@ final class AuthState: ObservableObject {
 private struct SavedGitHubUser: Codable {
     let id: Int
     let login: String
+    let name: String?
     let avatarURLString: String?
     let email: String?
 
     init(githubUser: GitHubUser) {
         id = githubUser.id
         login = githubUser.login
+        name = githubUser.name
         avatarURLString = githubUser.avatarURL?.absoluteString
         email = githubUser.email
     }
@@ -123,6 +126,7 @@ private struct SavedGitHubUser: Codable {
         GitHubUser(
             id: id,
             login: login,
+            name: name,
             avatarURL: avatarURLString.flatMap(URL.init(string:)),
             email: email
         )

@@ -30,16 +30,13 @@ struct NotificationResultView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
-                        //  共通Header
-                        BeGitHeaderView(title: "notification result", subtitle: viewModel.notification.repository.name)
+                        //  Result Header
+                        resultHeader
 
                         //  通知結果サマリー
                         resultSummary
 
-                        //  Timeline見出し
-                        SectionTitleView("Timeline", caption: "mock completion activity")
-
-                        //  Mock activity一覧
+                        //  Activity一覧
                         RepositoryActivityTimelineView(activities: viewModel.activities)
                     }
                     .padding(.horizontal, 20)
@@ -72,9 +69,24 @@ struct NotificationResultView: View {
 
     // MARK: - Components
 
+    //  Result画面Header
+    private var resultHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Result")
+                .font(.custom("Bitcount", size: 34))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(viewModel.notification.repository.name)
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.50))
+                .lineLimit(1)
+        }
+    }
+
     //  通知結果サマリー
     private var resultSummary: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             //  通知対象member avatar一覧
             MemberAvatarRowView(members: viewModel.notification.selectedMembers, avatarSize: 42)
 
@@ -86,36 +98,35 @@ struct NotificationResultView: View {
                     .lineSpacing(4)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            progressSummary
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    //  達成状況とProgress bar
+    private var progressSummary: some View {
+        //  達成率Progress bar
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                //  Progress bar背景
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+
+                //  Progress bar進捗
+                Capsule()
+                    .fill(AppTheme.accent)
+                    .frame(width: proxy.size.width * viewModel.progress)
+
                 //  達成状況テキスト
                 Text(viewModel.progressText)
-                    .font(.system(size: 15, weight: .black, design: .monospaced))
+                    .font(.system(size: 14, weight: .black, design: .monospaced))
                     .foregroundStyle(.white)
-
-                //  達成率Progress bar
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        //  Progress bar背景
-                        Capsule()
-                            .fill(Color.white.opacity(0.08))
-
-                        //  Progress bar進捗
-                        Capsule()
-                            .fill(AppTheme.accent)
-                            .frame(width: proxy.size.width * viewModel.progress)
-                    }
-                }
-                .frame(height: 12)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
-        .padding(16)
-        .background(Color.white.opacity(0.06))                              //  card背景
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))  //  card shape
-        //  card border
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(AppTheme.accent.opacity(0.22), lineWidth: 1)
-        )
+        .frame(height: 30)
     }
 
     //  下部固定エリア背景

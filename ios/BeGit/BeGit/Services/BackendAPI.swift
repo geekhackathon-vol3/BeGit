@@ -47,6 +47,7 @@ struct MockAuthAPI: AuthAPI {
             githubUser: GitHubUser(
                 id: 1,
                 login: "octocat",
+                name: "The Octocat",
                 avatarURL: URL(string: "https://github.com/octocat.png"),
                 email: "octocat@github.com"
             )
