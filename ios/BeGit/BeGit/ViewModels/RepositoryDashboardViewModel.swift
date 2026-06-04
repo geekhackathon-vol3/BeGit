@@ -24,7 +24,15 @@ final class RepositoryDashboardViewModel: ObservableObject {
     }
 
     func loadActivities(accessToken: String?) async {
-        guard let accessToken else { return }
+        guard let accessToken else {
+            activities = RepositoryActivity.mockActivities(for: repository)
+            return
+        }
+
+        guard repository.backendID != nil else {
+            activities = RepositoryActivity.mockActivities(for: repository)
+            return
+        }
 
         isLoading = true
         errorMessage = nil
@@ -33,7 +41,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
         do {
             activities = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
         } catch {
-            errorMessage = error.localizedDescription
+            activities = RepositoryActivity.mockActivities(for: repository)
         }
     }
 }

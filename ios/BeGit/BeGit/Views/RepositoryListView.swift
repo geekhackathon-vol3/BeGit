@@ -95,7 +95,10 @@ struct RepositoryListView: View {
             //  Repository追加Sheet
             .sheet(isPresented: $viewModel.isShowingAddRepository) {
                 AddRepositoryView(
-                    viewModel: AddRepositoryViewModel(accessToken: authState.accessToken)
+                    viewModel: AddRepositoryViewModel(
+                        accessToken: authState.accessToken,
+                        existingRepositories: viewModel.repositories
+                    )
                 ) { repository in
                     //  Repository一覧へ追加
                     viewModel.addRepository(repository)
@@ -258,6 +261,9 @@ struct RepositoryListView: View {
         //  Repository Dashboard画面へ遷移
         case .dashboard(let repository):
             RepositoryDashboardView(repository: repository)
+        //  カメラ画面へ遷移
+        case .camera:
+            CameraView()
         //  通知作成画面へ遷移
         case .makeNotification(let repository):
             MakeNotificationView(repository: repository) { notification in

@@ -31,6 +31,13 @@ final class RepositoryListViewModel: ObservableObject {
             return
         }
 
+        if shouldUseMockGitHubAPI(accessToken: accessToken) {
+            repositories = Repository.mockRepositories
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

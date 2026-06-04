@@ -13,14 +13,14 @@ import (
 
 // mockGroupRepository はテスト用のグループリポジトリモック
 type mockGroupRepository struct {
-	listByUserIDFunc    func(ctx context.Context, userID int64) ([]model.Group, error)
-	createFunc          func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error)
-	getByIDFunc         func(ctx context.Context, groupID int64) (*model.Group, error)
+	listByUserIDFunc      func(ctx context.Context, userID int64) ([]model.Group, error)
+	createFunc            func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error)
+	getByIDFunc           func(ctx context.Context, groupID int64) (*model.Group, error)
 	getByRepoFullNameFunc func(ctx context.Context, repoFullName string) (*model.Group, error)
-	addMemberFunc       func(ctx context.Context, groupID, userID int64, role string) error
-	batchAddMembersFunc func(ctx context.Context, groupID int64, userIDs []int64, role string) error
-	isMemberFunc        func(ctx context.Context, groupID, userID int64) (bool, error)
-	getMembersFunc      func(ctx context.Context, groupID int64) ([]model.GroupMember, error)
+	addMemberFunc         func(ctx context.Context, groupID, userID int64, role string) error
+	batchAddMembersFunc   func(ctx context.Context, groupID int64, userIDs []int64, role string) error
+	isMemberFunc          func(ctx context.Context, groupID, userID int64) (bool, error)
+	getMembersFunc        func(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 }
 
 func (m *mockGroupRepository) ListByUserID(ctx context.Context, userID int64) ([]model.Group, error) {
@@ -161,5 +161,51 @@ func TestGroupService_CreateGroup_WebhookFailed(t *testing.T) {
 	}
 	if groupCreated {
 		t.Error("group should not be created when webhook registration fails")
+	}
+}
+
+func TestGroupService_CreateGroup_ExistingGroupAddsMember(t *testing.T) {
+	addedMember := false
+
+	githubClient := &mockGitHubClient{}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
+			return nil, repository.ErrConflict
+		},
+		getByRepoFullNameFunc: func(ctx context.Context, repoFullName string) (*model.Group, error) {
+			if repoFullName != "owner/repo" {
+				t.Fatalf("expected repo full name owner/repo, got %s", repoFullName)
+			}
+			return &model.Group{ID: 42, RepoFullName: repoFullName, Name: "Existing Repo"}, nil
+		},
+		addMemberFunc: func(ctx context.Context, groupID, userID int64, role string) error {
+			if groupID != 42 || userID != 7 || role != "member" {
+				t.Fatalf("unexpected AddMember args: groupID=%d userID=%d role=%s", groupID, userID, role)
+			}
+			addedMember = true
+			return nil
+		},
+	}
+	userRepo := &mockUserRepository{}
+
+	svc := NewGroupService(GroupServiceConfig{
+		AppBaseURL:          "https://example.com",
+		GitHubWebhookSecret: "webhook_secret",
+	}, githubClient, groupRepo, userRepo)
+
+	group, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "owner/repo",
+		Name:         "My Team",
+		AccessToken:  "github_token",
+	}, 7)
+
+	if err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if !addedMember {
+		t.Error("expected existing group member to be added")
+	}
+	if group.ID != 42 {
+		t.Errorf("expected existing group ID 42, got %d", group.ID)
 	}
 }

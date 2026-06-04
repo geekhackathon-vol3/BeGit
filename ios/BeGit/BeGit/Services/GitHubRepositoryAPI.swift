@@ -10,6 +10,12 @@ protocol GitHubRepositoryAPI {
     func searchUsers(query: String, accessToken: String) async throws -> [RepositoryMember]
 }
 
+func shouldUseMockGitHubAPI(accessToken: String?) -> Bool {
+    guard let accessToken else { return false }
+
+    return accessToken.hasPrefix("mock_access_token_") || accessToken.hasPrefix("dev_")
+}
+
 //  GitHub REST APIを使うRepository一覧取得クライアント
 struct GitHubRepositoryClient: GitHubRepositoryAPI {
     private let session: URLSession

@@ -68,6 +68,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     //  userInfo を parse して、遷移先を共有 Router に積む。未知 type は無視。
     private func route(from userInfo: [AnyHashable: Any]) {
+        if localNotification(from: userInfo) != nil {
+            NotificationRouter.shared.requestRoute(.camera)
+            return
+        }
+
         guard let payload = NotificationPayload(userInfo: userInfo),
               let route = payload.route else {
             return
@@ -75,6 +80,29 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             NotificationRouter.shared.requestRoute(route)
         }
+    }
+
+    private func localNotification(from userInfo: [AnyHashable: Any]) -> RepositoryNotification? {
+        guard let type = userInfo["local_notification"] as? String,
+              type == "repository_send",
+              let repositoryName = userInfo["repository_name"] as? String else {
+            return nil
+        }
+
+        let comment = (userInfo["comment"] as? String) ?? ""
+        let selectedMemberLogins = userInfo["selected_member_logins"] as? [String] ?? []
+        let selectedMembers = selectedMemberLogins.map { RepositoryMember(login: $0) }
+        let repository = Repository(
+            name: repositoryName,
+            memberCount: max(selectedMembers.count, (userInfo["selected_member_count"] as? Int) ?? selectedMembers.count),
+            members: selectedMembers
+        )
+
+        return RepositoryNotification(
+            repository: repository,
+            selectedMembers: selectedMembers,
+            comment: comment
+        )
     }
 }
 
