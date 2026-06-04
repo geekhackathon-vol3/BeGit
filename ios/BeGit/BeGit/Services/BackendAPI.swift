@@ -35,6 +35,13 @@ protocol RepositoryAPI: Sendable {
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
     func sendNotification(repositoryID: Int64, accessToken: String) async throws
+    func uploadPhotos(
+        repositoryID: Int64,
+        postID: Int64,
+        mainImageData: Data,
+        frontImageData: Data?,
+        accessToken: String
+    ) async throws
 }
 
 //  開発・テスト用。ネットワークを使わず固定値を返す。

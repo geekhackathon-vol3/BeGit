@@ -53,7 +53,7 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
 struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     private let baseURL: URL
     private let session: URLSession
-
+    
     nonisolated init(
         baseURL: URL = BeGitBackendAPI.defaultBaseURL,
         session: URLSession = .shared
@@ -61,17 +61,17 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         self.baseURL = baseURL
         self.session = session
     }
-
+    
     private nonisolated static var defaultBaseURL: URL {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
               value.isEmpty == false,
               let url = URL(string: value) else {
             preconditionFailure("API_BASE_URL is not configured")
         }
-
+        
         return url
     }
-
+    
     // openapi.yaml の servers は相対(/)なので serverURL に実行時 baseURL を指定する。
     private func makeClient(accessToken: String? = nil) -> Client {
         var middlewares: [any ClientMiddleware] = [ErrorThrowingMiddleware()]
@@ -84,14 +84,14 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             middlewares: middlewares
         )
     }
-
+    
     func exchangeCode(code: String) async throws -> AuthResponse {
         let output = try await makeClient().postAuthGithub(
             .init(body: .json(.Handler_AuthRequest(.init(code: code))))
         )
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         let payload = try ok.body.json
-
+        
         // 必須フィールドの検証
         guard let token = payload.token, !token.isEmpty else {
             throw BeGitAPIError.invalidResponse
@@ -99,7 +99,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         guard let user = payload.user, let userId = user.id, let userLogin = user.login else {
             throw BeGitAPIError.invalidResponse
         }
-
+        
         return AuthResponse(
             accessToken: token,
             githubUser: GitHubUser(
@@ -110,13 +110,13 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             )
         )
     }
-
+    
     func listRepositories(accessToken: String) async throws -> [Repository] {
         let output = try await makeClient(accessToken: accessToken).getGroups()
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return (try ok.body.json.groups ?? []).map { $0.toRepository(members: []) }
     }
-
+    
     // 作成成功は 201(.created)
     func createRepository(repoFullName: String, name: String, accessToken: String) async throws -> Repository {
         let output = try await makeClient(accessToken: accessToken).postGroups(
@@ -124,10 +124,10 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         )
         guard case let .created(created) = output else { throw BeGitAPIError.invalidResponse }
         guard let id = try created.body.json.id else { throw BeGitAPIError.invalidResponse }
-
+        
         return try await getRepository(id: Int64(id), accessToken: accessToken)
     }
-
+    
     func getRepository(id: Int64, accessToken: String) async throws -> Repository {
         let output = try await makeClient(accessToken: accessToken).getGroupsId(
             .init(path: .init(id: Int(id)))
@@ -135,7 +135,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return try ok.body.json.toRepository()
     }
-
+    
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity] {
         guard let backendID = repository.backendID else { return [] }
         let output = try await makeClient(accessToken: accessToken).getGroupsIdPosts(
@@ -144,7 +144,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return (try ok.body.json.posts ?? []).map { $0.toActivity(fallbackRepository: repository) }
     }
-
+    
     // 通知発行成功は 201(.created)
     func sendNotification(repositoryID: Int64, accessToken: String) async throws {
         let output = try await makeClient(accessToken: accessToken).postGroupsIdNotifications(
@@ -152,12 +152,64 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         )
         guard case .created = output else { throw BeGitAPIError.invalidResponse }
     }
-
+    
     // GET /me : Bearer トークンから現在ログイン中ユーザーを取得（GitHub 直叩きの代替）
     func getCurrentUser(accessToken: String) async throws -> GitHubUser {
         let output = try await makeClient(accessToken: accessToken).getMe()
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return try ok.body.json.toGitHubUser()
+    }
+    
+    func uploadPhotos(
+        repositoryID: Int64,
+        postID: Int64,
+        mainImageData: Data,
+        frontImageData: Data?,
+        accessToken: String
+    ) async throws {
+        let mainPart = OpenAPIRuntime.MultipartPart(
+            payload: Operations.PostGroupsIdPostsPostIdPhotos
+                .Input
+                .Body
+                .MultipartFormPayload
+                .MainPayload(
+                    body: HTTPBody(mainImageData)
+                ),
+            filename: "main.jpg"
+        )
+
+        var parts: [Operations.PostGroupsIdPostsPostIdPhotos.Input.Body.MultipartFormPayload] = []
+        parts.append(.main(mainPart))
+
+        if let frontImageData {
+            let frontPart = OpenAPIRuntime.MultipartPart(
+                payload: Operations.PostGroupsIdPostsPostIdPhotos
+                    .Input
+                    .Body
+                    .MultipartFormPayload
+                    .FrontPayload(
+                        body: HTTPBody(frontImageData)
+                    ),
+                filename: "front.jpg"
+            )
+            parts.append(.front(frontPart))
+        }
+
+        let multipartBody = OpenAPIRuntime.MultipartBody(parts)
+
+        let output = try await makeClient(accessToken: accessToken).postGroupsIdPostsPostIdPhotos(
+            .init(
+                path: .init(
+                    id: Int(repositoryID),
+                    postId: Int(postID)
+                ),
+                body: .multipartForm(multipartBody)
+            )
+        )
+
+        guard case .created = output else {
+            throw BeGitAPIError.invalidResponse
+        }
     }
 }
 

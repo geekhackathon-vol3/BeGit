@@ -118,8 +118,31 @@ struct RepositoryListView: View {
 
     //  Repository追加ボタン
     private var addRepositoryButton: some View {
-        PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
-            .accessibilityIdentifier("add_repository_button")
+        VStack(spacing: 12) {
+            PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
+                .accessibilityIdentifier("add_repository_button")
+
+            //  デバッグ用カメラボタン
+            NavigationLink {
+                CameraView()
+            } label: {
+                Text("Debug Camera")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 999)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 999)
+                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     //  ログイン中ユーザー情報表示

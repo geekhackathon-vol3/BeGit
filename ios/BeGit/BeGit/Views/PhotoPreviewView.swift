@@ -10,7 +10,13 @@ struct PhotoPreviewView: View {
     let mainImage: UIImage
     let frontImage: UIImage?
 
+    let repositoryID: Int64
+    let postID: Int64
+    let accessToken: String
+
     @Environment(\.dismiss) private var dismiss
+
+    @State private var isPosting = false
 
     var body: some View {
 
@@ -120,9 +126,37 @@ struct PhotoPreviewView: View {
 
                     // Post
                     Button {
+                        Task {
 
-                        // TODO:
-                        // 投稿処理
+                            do {
+
+                                let api = BeGitBackendAPI()
+
+                                guard let mainData = mainImage.jpegData(
+                                    compressionQuality: 0.8
+                                ) else {
+                                    return
+                                }
+
+                                let frontData = frontImage?.jpegData(
+                                    compressionQuality: 0.8
+                                )
+
+                                try await api.uploadPhotos(
+                                    repositoryID: repositoryID,
+                                    postID: postID,
+                                    mainImageData: mainData,
+                                    frontImageData: frontData,
+                                    accessToken: accessToken
+                                )
+
+                                dismiss()
+
+                            } catch {
+
+                                print("Upload failed:", error)
+                            }
+                        }
 
                     } label: {
 

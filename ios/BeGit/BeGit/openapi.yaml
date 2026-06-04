@@ -1075,20 +1075,18 @@ paths:
         schema:
           type: integer
       requestBody:
-        required: true
         content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - title: main
+                type: string
+              - title: front
+                type: string
           multipart/form-data:
             schema:
               type: object
-              required:
-                - main
-              properties:
-                main:
-                  type: string
-                  format: binary
-                front:
-                  type: string
-                  format: binary
+        description: 背面写真（image/jpeg, image/png, image/heic） | 前面写真（任意）
       responses:
         "201":
           content:

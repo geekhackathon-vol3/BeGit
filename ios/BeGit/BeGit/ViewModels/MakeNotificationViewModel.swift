@@ -34,9 +34,7 @@ final class MakeNotificationViewModel: ObservableObject {
     var canSend: Bool {
         selectedMembers.isEmpty == false && isSending == false
     }
-
     // MARK: - Actions
-
     //  member選択状態切り替え
     func toggleSelection(for member: RepositoryMember) {
         if selectedMemberIDs.contains(member.id) {
