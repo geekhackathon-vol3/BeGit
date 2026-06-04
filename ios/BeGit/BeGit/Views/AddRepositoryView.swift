@@ -8,6 +8,7 @@ struct AddRepositoryView: View {
     @Environment(\.dismiss) private var dismiss                 //  Sheetを閉じるためのdismiss action
     @EnvironmentObject private var authState: AuthState         //  API認証トークン
     @StateObject private var viewModel: AddRepositoryViewModel  //  画面状態を管理するViewModel
+    @State private var isMemberSearchPresented = false          //  GitHub member検索Sheet表示状態
 
     let onAdd: (Repository) -> Void                             //  Repository追加完了時のcallback
 
@@ -79,6 +80,15 @@ struct AddRepositoryView: View {
         .task {
             await viewModel.loadRepositories()
         }
+        .sheet(isPresented: $isMemberSearchPresented) {
+            GitHubUserSearchSheetView(
+                accessToken: authState.accessToken,
+                existingMembers: viewModel.members,
+                repositoryMembers: viewModel.repositoryMemberCandidates
+            ) { member in
+                viewModel.addMember(member)
+            }
+        }
     }
 
     // MARK: - Components
@@ -124,6 +134,8 @@ struct AddRepositoryView: View {
     //  GitHub Repository候補リスト
     private var repositoryPickerBox: some View {
         VStack(alignment: .leading, spacing: 10) {
+            repositorySearchBar
+
             if viewModel.isLoadingRepositories {
                 repositoryLoadingRow
             } else if let errorMessage = viewModel.repositoryListErrorMessage {
@@ -149,6 +161,52 @@ struct AddRepositoryView: View {
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
+        )
+    }
+
+    //  Repository検索バー
+    private var repositorySearchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(.white.opacity(0.42))
+                .frame(width: 18, height: 18)
+
+            TextField(
+                "Search repositories",
+                text: Binding(
+                    get: { viewModel.repositorySearchText },
+                    set: { viewModel.updateRepositorySearchText($0) }
+                )
+            )
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white)
+            .tint(AppTheme.accent)
+
+            if viewModel.repositorySearchText.isEmpty == false {
+                Button {
+                    viewModel.updateRepositorySearchText("")
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.black)
+                        .frame(width: 22, height: 22)
+                        .background(Color.white.opacity(0.62))
+                        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("検索文字をクリア")
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+        .padding(.horizontal, 10)
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
 
@@ -229,16 +287,19 @@ struct AddRepositoryView: View {
         let isSelected = viewModel.selectedRepository?.id == repository.id
 
         return Button {
-            viewModel.selectRepository(repository)
+            Task {
+                await viewModel.selectRepository(repository)
+            }
         } label: {
             HStack(spacing: 12) {
                 repositoryAvatar(repository)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 7) {
-                        Text(repository.fullName)
-                            .font(.system(size: 14, weight: .black, design: .monospaced))
-                            .foregroundStyle(.white)
+                        HighlightedRepositoryNameText(
+                            text: repository.fullName,
+                            query: viewModel.repositorySearchText
+                        )
                             .lineLimit(1)
 
                         if repository.isPrivate {
@@ -319,9 +380,13 @@ struct AddRepositoryView: View {
     //  member選択リスト
     private var memberListBox: some View {
         VStack(alignment: .leading, spacing: 12) {
-            memberListHeader
+            memberListSubheader("Selected members")
 
-            if viewModel.members.isEmpty {
+            if viewModel.isLoadingMembers {
+                memberLoadingState
+            } else if let errorMessage = viewModel.memberListErrorMessage {
+                memberErrorState(errorMessage)
+            } else if viewModel.members.isEmpty {
                 emptyMemberState
             } else {
                 VStack(spacing: 10) {
@@ -331,18 +396,7 @@ struct AddRepositoryView: View {
                 }
             }
 
-            if viewModel.isMemberInputVisible && viewModel.selectableInvitedMembers.isEmpty == false {
-                Divider()
-                    .background(Color.white.opacity(0.16))
-
-                memberListSubheader("Invited members")
-
-                VStack(spacing: 10) {
-                    ForEach(viewModel.selectableInvitedMembers) { member in
-                        invitedMemberRow(member)
-                    }
-                }
-            }
+            addMemberButton
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
         .padding(14)
@@ -354,31 +408,28 @@ struct AddRepositoryView: View {
         )
     }
 
-    //  memberリスト内header
-    private var memberListHeader: some View {
-        HStack(spacing: 12) {
-            memberListSubheader("Selected members")
-
-            Spacer()
-
-            Button(action: viewModel.showMemberInput) {
-                Image(systemName: "plus")
-                    .font(.system(size: 16, weight: .black))
-                    .foregroundStyle(.black)
-                    .frame(width: 34, height: 34)
-                    .background(Color(red: 0.725, green: 0.976, blue: 0.902))
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("メンバー追加")
-        }
-    }
-
     //  member未選択表示
     private var emptyMemberState: some View {
-        Text("No members selected")
+        Text(viewModel.selectedRepository == nil ? "Select a repository" : "No collaborators found")
             .font(.system(size: 14, weight: .semibold, design: .monospaced))
             .foregroundStyle(.white.opacity(0.42))
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+    }
+
+    //  member読み込み中表示
+    private var memberLoadingState: some View {
+        Text("Loading members")
+            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.42))
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+    }
+
+    //  member取得エラー表示
+    private func memberErrorState(_ message: String) -> some View {
+        Text(message)
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.72))
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
     }
 
@@ -415,6 +466,28 @@ struct AddRepositoryView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("\(member.login)を削除")
         }
+    }
+
+    //  GitHub member検索Sheet表示button
+    private var addMemberButton: some View {
+        Button {
+            isMemberSearchPresented = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .black))
+
+                Text("Add member")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+            .background(AppTheme.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("GitHubユーザーを検索してTeam Membersに追加")
     }
 
     //  招待済みmember候補行
@@ -555,5 +628,51 @@ private struct FlowElement {
 struct AddRepositoryView_Previews: PreviewProvider {
     static var previews: some View {
         AddRepositoryView { _ in }
+    }
+}
+
+//  Repository検索文字列に一致した部分だけ強調表示
+private struct HighlightedRepositoryNameText: View {
+    let text: String
+    let query: String
+
+    var body: some View {
+        highlightedText
+            .font(.system(size: 14, weight: .black, design: .monospaced))
+    }
+
+    private var highlightedText: Text {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedQuery.isEmpty == false else {
+            return Text(text)
+                .foregroundStyle(.white)
+        }
+
+        var result = Text("")
+        var searchStart = text.startIndex
+
+        while searchStart < text.endIndex,
+              let range = text.range(
+                of: trimmedQuery,
+                options: [.caseInsensitive, .diacriticInsensitive],
+                range: searchStart..<text.endIndex
+              ) {
+            if searchStart < range.lowerBound {
+                result = result + Text(String(text[searchStart..<range.lowerBound]))
+                    .foregroundStyle(.white)
+            }
+
+            result = result + Text(String(text[range]))
+                .foregroundStyle(AppTheme.accent)
+
+            searchStart = range.upperBound
+        }
+
+        if searchStart < text.endIndex {
+            result = result + Text(String(text[searchStart..<text.endIndex]))
+                .foregroundStyle(.white)
+        }
+
+        return result
     }
 }

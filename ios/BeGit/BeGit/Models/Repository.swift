@@ -8,6 +8,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID                    //  Repository識別子
     let backendID: Int64?           //  Backend group ID
     let name: String                //  Repository名
+    let ownerAvatarURL: URL?        //  Repository ownerのavatar画像URL
     let memberCount: Int            //  Team member数
     let members: [RepositoryMember] //  Repository member一覧
 
@@ -15,12 +16,14 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         id: UUID = UUID(),
         backendID: Int64? = nil,
         name: String,
+        ownerAvatarURL: URL? = nil,
         memberCount: Int,
         members: [RepositoryMember]
     ) {
         self.id = id
         self.backendID = backendID
         self.name = name
+        self.ownerAvatarURL = ownerAvatarURL
         self.memberCount = memberCount
         self.members = members
     }

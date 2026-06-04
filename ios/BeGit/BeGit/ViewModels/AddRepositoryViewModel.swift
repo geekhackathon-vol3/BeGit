@@ -7,6 +7,7 @@ import Combine
 @MainActor
 final class AddRepositoryViewModel: ObservableObject {
     @Published var repositoryURLText = ""                                      // Repository URL入力値
+    @Published var repositorySearchText = ""                                   // Repository検索入力値
 
     @Published private(set) var availableRepositories: [GitHubRepository] = []  // GitHub Repository候補一覧
     @Published private(set) var selectedRepository: GitHubRepository?           // 選択中Repository
@@ -16,6 +17,9 @@ final class AddRepositoryViewModel: ObservableObject {
 
     @Published var memberLoginText = ""                                         // 招待するmember login入力値
     @Published private(set) var members: [RepositoryMember] = []                // 追加済みmember一覧
+    @Published private(set) var repositoryMemberCandidates: [RepositoryMember] = [] // Repository由来のmember候補一覧
+    @Published private(set) var isLoadingMembers = false                        // member同期中か
+    @Published private(set) var memberListErrorMessage: String?                 // member同期エラー
     @Published var isMemberInputVisible = false                                 // member入力欄の表示状態
 
     @Published private(set) var isSaving = false                                // Repository作成API実行中
@@ -61,12 +65,12 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  画面に表示するRepository候補
     var displayedRepositories: [GitHubRepository] {
-        Array(availableRepositories.prefix(visibleRepositoryCount))
+        Array(filteredRepositories.prefix(visibleRepositoryCount))
     }
 
     //  追加表示できるRepository候補があるか
     var canShowMoreRepositories: Bool {
-        visibleRepositoryCount < availableRepositories.count
+        visibleRepositoryCount < filteredRepositories.count
     }
 
     //  member追加可能か
@@ -83,6 +87,11 @@ final class AddRepositoryViewModel: ObservableObject {
     }
 
     // MARK: - Actions
+
+    func updateRepositorySearchText(_ text: String) {
+        repositorySearchText = text
+        visibleRepositoryCount = min(3, filteredRepositories.count)
+    }
 
     //  GitHub Repository一覧を取得
     func loadRepositories() async {
@@ -109,9 +118,10 @@ final class AddRepositoryViewModel: ObservableObject {
     }
 
     //  Repository候補を選択
-    func selectRepository(_ repository: GitHubRepository) {
+    func selectRepository(_ repository: GitHubRepository) async {
         selectedRepository = repository
         repositoryURLText = "https://github.com/\(repository.fullName)"
+        await loadRepositoryMembers(repoFullName: repository.fullName)
     }
 
     //  Repository候補を追加表示
@@ -131,6 +141,15 @@ final class AddRepositoryViewModel: ObservableObject {
         members.append(RepositoryMember(login: normalizedMemberLogin))
         memberLoginText = ""
         isMemberInputVisible = false
+    }
+
+    //  GitHub検索結果からmember追加
+    func addMember(_ member: RepositoryMember) {
+        guard members.contains(where: { $0.login.caseInsensitiveCompare(member.login) == .orderedSame }) == false else {
+            return
+        }
+
+        members.append(member)
     }
 
     //  招待済みmember追加
@@ -157,11 +176,12 @@ final class AddRepositoryViewModel: ObservableObject {
         defer { isSaving = false }
 
         do {
-            return try await backendRepositoryAPI.createRepository(
+            let createdRepository = try await backendRepositoryAPI.createRepository(
                 repoFullName: repositoryName,
                 name: repositoryName,
                 accessToken: accessToken
             )
+            return repositoryWithSelectedOwnerAvatar(createdRepository)
         } catch {
             errorMessage = error.localizedDescription
             return nil
@@ -170,9 +190,67 @@ final class AddRepositoryViewModel: ObservableObject {
 
     // MARK: - Private
 
+    //  検索条件に一致するRepository候補
+    private var filteredRepositories: [GitHubRepository] {
+        let query = repositorySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else {
+            return availableRepositories
+        }
+
+        return availableRepositories.filter { repository in
+            repository.fullName.localizedCaseInsensitiveContains(query)
+                || (repository.description?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    //  選択RepositoryのGitHub collaboratorを取得
+    private func loadRepositoryMembers(repoFullName: String) async {
+        guard let accessToken, accessToken.isEmpty == false else {
+            memberListErrorMessage = "GitHubログイン情報を取得できませんでした。再ログインしてください。"
+            members = []
+            repositoryMemberCandidates = []
+            return
+        }
+
+        isLoadingMembers = true
+        memberListErrorMessage = nil
+        members = []
+        repositoryMemberCandidates = []
+        defer { isLoadingMembers = false }
+
+        do {
+            let repositoryMembers = try await githubRepositoryAPI.listRepositoryMembers(
+                repoFullName: repoFullName,
+                accessToken: accessToken
+            )
+            members = repositoryMembers
+            repositoryMemberCandidates = repositoryMembers
+        } catch {
+            memberListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     //  前後空白を除去したmember login
     private var normalizedMemberLogin: String {
         memberLoginText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    //  GitHub Repository選択時に取得済みのowner avatarを作成結果へ反映
+    private func repositoryWithSelectedOwnerAvatar(_ repository: Repository) -> Repository {
+        guard let selectedRepository,
+              let ownerAvatarURL = selectedRepository.ownerAvatarURL,
+              repository.ownerAvatarURL == nil else {
+            return repository
+        }
+
+        return Repository(
+            id: repository.id,
+            backendID: repository.backendID,
+            name: repository.name,
+            ownerAvatarURL: ownerAvatarURL,
+            memberCount: repository.memberCount,
+            members: repository.members
+        )
     }
 
     //  GitHub URLからRepository名を抽出

@@ -105,6 +105,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             githubUser: GitHubUser(
                 id: userId,
                 login: userLogin,
+                name: user.name,
                 avatarURL: user.avatarUrl.flatMap { URL(string: $0) },
                 email: nil
             )

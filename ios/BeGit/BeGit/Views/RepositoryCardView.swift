@@ -11,7 +11,9 @@ struct RepositoryCardView: View {
 
     var body: some View {
         //  Repository card本体
-        HStack(alignment: .bottom, spacing: 14) {
+        HStack(alignment: .center, spacing: 14) {
+            repositoryImage
+
             VStack(alignment: .leading, spacing: 14) {
                 //  Repository名
                 Text(repository.name)
@@ -40,7 +42,7 @@ struct RepositoryCardView: View {
                 .foregroundStyle(AppTheme.accent)
                 .frame(width: 38, height: 38)
         }
-        .padding(18)                //  card padding
+        .padding(12)                //  card padding
         .background(cardBackground) //  card背景
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))  //  card shape
         //  card border
@@ -51,6 +53,52 @@ struct RepositoryCardView: View {
     }
 
     // MARK: - Components
+
+    //  Repository画像
+    private var repositoryImage: some View {
+        Group {
+            if let imageURL = repositoryImageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        repositoryImagePlaceholder
+                    }
+                }
+            } else {
+                repositoryImagePlaceholder
+            }
+        }
+            .frame(width: 76, height: 76)
+            .background(Color.black.opacity(0.24))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            )
+    }
+
+    private var repositoryImageURL: URL? {
+        if let ownerAvatarURL = repository.ownerAvatarURL {
+            return ownerAvatarURL
+        }
+
+        guard let owner = repository.name.split(separator: "/", maxSplits: 1).first,
+              owner.isEmpty == false else {
+            return nil
+        }
+
+        return URL(string: "https://github.com/\(owner).png")
+    }
+
+    private var repositoryImagePlaceholder: some View {
+        Image("github_default_icon")
+            .resizable()
+            .scaledToFill()
+    }
 
     //  重なり表示するavatar一覧
     private var avatarStack: some View {
