@@ -84,7 +84,13 @@ final class MakeNotificationViewModel: ObservableObject {
 
     func loadMembers(accessToken: String?) async {
         guard isLoadingMembers == false else { return }
-        guard let accessToken, let backendID = repository.backendID else { return }
+        guard let accessToken else { return }
+        guard let backendID = repository.backendID else {
+            members = repository.members
+            repositoryMemberCandidates = repository.members
+            selectedMemberIDs = Set(repository.members.map(\.id))
+            return
+        }
 
         isLoadingMembers = true
         errorMessage = nil
@@ -96,31 +102,41 @@ final class MakeNotificationViewModel: ObservableObject {
             repositoryMemberCandidates = syncedRepository.members
             selectedMemberIDs = Set(syncedRepository.members.map(\.id))
         } catch {
-            errorMessage = error.localizedDescription
+            members = repository.members
+            repositoryMemberCandidates = repository.members
+            selectedMemberIDs = Set(repository.members.map(\.id))
         }
     }
 
     func sendNotification(accessToken: String?) async -> RepositoryNotification? {
         guard isSending == false else { return nil }
-        guard let accessToken else {
-            errorMessage = "アクセストークンが見つかりません。"
-            return nil
-        }
-        guard let backendID = repository.backendID else {
-            errorMessage = "Repository IDが見つかりません。"
-            return nil
-        }
-
         isSending = true
         errorMessage = nil
         defer { isSending = false }
 
-        do {
-            try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
-            return makeNotification()
-        } catch {
-            errorMessage = error.localizedDescription
-            return nil
+        let notification = makeNotification()
+
+        guard NotificationDeliveryMode.current.usesLocalNotificationMock else {
+            guard let accessToken else {
+                errorMessage = "アクセストークンが見つかりません。"
+                return nil
+            }
+
+            guard let backendID = repository.backendID else {
+                errorMessage = "このRepositoryはバックエンドに同期されていません。"
+                return nil
+            }
+
+            do {
+                try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
+                return notification
+            } catch {
+                errorMessage = "通知の送信に失敗しました。"
+                return nil
+            }
         }
+
+        LocalNotificationScheduler.shared.scheduleNotification(for: notification)
+        return notification
     }
 }

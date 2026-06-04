@@ -11,6 +11,9 @@ import UIKit
 
 @main
 struct BeGitApp: App {
+    //  SwiftUI アプリに AppDelegate（通知・Firebase の司令塔）を後付けで接続する
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         Self.configureNavigationBar()
 

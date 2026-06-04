@@ -307,7 +307,7 @@ final class GitHubUserSearchViewModel: ObservableObject {
 
         if let githubRepositoryAPI {
             self.githubRepositoryAPI = githubRepositoryAPI
-        } else if accessToken?.hasPrefix("mock_access_token_") == true {
+        } else if shouldUseMockGitHubAPI(accessToken: accessToken) {
             self.githubRepositoryAPI = MockGitHubRepositoryAPI()
         } else {
             self.githubRepositoryAPI = GitHubRepositoryClient()

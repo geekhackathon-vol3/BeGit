@@ -8,6 +8,7 @@ import UIKit
 struct RepositoryListView: View {
     @EnvironmentObject private var authState: AuthState         //  アプリ全体で共有される認証状態
     @StateObject private var viewModel: RepositoryListViewModel //  Repository一覧状態を管理するViewModel
+    @ObservedObject private var notificationRouter = NotificationRouter.shared //  通知タップ由来の遷移要求
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
     private let currentUserAPI: any CurrentUserAPI
 
@@ -94,7 +95,10 @@ struct RepositoryListView: View {
             //  Repository追加Sheet
             .sheet(isPresented: $viewModel.isShowingAddRepository) {
                 AddRepositoryView(
-                    viewModel: AddRepositoryViewModel(accessToken: authState.accessToken)
+                    viewModel: AddRepositoryViewModel(
+                        accessToken: authState.accessToken,
+                        existingRepositories: viewModel.repositories
+                    )
                 ) { repository in
                     //  Repository一覧へ追加
                     viewModel.addRepository(repository)
@@ -114,8 +118,23 @@ struct RepositoryListView: View {
                     await viewModel.loadRepositories(accessToken: accessToken)
                 }
             }
+            //  通知タップ由来の遷移要求を navigationPath へ反映する
+            .onChange(of: notificationRouter.pendingRoute) { _, _ in
+                applyPendingNotificationRoute()
+            }
+            //  アプリ未起動からの通知タップで起動した場合、表示時に拾う
+            .onAppear {
+                applyPendingNotificationRoute()
+            }
         }
         .tint(AppTheme.accent)
+    }
+
+    //  共有 Router に積まれた通知 route を push し、消費済みにする
+    private func applyPendingNotificationRoute() {
+        guard let route = notificationRouter.pendingRoute else { return }
+        navigationPath.append(route)
+        notificationRouter.consume()
     }
 
     // MARK: - Components
@@ -242,6 +261,9 @@ struct RepositoryListView: View {
         //  Repository Dashboard画面へ遷移
         case .dashboard(let repository):
             RepositoryDashboardView(repository: repository)
+        //  カメラ画面へ遷移
+        case .camera:
+            CameraView()
         //  通知作成画面へ遷移
         case .makeNotification(let repository):
             MakeNotificationView(repository: repository) { notification in
@@ -253,6 +275,20 @@ struct RepositoryListView: View {
                 //  NavigationStackをrootまで戻す
                 navigationPath.removeLast(navigationPath.count)
             }
+
+        // MARK: - FCM 通知タップからの遷移（#55・中身は #56/#57 が実装）
+        case let .notificationPostCreation(groupId, notificationId):
+            NotificationPostCreationStubView(groupId: groupId, notificationId: notificationId)
+        case let .notificationNiceWorkDraft(groupId, draftPostId, status):
+            NotificationNiceWorkDraftStubView(groupId: groupId, draftPostId: draftPostId, status: status)
+        case let .notificationChallengeResult(groupId, notificationId):
+            NotificationChallengeResultStubView(groupId: groupId, notificationId: notificationId)
+        case let .notificationSprintOverview(groupId, sprintId):
+            NotificationSprintOverviewStubView(groupId: groupId, sprintId: sprintId)
+        case let .notificationSprintResult(groupId, sprintId):
+            NotificationSprintResultStubView(groupId: groupId, sprintId: sprintId)
+        case let .notificationPostDetail(groupId, postId, kind):
+            NotificationPostDetailStubView(groupId: groupId, postId: postId, kind: kind)
         }
     }
 }

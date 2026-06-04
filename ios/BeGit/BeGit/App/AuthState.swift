@@ -51,6 +51,8 @@ final class AuthState: ObservableObject {
         githubUser = response.githubUser
         isLoggedIn = true
         saveGitHubUser(response.githubUser)
+        //  ログイン直後に FCM トークンを DB へ登録する（PUT /me/fcm-token）
+        FCMTokenRegistrar.shared.registerAfterLogin()
     }
 
     func updateGitHubUser(_ githubUser: GitHubUser) {
@@ -70,6 +72,8 @@ final class AuthState: ObservableObject {
         githubUser = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: savedGitHubUserKey)
+        //  FCM トークンのキャッシュをクリアして、次のユーザーログイン時に再送信されるようにする
+        FCMTokenRegistrar.shared.clearCache()
     }
 
     private func applyDevSession() {

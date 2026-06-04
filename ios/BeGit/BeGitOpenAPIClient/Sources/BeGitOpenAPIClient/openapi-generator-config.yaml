@@ -12,6 +12,7 @@ filter:
   paths:
     - /auth/github
     - /me
+    - /me/fcm-token
     - /groups
     - /groups/{id}
     - /groups/{id}/posts

@@ -13,8 +13,8 @@ struct AddRepositoryView: View {
     let onAdd: (Repository) -> Void                             //  Repository追加完了時のcallback
 
     //  デフォルトViewModelで初期化
-    init(onAdd: @escaping (Repository) -> Void) {
-        _viewModel = StateObject(wrappedValue: AddRepositoryViewModel())
+    init(existingRepositories: [Repository] = [], onAdd: @escaping (Repository) -> Void) {
+        _viewModel = StateObject(wrappedValue: AddRepositoryViewModel(existingRepositories: existingRepositories))
         self.onAdd = onAdd
     }
 
@@ -285,6 +285,7 @@ struct AddRepositoryView: View {
     //  Repository候補行
     private func repositoryCandidateRow(_ repository: GitHubRepository) -> some View {
         let isSelected = viewModel.selectedRepository?.id == repository.id
+        let isAlreadyAdded = viewModel.isAlreadyAdded(repository)
 
         return Button {
             Task {
@@ -300,6 +301,7 @@ struct AddRepositoryView: View {
                             text: repository.fullName,
                             query: viewModel.repositorySearchText
                         )
+                        .foregroundStyle(.white.opacity(isAlreadyAdded ? 0.48 : 1))
                             .lineLimit(1)
 
                         if repository.isPrivate {
@@ -307,12 +309,16 @@ struct AddRepositoryView: View {
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.58))
                         }
+
+                        if isAlreadyAdded {
+                            alreadyAddedBadge
+                        }
                     }
 
                     if let description = repository.description, description.isEmpty == false {
                         Text(description)
                             .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.48))
+                            .foregroundStyle(.white.opacity(isAlreadyAdded ? 0.30 : 0.48))
                             .lineLimit(1)
                     }
                 }
@@ -329,16 +335,27 @@ struct AddRepositoryView: View {
                 }
             }
             .padding(10)
-            .background(isSelected ? AppTheme.accent.opacity(0.18) : Color.white.opacity(0.04))
+            .background(isSelected ? AppTheme.accent.opacity(0.18) : Color.white.opacity(isAlreadyAdded ? 0.025 : 0.04))
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .stroke(isSelected ? AppTheme.accent.opacity(0.8) : Color.white.opacity(0.06), lineWidth: 1)
             )
             .contentShape(Rectangle())
+            .opacity(isAlreadyAdded ? 0.78 : 1)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(repository.fullName)を選択")
+        .accessibilityLabel(isAlreadyAdded ? "\(repository.fullName)は追加済み" : "\(repository.fullName)を選択")
+    }
+
+    private var alreadyAddedBadge: some View {
+        Text("追加済み")
+            .font(.system(size: 10, weight: .black, design: .monospaced))
+            .foregroundStyle(.black.opacity(0.78))
+            .padding(.horizontal, 7)
+            .frame(height: 20)
+            .background(Color.white.opacity(0.62))
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 
     //  Repository owner avatar
