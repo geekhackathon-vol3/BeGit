@@ -51,4 +51,9 @@ final class RepositoryListViewModel: ObservableObject {
     func addRepository(_ repository: Repository) {
         repositories.insert(repository, at: 0)
     }
+
+    //  Repositoryを一覧から削除
+    func removeRepository(_ repository: Repository) {
+        repositories.removeAll { $0.id == repository.id }
+    }
 }

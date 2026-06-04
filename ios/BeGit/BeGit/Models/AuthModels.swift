@@ -11,8 +11,9 @@ struct AuthResponse: Sendable {
 
 //  GitHubユーザーを表すモデル
 struct GitHubUser: Identifiable, Equatable, Sendable {
-    let id: Int         //  GitHub上のユーザーID
+    let id: Int         //  BeGit上のユーザーID
     let login: String   //  GitHubユーザー名
+    let name: String?   //  GitHubプロフィール名
     let avatarURL: URL? //  プロフィール画像URL
     let email: String?  //  GitHubメールアドレス
 }
