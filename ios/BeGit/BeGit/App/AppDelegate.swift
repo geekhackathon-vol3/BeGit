@@ -25,8 +25,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         //  通知許可をリクエスト → 許可されたら APNs へ登録
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
-            guard granted else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+            if let error {
+                print("Push notification authorization failed: \(error.localizedDescription)")
+            }
+
+            guard granted else {
+                print("Push notification authorization was not granted.")
+                return
+            }
+
             DispatchQueue.main.async {
                 application.registerForRemoteNotifications()
             }
@@ -46,6 +54,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         Messaging.messaging().apnsToken = deviceToken
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("APNs device token: \(token)")
     }
 
     func application(
@@ -53,6 +63,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         // 実機以外・APNs 未設定では失敗する。受信は出来ないが起動は継続する。
+        print("APNs registration failed: \(error.localizedDescription)")
     }
 
     //  userInfo を parse して、遷移先を共有 Router に積む。未知 type は無視。
@@ -75,6 +86,8 @@ extension AppDelegate: MessagingDelegate {
     //  （ログイン直後の送信は AuthState 側の completeLogin 経路がカバーする）
     func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
         guard let fcmToken else { return }
+        print("FCM registration token: \(fcmToken)")
+
         Task { @MainActor in
             FCMTokenRegistrar.shared.handleTokenRefresh(fcmToken)
         }
