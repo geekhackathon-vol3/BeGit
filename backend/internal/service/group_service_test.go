@@ -164,6 +164,49 @@ func TestGroupService_CreateGroup_WebhookFailed(t *testing.T) {
 	}
 }
 
+// TestGroupService_CreateGroup_WebhookForbidden はWebhook登録が403（admin権限なし）の場合でもグループが作成されることを確認する
+func TestGroupService_CreateGroup_WebhookForbidden(t *testing.T) {
+	groupCreated := false
+
+	githubClient := &mockGitHubClient{
+		registerWebhookFunc: func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error {
+			return githubpkg.ErrForbidden
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
+			groupCreated = true
+			return &model.Group{ID: 1, RepoFullName: input.RepoFullName, Name: input.Name}, nil
+		},
+	}
+	userRepo := &mockUserRepository{
+		getByGitHubLoginFunc: func(ctx context.Context, login string) (*model.User, error) {
+			return nil, errors.New("not found")
+		},
+	}
+
+	svc := NewGroupService(GroupServiceConfig{
+		AppBaseURL:          "https://example.com",
+		GitHubWebhookSecret: "webhook_secret",
+	}, githubClient, groupRepo, userRepo)
+
+	group, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "other-owner/repo",
+		Name:         "Collaborator Repo",
+		AccessToken:  "github_token",
+	}, 1)
+
+	if err != nil {
+		t.Fatalf("CreateGroup() should succeed even when webhook returns 403, got: %v", err)
+	}
+	if !groupCreated {
+		t.Error("expected group to be created even when webhook registration returns ErrForbidden")
+	}
+	if group.RepoFullName != "other-owner/repo" {
+		t.Errorf("expected RepoFullName=other-owner/repo, got %s", group.RepoFullName)
+	}
+}
+
 func TestGroupService_CreateGroup_ExistingGroupAddsMember(t *testing.T) {
 	addedMember := false
 
