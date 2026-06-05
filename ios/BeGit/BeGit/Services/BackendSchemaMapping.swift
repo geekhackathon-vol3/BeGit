@@ -81,7 +81,10 @@ extension Components.Schemas.Handler_PostFeedJSON {
            return RepositoryActivity(
                type: activityType,
                title: activityTitle(fallbackRepository: fallbackRepository),
-               comment: (body?.isEmpty == false) ? body : nil,
+               comment: {
+                   let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines)
+                   return (trimmed?.isEmpty == false) ? trimmed : nil
+               }(),
                date: createdAt.flatMap {
                    sharedISO8601DateFormatter.date(from: $0)
                } ?? Date(),
