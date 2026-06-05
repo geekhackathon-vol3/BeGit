@@ -42,8 +42,12 @@ struct RepositoryDashboardView: View {
                             statusText(errorMessage)
                         }
 
-                        //  activity card一覧
+                        //  達成状況プログレスバー
+                        progressSummary
+
+                        //  activity card一覧（横幅フル）
                         RepositoryActivityTimelineView(activities: viewModel.activities)
+                            .padding(.horizontal, -20)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
@@ -116,6 +120,40 @@ struct RepositoryDashboardView: View {
                 .foregroundStyle(AppTheme.softPink)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    //  activityに登録されているユニークメンバー（モック含む、アバターURL確実）
+    private var uniqueActivityMembers: [RepositoryMember] {
+        var seen = Set<String>()
+        return viewModel.activities.compactMap { activity in
+            guard !seen.contains(activity.author.login) else { return nil }
+            seen.insert(activity.author.login)
+            return activity.author
+        }
+    }
+
+    //  達成状況サマリー（Result画面と同一スタイル）
+    private var progressSummary: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            MemberAvatarRowView(members: uniqueActivityMembers, avatarSize: 42)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.12))
+                    Capsule()
+                        .fill(AppTheme.accent)
+                        .frame(width: proxy.size.width * viewModel.progress)
+                    Text(viewModel.progressText)
+                        .font(.system(size: 14, weight: .black, design: .monospaced))
+                        .foregroundStyle(.black)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+            }
+            .frame(height: 30)
+        }
     }
 
     //  Timelineにactivityがあるmember ID一覧

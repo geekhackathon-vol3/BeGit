@@ -12,13 +12,14 @@ final class NotificationResultViewModel: ObservableObject {
 
     init(notification: RepositoryNotification) {
         self.notification = notification
-        self.activities = RepositoryActivity.mockActivities(for: notification.repository)   //  Mock activity生成
-        self.completedCount = max(1, min(notification.selectedMembers.count, 3))            //  Mock達成人数
+        let mock = RepositoryActivity.mockActivities(for: notification.repository)
+        self.activities = mock
+        self.completedCount = mock.count    //  モックアクティビティ数に一致
     }
 
-    //  通知対象member総数
+    //  通知対象member総数（モックはactivity数で揃える）
     var totalCount: Int {
-        max(notification.selectedMembers.count, 1)
+        activities.count
     }
 
     //  達成率

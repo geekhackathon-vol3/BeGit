@@ -84,7 +84,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
                 login: login ?? "",
                 avatarURL: avatarUrl.flatMap { URL(string: $0) }
             ),
-            reaction: reaction
+            reactions: []
         )
     }
 
@@ -97,17 +97,6 @@ extension Components.Schemas.Handler_PostFeedJSON {
             return .memo
         default:
             return .commit
-        }
-    }
-
-    private var reaction: RepositoryReaction? {
-        switch activityType {
-        case .commit:
-            return .check
-        case .pullRequest:
-            return .heart
-        case .memo:
-            return .sorry
         }
     }
 
