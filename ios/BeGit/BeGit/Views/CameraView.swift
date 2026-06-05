@@ -40,7 +40,7 @@ struct CameraView: View {
                 HStack {
                     Spacer()
 
-                    Text("BeGit_")
+                    Text("BeGit;")
                         .appFont(.logo)
                         .foregroundStyle(AppTheme.Text.primary)
 

@@ -39,7 +39,7 @@ struct PhotoPreviewView: View {
 
                     Spacer()
 
-                    Text("BeGit_")
+                    Text("BeGit;")
                         .appFont(.logo)
                         .foregroundStyle(.white)
 
