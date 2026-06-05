@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -160,12 +161,22 @@ func readFormFile(c *gin.Context, field string) (*service.UploadFile, error) {
 	}
 
 	return &service.UploadFile{
-		ContentType: contentTypeOf(header),
+		ContentType: contentTypeOf(header, data),
 		Data:        data,
 	}, nil
 }
 
-// contentTypeOf は multipart ヘッダから Content-Type を取り出す
-func contentTypeOf(header *multipart.FileHeader) string {
-	return header.Header.Get("Content-Type")
+// contentTypeOf は画像の Content-Type を決定する。
+// swift-openapi-runtime は OpenAPI schema が type:string（format:binary）のため
+// multipart パートに Content-Type: text/plain を付けてしまう。よって multipart ヘッダの
+// Content-Type は信頼せず、実体のバイト列から MIME を判定する（JPEG/PNG はマジックバイトで確実）。
+func contentTypeOf(header *multipart.FileHeader, data []byte) string {
+	if detected := http.DetectContentType(data); strings.HasPrefix(detected, "image/") {
+		return detected
+	}
+	// Go の sniff が判定できない画像形式（HEIC 等）向けに、ヘッダが image/* ならそれを使う。
+	if headerCT := header.Header.Get("Content-Type"); strings.HasPrefix(headerCT, "image/") {
+		return headerCT
+	}
+	return http.DetectContentType(data)
 }
