@@ -93,7 +93,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
                    login: login ?? "",
                    avatarURL: avatarUrl.flatMap { URL(string: $0) }
                ),
-               reaction: reaction
+               reactions: []
            )
     }
 

@@ -17,7 +17,7 @@ let id: UUID                        //  activity識別子
     let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
     let frontPhotoURL: URL?             //  前面写真の presigned URL（BeReal 小窓表示用）
     let author: RepositoryMember        //  activity実行ユーザー
-    let reaction: RepositoryReaction?   //  activityリアクション
+    let reactions: [ActivityReaction]   //  リアクション一覧
 
     init(
         id: UUID = UUID(),

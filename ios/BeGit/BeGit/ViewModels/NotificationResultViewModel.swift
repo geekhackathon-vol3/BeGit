@@ -17,6 +17,7 @@ final class NotificationResultViewModel: ObservableObject {
         notification: RepositoryNotification,
         repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
     ) {
+        self.notification = notification
         self.repositoryAPI = repositoryAPI
         let mock = RepositoryActivity.mockActivities(for: notification.repository)
         self.activities = mock
