@@ -13,6 +13,7 @@ struct PhotoPreviewView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isPosting = false
+    @FocusState private var isCommentFocused: Bool
 
     var body: some View {
 
@@ -20,6 +21,7 @@ struct PhotoPreviewView: View {
 
             Color.black
                 .ignoresSafeArea()
+                .onTapGesture { isCommentFocused = false }
 
             VStack(spacing: 0) {
 
@@ -97,6 +99,35 @@ struct PhotoPreviewView: View {
                 .padding(.horizontal, 14)
 
                 Spacer()
+
+                // MARK: - Comment
+
+                HStack {
+
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.7))
+
+                    TextField(
+                        "",
+                        text: $viewModel.bodyText,
+                        prompt: Text("Add comment...")
+                            .foregroundColor(.white.opacity(0.5))
+                    )
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white)
+                    .focused($isCommentFocused)
+                    .submitLabel(.done)
+                    .onSubmit { isCommentFocused = false }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(Color.white.opacity(0.12))
+                .clipShape(Capsule())
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
 
                 // MARK: - Bottom Buttons
 

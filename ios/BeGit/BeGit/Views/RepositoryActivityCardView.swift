@@ -93,13 +93,23 @@ struct RepositoryActivityCardView: View {
 
                 Spacer()
 
-                //  activityタイトル
-                Text(activity.title)
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .center)
+                //  コメントがあればコメントを表示（commit名は出さない）。
+                //  無ければcommit名（title）を表示。
+                if let comment = activity.comment, comment.isEmpty == false {
+                    Text(comment)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.78))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                } else {
+                    Text(activity.title)
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
 
                 Spacer()
 
