@@ -29,6 +29,8 @@ protocol CurrentUserAPI: Sendable {
     func getCurrentUser(accessToken: String) async throws -> GitHubUser
     // FCM デバイストークンを登録/更新する（バックエンド PUT /me/fcm-token）
     func updateFCMToken(_ token: String, accessToken: String) async throws
+    // GitHub OAuthトークンを失効させ FCM トークンを削除する（バックエンド POST /auth/logout）
+    func logout(accessToken: String) async throws
 }
 
 protocol RepositoryAPI: Sendable {

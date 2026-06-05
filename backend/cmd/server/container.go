@@ -147,7 +147,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	postHandler := handler.NewPostHandler(postSvc)
 	photoHandler := handler.NewPhotoHandler(photoSvc, r2Client)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, webhookRepo, cfg.GitHubWebhookSecret)
-	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc)
+	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc, authSvc)
 	reactionHandler := handler.NewReactionHandler(reactionSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)
 	githubHandler := handler.NewGitHubHandler(githubSvc)

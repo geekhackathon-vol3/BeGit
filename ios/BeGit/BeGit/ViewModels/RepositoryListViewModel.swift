@@ -10,6 +10,7 @@ final class RepositoryListViewModel: ObservableObject {
     @Published var isShowingAddRepository = false           //  Repository追加画面の表示状態
     @Published private(set) var isLoading = false            //  一覧取得中
     @Published var errorMessage: String?                     //  APIエラー表示
+    @Published private(set) var isAuthExpired = false        //  認証期限切れ（401）
 
     private let repositoryAPI: any RepositoryAPI
 
@@ -40,10 +41,19 @@ final class RepositoryListViewModel: ObservableObject {
 
         isLoading = true
         errorMessage = nil
+        isAuthExpired = false
         defer { isLoading = false }
 
         do {
             repositories = try await repositoryAPI.listRepositories(accessToken: accessToken)
+        } catch let error as BeGitAPIError {
+            switch error {
+            case .requestFailed(statusCode: 401, _):
+                isAuthExpired = true
+                repositories = []
+            default:
+                errorMessage = error.localizedDescription
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

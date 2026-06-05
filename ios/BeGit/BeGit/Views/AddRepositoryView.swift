@@ -8,6 +8,7 @@ struct AddRepositoryView: View {
     @Environment(\.dismiss) private var dismiss                 //  Sheetを閉じるためのdismiss action
     @EnvironmentObject private var authState: AuthState         //  API認証トークン
     @StateObject private var viewModel: AddRepositoryViewModel  //  画面状態を管理するViewModel
+    @ObservedObject private var oauthManager = GitHubOAuthManager.shared
     @State private var isMemberSearchPresented = false          //  GitHub member検索Sheet表示状態
 
     let onAdd: (Repository) -> Void                             //  Repository追加完了時のcallback
@@ -74,9 +75,30 @@ struct AddRepositoryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     BeGitBackButton()
                 }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        oauthManager.startLogin()
+                    } label: {
+                        Image(systemName: "person.badge.key.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("GitHubで認証")
+                }
             }
         }
         .tint(AppTheme.accent)
+        .alert(item: Binding(
+            get: { oauthManager.activeAlert },
+            set: { _ in oauthManager.clearAlert() }
+        )) { alertContext in
+            Alert(
+                title: Text(alertContext.title),
+                message: Text(alertContext.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
         .task {
             await viewModel.loadRepositories()
         }

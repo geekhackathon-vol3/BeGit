@@ -11,6 +11,7 @@ namingStrategy: idiomatic
 filter:
   paths:
     - /auth/github
+    - /auth/logout
     - /me
     - /me/fcm-token
     - /groups

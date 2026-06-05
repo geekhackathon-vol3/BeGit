@@ -70,6 +70,11 @@ func (c *stubClient) ListUserRepos(ctx context.Context, accessToken string) ([]R
 	}, nil
 }
 
+// RevokeToken は何もせず成功を返す。
+func (c *stubClient) RevokeToken(ctx context.Context, clientID, clientSecret, accessToken string) error {
+	return nil
+}
+
 // ListCommits は固定のダミーコミット一覧を返す。
 func (c *stubClient) ListCommits(ctx context.Context, repoFullName, accessToken string, opts CommitListOptions) ([]Commit, error) {
 	return []Commit{

@@ -168,6 +168,12 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         )
         guard case .ok = output else { throw BeGitAPIError.invalidResponse }
     }
+
+    // POST /auth/logout : GitHubトークン失効 + FCMトークン削除
+    func logout(accessToken: String) async throws {
+        let output = try await makeClient(accessToken: accessToken).postAuthLogout()
+        guard case .noContent = output else { throw BeGitAPIError.invalidResponse }
+    }
 }
 
 // nonisolated 指定：アプリは MainActor 既定隔離のため、これを付けないと Decodable 適合も
