@@ -10,6 +10,8 @@
 		AADD00010000000000000001 /* OpenAPIRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = AACC00010000000000000001 /* OpenAPIRuntime */; };
 		AADD00020000000000000002 /* OpenAPIURLSession in Frameworks */ = {isa = PBXBuildFile; productRef = AACC00020000000000000002 /* OpenAPIURLSession */; };
 		AADD00040000000000000004 /* BeGitOpenAPIClient in Frameworks */ = {isa = PBXBuildFile; productRef = AACC00040000000000000004 /* BeGitOpenAPIClient */; };
+		DD61B23F2FD0F7F1007D98A2 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = DD61B23E2FD0F7F1007D98A2 /* FirebaseMessaging */; };
+		DD61B2402FD0F7F1007D98A2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = DD61B2412FD0F7F1007D98A2 /* FirebaseCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +48,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DD61B2402FD0F7F1007D98A2 /* FirebaseCore in Frameworks */,
+				DD61B23F2FD0F7F1007D98A2 /* FirebaseMessaging in Frameworks */,
 				AADD00010000000000000001 /* OpenAPIRuntime in Frameworks */,
 				AADD00020000000000000002 /* OpenAPIURLSession in Frameworks */,
 				AADD00040000000000000004 /* BeGitOpenAPIClient in Frameworks */,
@@ -96,6 +100,8 @@
 				AACC00010000000000000001 /* OpenAPIRuntime */,
 				AACC00020000000000000002 /* OpenAPIURLSession */,
 				AACC00040000000000000004 /* BeGitOpenAPIClient */,
+				DD61B2412FD0F7F1007D98A2 /* FirebaseCore */,
+				DD61B23E2FD0F7F1007D98A2 /* FirebaseMessaging */,
 			);
 			productName = BeGit;
 			productReference = 848E88C32FC31C7E0099886A /* BeGit.app */;
@@ -129,6 +135,7 @@
 				AABB00040000000000000004 /* XCLocalSwiftPackageReference "BeGitOpenAPIClient" */,
 				AABB00020000000000000002 /* XCRemoteSwiftPackageReference "swift-openapi-runtime" */,
 				AABB00030000000000000003 /* XCRemoteSwiftPackageReference "swift-openapi-urlsession" */,
+				DD61B23D2FD0F7F1007D98A2 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 848E88C42FC31C7E0099886A /* Products */;
@@ -289,10 +296,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BeGit/BeGit.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 74768K7M65;
+				DEVELOPMENT_TEAM = 254WMWP4Z2;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -300,6 +309,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BeGit/Info.plist;
 				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleURLName=com.Palm7710.BeGit.oauth;CFBundleURLSchemes=(begit);})";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos for BeReal-style posts in BeGit.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -315,8 +325,9 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tochi.BeGit;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Palm.BeGit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -337,10 +348,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = BeGit/BeGit.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 74768K7M65;
+				DEVELOPMENT_TEAM = 254WMWP4Z2;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -348,6 +361,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BeGit/Info.plist;
 				INFOPLIST_KEY_CFBundleURLTypes = "({CFBundleURLName=com.Palm7710.BeGit.oauth;CFBundleURLSchemes=(begit);})";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Take photos for BeReal-style posts in BeGit.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -363,8 +377,9 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.tochi.BeGit;
+				PRODUCT_BUNDLE_IDENTIFIER = com.Palm.BeGit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -426,6 +441,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		DD61B23D2FD0F7F1007D98A2 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.14.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -442,6 +465,16 @@
 		AACC00040000000000000004 /* BeGitOpenAPIClient */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BeGitOpenAPIClient;
+		};
+		DD61B23E2FD0F7F1007D98A2 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DD61B23D2FD0F7F1007D98A2 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		DD61B2412FD0F7F1007D98A2 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DD61B23D2FD0F7F1007D98A2 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

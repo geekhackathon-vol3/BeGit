@@ -31,6 +31,13 @@ final class RepositoryListViewModel: ObservableObject {
             return
         }
 
+        if shouldUseMockGitHubAPI(accessToken: accessToken) {
+            repositories = Repository.mockRepositories
+            errorMessage = nil
+            isLoading = false
+            return
+        }
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -50,5 +57,10 @@ final class RepositoryListViewModel: ObservableObject {
     //  Repositoryを一覧へ追加
     func addRepository(_ repository: Repository) {
         repositories.insert(repository, at: 0)
+    }
+
+    //  Repositoryを一覧から削除
+    func removeRepository(_ repository: Repository) {
+        repositories.removeAll { $0.id == repository.id }
     }
 }

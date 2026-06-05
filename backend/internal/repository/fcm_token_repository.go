@@ -14,6 +14,8 @@ type FCMTokenRepository interface {
 	Upsert(ctx context.Context, userID int64, token string) error
 	// GetTokensByGroupID はグループ内の全メンバーの FCM トークン一覧を取得する
 	GetTokensByGroupID(ctx context.Context, groupID int64) ([]string, error)
+	// GetTokensByUserID は特定ユーザーの FCM トークン一覧を取得する（② Nice Work! / ⑦ 本人通知用）
+	GetTokensByUserID(ctx context.Context, userID int64) ([]string, error)
 	// DeleteByUserID はユーザーの FCM トークンを全て削除する（ログアウト用）
 	DeleteByUserID(ctx context.Context, userID int64) error
 }
@@ -51,6 +53,28 @@ func (r *fcmTokenRepository) DeleteByUserID(ctx context.Context, userID int64) e
 		return fmt.Errorf("fcm_token_repository: DeleteByUserID failed: %w", err)
 	}
 	return nil
+}
+
+// GetTokensByUserID は特定ユーザーの FCM トークン一覧を取得する
+func (r *fcmTokenRepository) GetTokensByUserID(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT token FROM fcm_tokens WHERE user_id = ?`,
+		[]interface{}{userID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("fcm_token_repository: GetTokensByUserID failed: %w", err)
+	}
+
+	tokens := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if token, ok := row["token"].(string); ok {
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens, nil
 }
 
 // GetTokensByGroupID はグループ内の全メンバーの FCM トークン一覧を取得する

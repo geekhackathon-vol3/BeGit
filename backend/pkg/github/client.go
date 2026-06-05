@@ -258,12 +258,13 @@ func (c *githubClient) GetCollaborators(ctx context.Context, repoFullName, acces
 }
 
 // RegisterWebhook は GitHub リポジトリに Webhook を登録する
-// push と pull_request_review イベントを受信するよう設定する
+// push / pull_request_review / issues イベントを受信するよう設定する
+// （issues は ② Nice Work! の issue 検知に使用）
 func (c *githubClient) RegisterWebhook(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error {
 	payload := map[string]interface{}{
 		"name":   "web",
 		"active": true,
-		"events": []string{"push", "pull_request_review"},
+		"events": []string{"push", "pull_request_review", "issues"},
 		"config": map[string]string{
 			"url":          webhookURL,
 			"content_type": "json",

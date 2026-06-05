@@ -8,6 +8,7 @@ import UIKit
 struct RepositoryListView: View {
     @EnvironmentObject private var authState: AuthState         //  アプリ全体で共有される認証状態
     @StateObject private var viewModel: RepositoryListViewModel //  Repository一覧状態を管理するViewModel
+    @ObservedObject private var notificationRouter = NotificationRouter.shared //  通知タップ由来の遷移要求
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
     private let currentUserAPI: any CurrentUserAPI
 
@@ -54,10 +55,14 @@ struct RepositoryListView: View {
 
                             //  Repository一覧表示
                             ForEach(viewModel.repositories) { repository in
-                                NavigationLink(value: RepositoryNavigationRoute.dashboard(repository)) {
-                                    RepositoryCardView(repository: repository)
+                                SwipeToDeleteRepositoryRow(
+                                    repository: repository,
+                                    onOpen: {
+                                        navigationPath.append(RepositoryNavigationRoute.dashboard(repository))
+                                    }
+                                ) {
+                                    viewModel.removeRepository(repository)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -90,7 +95,10 @@ struct RepositoryListView: View {
             //  Repository追加Sheet
             .sheet(isPresented: $viewModel.isShowingAddRepository) {
                 AddRepositoryView(
-                    viewModel: AddRepositoryViewModel(accessToken: authState.accessToken)
+                    viewModel: AddRepositoryViewModel(
+                        accessToken: authState.accessToken,
+                        existingRepositories: viewModel.repositories
+                    )
                 ) { repository in
                     //  Repository一覧へ追加
                     viewModel.addRepository(repository)
@@ -110,8 +118,23 @@ struct RepositoryListView: View {
                     await viewModel.loadRepositories(accessToken: accessToken)
                 }
             }
+            //  通知タップ由来の遷移要求を navigationPath へ反映する
+            .onChange(of: notificationRouter.pendingRoute) { _, _ in
+                applyPendingNotificationRoute()
+            }
+            //  アプリ未起動からの通知タップで起動した場合、表示時に拾う
+            .onAppear {
+                applyPendingNotificationRoute()
+            }
         }
         .tint(AppTheme.accent)
+    }
+
+    //  共有 Router に積まれた通知 route を push し、消費済みにする
+    private func applyPendingNotificationRoute() {
+        guard let route = notificationRouter.pendingRoute else { return }
+        navigationPath.append(route)
+        notificationRouter.consume()
     }
 
     // MARK: - Components
@@ -144,11 +167,11 @@ struct RepositoryListView: View {
             )
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(displayedGitHubUser.login)
+                Text(displayedGitHubUserName)
                     .font(.system(size: 13, weight: .black, design: .monospaced))
                     .foregroundStyle(.white)
 
-                Text(displayedGitHubUserIDText)
+                Text(displayedUserIDText)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.64))
             }
@@ -163,17 +186,35 @@ struct RepositoryListView: View {
         authState.githubUser ?? GitHubUser(
             id: 0,
             login: "Guest",
+            name: "Guest",
             avatarURL: nil,
             email: nil
         )
     }
 
-    private var displayedGitHubUserIDText: String {
-        guard let githubUser = authState.githubUser else {
-            return "ID: -"
+    private var displayedGitHubUserName: String {
+        if let name = displayedGitHubUser.name, name.isEmpty == false {
+            return name
         }
 
-        return "ID: \(githubUser.id)"
+        return displayedGitHubUser.login
+    }
+
+    private var displayedUserIDText: String {
+        guard let githubUser = authState.githubUser else {
+            return "-"
+        }
+
+        return displayedGitHubUserID
+    }
+
+    private var displayedGitHubUserID: String {
+        let login = displayedGitHubUser.login
+        guard let first = login.first else {
+            return "-"
+        }
+
+        return first.uppercased() + login.dropFirst()
     }
 
     //  下部固定エリア背景
@@ -222,6 +263,9 @@ struct RepositoryListView: View {
         //  Repository Dashboard画面へ遷移
         case .dashboard(let repository):
             RepositoryDashboardView(repository: repository)
+        //  カメラ画面へ遷移
+        case .camera:
+            CameraView()
         //  通知作成画面へ遷移
         case .makeNotification(let repository):
             MakeNotificationView(repository: repository) { notification in
@@ -243,7 +287,108 @@ struct RepositoryListView: View {
                 //  NavigationStackをrootまで戻す
                 navigationPath.removeLast(navigationPath.count)
             }
+
+        // MARK: - FCM 通知タップからの遷移（#55・中身は #56/#57 が実装）
+        case let .notificationPostCreation(groupId, notificationId):
+            NotificationPostCreationStubView(groupId: groupId, notificationId: notificationId)
+        case let .notificationNiceWorkDraft(groupId, draftPostId, status):
+            NotificationNiceWorkDraftStubView(groupId: groupId, draftPostId: draftPostId, status: status)
+        case let .notificationChallengeResult(groupId, notificationId):
+            NotificationChallengeResultStubView(groupId: groupId, notificationId: notificationId)
+        case let .notificationSprintOverview(groupId, sprintId):
+            NotificationSprintOverviewStubView(groupId: groupId, sprintId: sprintId)
+        case let .notificationSprintResult(groupId, sprintId):
+            NotificationSprintResultStubView(groupId: groupId, sprintId: sprintId)
+        case let .notificationPostDetail(groupId, postId, kind):
+            NotificationPostDetailStubView(groupId: groupId, postId: postId, kind: kind)
         }
+    }
+}
+
+//  左スワイプで削除buttonを表示するRepository行
+private struct SwipeToDeleteRepositoryRow: View {
+    let repository: Repository
+    let onOpen: () -> Void
+    let onDelete: () -> Void
+
+    @State private var offsetX: CGFloat = 0
+
+    private let deleteRevealWidth: CGFloat = 86
+    private let deleteButtonSize: CGFloat = 58
+    private let rowCornerRadius: CGFloat = 10
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            deleteButton
+                .padding(.trailing, 10)
+                .scaleEffect(isDeleteVisible ? 1 : 0.62)
+                .opacity(isDeleteVisible ? 1 : 0)
+                .animation(.spring(response: 0.30, dampingFraction: 0.46), value: isDeleteVisible)
+
+            RepositoryCardView(repository: repository)
+                .contentShape(RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous))
+                .offset(x: offsetX)
+                .highPriorityGesture(swipeGesture)
+                .onTapGesture {
+                    if isDeleteVisible {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.56)) {
+                            offsetX = 0
+                        }
+                    } else {
+                        onOpen()
+                    }
+                }
+                .animation(.spring(response: 0.34, dampingFraction: 0.62), value: offsetX)
+        }
+    }
+
+    private var deleteButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.54)) {
+                offsetX = -deleteRevealWidth - 10
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.70)) {
+                    onDelete()
+                }
+            }
+        } label: {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 22, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: deleteButtonSize, height: deleteButtonSize)
+                .background(Color(.systemRed))
+                .clipShape(Circle())
+                .shadow(color: Color(.systemRed).opacity(0.35), radius: 10, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(repository.name)を削除")
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .onChanged { value in
+                let horizontalMovement = value.translation.width
+                guard abs(horizontalMovement) > abs(value.translation.height) else { return }
+
+                if horizontalMovement < 0 {
+                    offsetX = max(horizontalMovement, -deleteRevealWidth)
+                } else if isDeleteVisible {
+                    offsetX = min(-deleteRevealWidth + horizontalMovement, 0)
+                }
+            }
+            .onEnded { value in
+                let shouldReveal = value.translation.width < -38 || value.predictedEndTranslation.width < -deleteRevealWidth
+
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.48)) {
+                    offsetX = shouldReveal ? -deleteRevealWidth : 0
+                }
+            }
+    }
+
+    private var isDeleteVisible: Bool {
+        offsetX < -12
     }
 }
 

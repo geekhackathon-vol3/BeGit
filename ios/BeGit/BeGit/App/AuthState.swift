@@ -51,6 +51,8 @@ final class AuthState: ObservableObject {
         githubUser = response.githubUser
         isLoggedIn = true
         saveGitHubUser(response.githubUser)
+        //  ログイン直後に FCM トークンを DB へ登録する（PUT /me/fcm-token）
+        FCMTokenRegistrar.shared.registerAfterLogin()
     }
 
     func updateGitHubUser(_ githubUser: GitHubUser) {
@@ -70,6 +72,8 @@ final class AuthState: ObservableObject {
         githubUser = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: savedGitHubUserKey)
+        //  FCM トークンのキャッシュをクリアして、次のユーザーログイン時に再送信されるようにする
+        FCMTokenRegistrar.shared.clearCache()
     }
 
     private func applyDevSession() {
@@ -77,6 +81,7 @@ final class AuthState: ObservableObject {
         githubUser = GitHubUser(
             id: 1,
             login: "dev_alice",
+            name: "dev_alice (dev)",
             avatarURL: nil,
             email: nil
         )
@@ -109,12 +114,14 @@ final class AuthState: ObservableObject {
 private struct SavedGitHubUser: Codable {
     let id: Int
     let login: String
+    let name: String?
     let avatarURLString: String?
     let email: String?
 
     init(githubUser: GitHubUser) {
         id = githubUser.id
         login = githubUser.login
+        name = githubUser.name
         avatarURLString = githubUser.avatarURL?.absoluteString
         email = githubUser.email
     }
@@ -123,6 +130,7 @@ private struct SavedGitHubUser: Codable {
         GitHubUser(
             id: id,
             login: login,
+            name: name,
             avatarURL: avatarURLString.flatMap(URL.init(string:)),
             email: email
         )

@@ -26,3 +26,7 @@ ai_log/
 
 # Swift Package build artifacts (BeGitOpenAPIClient)
 ios/BeGit/BeGitOpenAPIClient/.build/
+
+# みんなbundle idが違うので、個別の.plistを入れましょう。
+# 配置場所: ios/BeGit/BeGit/GoogleService-Info.plist
+GoogleService-Info.plist

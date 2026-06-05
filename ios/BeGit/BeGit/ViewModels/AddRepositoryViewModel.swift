@@ -7,6 +7,7 @@ import Combine
 @MainActor
 final class AddRepositoryViewModel: ObservableObject {
     @Published var repositoryURLText = ""                                      // Repository URL入力値
+    @Published var repositorySearchText = ""                                   // Repository検索入力値
 
     @Published private(set) var availableRepositories: [GitHubRepository] = []  // GitHub Repository候補一覧
     @Published private(set) var selectedRepository: GitHubRepository?           // 選択中Repository
@@ -16,6 +17,9 @@ final class AddRepositoryViewModel: ObservableObject {
 
     @Published var memberLoginText = ""                                         // 招待するmember login入力値
     @Published private(set) var members: [RepositoryMember] = []                // 追加済みmember一覧
+    @Published private(set) var repositoryMemberCandidates: [RepositoryMember] = [] // Repository由来のmember候補一覧
+    @Published private(set) var isLoadingMembers = false                        // member同期中か
+    @Published private(set) var memberListErrorMessage: String?                 // member同期エラー
     @Published var isMemberInputVisible = false                                 // member入力欄の表示状態
 
     @Published private(set) var isSaving = false                                // Repository作成API実行中
@@ -29,20 +33,23 @@ final class AddRepositoryViewModel: ObservableObject {
     ]
 
     private let accessToken: String?
+    private let existingRepositoryNames: Set<String>
     private let backendRepositoryAPI: any RepositoryAPI                         // BeGit Repository関連API
     private let githubRepositoryAPI: any GitHubRepositoryAPI                    // GitHub Repository一覧API
 
     init(
         accessToken: String? = nil,
+        existingRepositories: [Repository] = [],
         backendRepositoryAPI: any RepositoryAPI = BeGitBackendAPI(),
         githubRepositoryAPI: (any GitHubRepositoryAPI)? = nil
     ) {
         self.accessToken = accessToken
+        self.existingRepositoryNames = Set(existingRepositories.map { Self.normalizedRepositoryName($0.name) })
         self.backendRepositoryAPI = backendRepositoryAPI
 
         if let githubRepositoryAPI {
             self.githubRepositoryAPI = githubRepositoryAPI
-        } else if accessToken?.hasPrefix("mock_access_token_") == true {
+        } else if shouldUseMockGitHubAPI(accessToken: accessToken) {
             self.githubRepositoryAPI = MockGitHubRepositoryAPI()
         } else {
             self.githubRepositoryAPI = GitHubRepositoryClient()
@@ -51,7 +58,9 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  Repository作成可能か
     var canComplete: Bool {
-        repositoryName != nil && isSaving == false
+        guard let repositoryName else { return false }
+
+        return isSaving == false && isRepositoryAlreadyAdded(repositoryName) == false
     }
 
     //  Repository preview表示名
@@ -61,12 +70,12 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  画面に表示するRepository候補
     var displayedRepositories: [GitHubRepository] {
-        Array(availableRepositories.prefix(visibleRepositoryCount))
+        Array(filteredRepositories.prefix(visibleRepositoryCount))
     }
 
     //  追加表示できるRepository候補があるか
     var canShowMoreRepositories: Bool {
-        visibleRepositoryCount < availableRepositories.count
+        visibleRepositoryCount < filteredRepositories.count
     }
 
     //  member追加可能か
@@ -83,6 +92,15 @@ final class AddRepositoryViewModel: ObservableObject {
     }
 
     // MARK: - Actions
+
+    func updateRepositorySearchText(_ text: String) {
+        repositorySearchText = text
+        visibleRepositoryCount = min(3, filteredRepositories.count)
+    }
+
+    func isAlreadyAdded(_ repository: GitHubRepository) -> Bool {
+        isRepositoryAlreadyAdded(repository.fullName)
+    }
 
     //  GitHub Repository一覧を取得
     func loadRepositories() async {
@@ -109,9 +127,16 @@ final class AddRepositoryViewModel: ObservableObject {
     }
 
     //  Repository候補を選択
-    func selectRepository(_ repository: GitHubRepository) {
+    func selectRepository(_ repository: GitHubRepository) async {
+        if isAlreadyAdded(repository) {
+            reportAlreadyAdded(repository.fullName)
+            return
+        }
+
+        errorMessage = nil
         selectedRepository = repository
         repositoryURLText = "https://github.com/\(repository.fullName)"
+        await loadRepositoryMembers(repoFullName: repository.fullName)
     }
 
     //  Repository候補を追加表示
@@ -133,6 +158,15 @@ final class AddRepositoryViewModel: ObservableObject {
         isMemberInputVisible = false
     }
 
+    //  GitHub検索結果からmember追加
+    func addMember(_ member: RepositoryMember) {
+        guard members.contains(where: { $0.login.caseInsensitiveCompare(member.login) == .orderedSame }) == false else {
+            return
+        }
+
+        members.append(member)
+    }
+
     //  招待済みmember追加
     func addInvitedMember(_ member: RepositoryMember) {
         guard members.contains(where: { $0.login.caseInsensitiveCompare(member.login) == .orderedSame }) == false else {
@@ -152,17 +186,39 @@ final class AddRepositoryViewModel: ObservableObject {
         guard isSaving == false else { return nil }
         guard let repositoryName, let accessToken else { return nil }
 
+        guard isRepositoryAlreadyAdded(repositoryName) == false else {
+            reportAlreadyAdded(repositoryName)
+            return nil
+        }
+
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
 
+        if shouldUseMockGitHubAPI(accessToken: accessToken) {
+            return makeLocalRepository(name: repositoryName)
+        }
+
         do {
-            return try await backendRepositoryAPI.createRepository(
+            let createdRepository = try await backendRepositoryAPI.createRepository(
                 repoFullName: repositoryName,
                 name: repositoryName,
                 accessToken: accessToken
             )
+            return repositoryWithSelectedOwnerAvatar(createdRepository)
         } catch {
+            if isConflictError(error),
+               let existingRepository = await restoreExistingRepository(
+                repositoryName: repositoryName,
+                accessToken: accessToken
+               ) {
+                return existingRepository
+            }
+
+            if isBackendUnavailable(error) || shouldUseMockGitHubAPI(accessToken: accessToken) {
+                return makeLocalRepository(name: repositoryName)
+            }
+
             errorMessage = error.localizedDescription
             return nil
         }
@@ -170,9 +226,178 @@ final class AddRepositoryViewModel: ObservableObject {
 
     // MARK: - Private
 
+    //  検索条件に一致するRepository候補
+    private var filteredRepositories: [GitHubRepository] {
+        let query = repositorySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else {
+            return availableRepositories
+        }
+
+        return availableRepositories.filter { repository in
+            repository.fullName.localizedCaseInsensitiveContains(query)
+                || (repository.description?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    //  選択RepositoryのGitHub collaboratorを取得
+    private func loadRepositoryMembers(repoFullName: String) async {
+        guard let accessToken, accessToken.isEmpty == false else {
+            memberListErrorMessage = "GitHubログイン情報を取得できませんでした。再ログインしてください。"
+            members = []
+            repositoryMemberCandidates = []
+            return
+        }
+
+        isLoadingMembers = true
+        memberListErrorMessage = nil
+        members = []
+        repositoryMemberCandidates = []
+        defer { isLoadingMembers = false }
+
+        do {
+            let repositoryMembers = try await githubRepositoryAPI.listRepositoryMembers(
+                repoFullName: repoFullName,
+                accessToken: accessToken
+            )
+            members = repositoryMembers
+            repositoryMemberCandidates = repositoryMembers
+        } catch {
+            memberListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+    }
+
     //  前後空白を除去したmember login
     private var normalizedMemberLogin: String {
         memberLoginText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isRepositoryAlreadyAdded(_ repositoryName: String) -> Bool {
+        existingRepositoryNames.contains(Self.normalizedRepositoryName(repositoryName))
+    }
+
+    private func reportAlreadyAdded(_ repositoryName: String) {
+        errorMessage = "\(repositoryName) はすでに追加されています。"
+    }
+
+    private func isConflictError(_ error: Error) -> Bool {
+        if case let BeGitAPIError.requestFailed(statusCode, _) = error {
+            return statusCode == 409
+        }
+
+        let errorText = "\(String(describing: error)) \(error.localizedDescription)".lowercased()
+        if errorText.contains("409") && errorText.contains("conflict") {
+            return true
+        }
+
+        if let underlyingError = (error as NSError).userInfo[NSUnderlyingErrorKey] as? Error,
+           isConflictError(underlyingError) {
+            return true
+        }
+
+        for child in Mirror(reflecting: error).children {
+            if let childError = errorValue(from: child.value),
+               isConflictError(childError) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func errorValue(from value: Any) -> Error? {
+        if let error = value as? Error {
+            return error
+        }
+
+        let mirror = Mirror(reflecting: value)
+        guard mirror.displayStyle == .optional,
+              let wrappedValue = mirror.children.first?.value else {
+            return nil
+        }
+
+        return errorValue(from: wrappedValue)
+    }
+
+    private func isBackendUnavailable(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorCannotConnectToHost,
+                 NSURLErrorCannotFindHost,
+                 NSURLErrorTimedOut,
+                 NSURLErrorNetworkConnectionLost,
+                 NSURLErrorNotConnectedToInternet,
+                 NSURLErrorInternationalRoamingOff,
+                 NSURLErrorDataNotAllowed,
+                 NSURLErrorSecureConnectionFailed:
+                return true
+            default:
+                break
+            }
+        }
+
+        let message = nsError.localizedDescription.lowercased()
+        return message.contains("could not connect")
+            || message.contains("connection refused")
+            || message.contains("timed out")
+            || message.contains("connection lost")
+            || message.contains("not connected to the internet")
+    }
+
+    private func restoreExistingRepository(repositoryName: String, accessToken: String) async -> Repository? {
+        do {
+            let repositories = try await backendRepositoryAPI.listRepositories(accessToken: accessToken)
+            guard let existingRepository = repositories.first(where: {
+                Self.normalizedRepositoryName($0.name) == Self.normalizedRepositoryName(repositoryName)
+            }) else {
+                errorMessage = "\(repositoryName) はすでに登録されています。一覧を更新して確認してください。"
+                return nil
+            }
+
+            errorMessage = nil
+            return repositoryWithSelectedOwnerAvatar(existingRepository)
+        } catch {
+            errorMessage = "\(repositoryName) はすでに登録されています。一覧を更新して確認してください。"
+            return nil
+        }
+    }
+
+    private static func normalizedRepositoryName(_ repositoryName: String) -> String {
+        repositoryName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    //  Dev / Mock時はバックエンドへ未登録トークンを送らず、画面上へ即時追加する
+    private func makeLocalRepository(name: String) -> Repository {
+        Repository(
+            name: name,
+            ownerAvatarURL: selectedRepository?.ownerAvatarURL ?? ownerAvatarURL(from: name),
+            memberCount: members.count,
+            members: members
+        )
+    }
+
+    private func ownerAvatarURL(from repositoryName: String) -> URL? {
+        guard let owner = repositoryName.split(separator: "/").first else { return nil }
+
+        return URL(string: "https://github.com/\(owner).png")
+    }
+
+    //  GitHub Repository選択時に取得済みのowner avatarを作成結果へ反映
+    private func repositoryWithSelectedOwnerAvatar(_ repository: Repository) -> Repository {
+        guard let selectedRepository,
+              let ownerAvatarURL = selectedRepository.ownerAvatarURL,
+              repository.ownerAvatarURL == nil else {
+            return repository
+        }
+
+        return Repository(
+            id: repository.id,
+            backendID: repository.backendID,
+            name: repository.name,
+            ownerAvatarURL: ownerAvatarURL,
+            memberCount: repository.memberCount,
+            members: repository.members
+        )
     }
 
     //  GitHub URLからRepository名を抽出

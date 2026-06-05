@@ -105,6 +105,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             githubUser: GitHubUser(
                 id: userId,
                 login: userLogin,
+                name: user.name,
                 avatarURL: user.avatarUrl.flatMap { URL(string: $0) },
                 email: nil
             )
@@ -250,6 +251,14 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         }
     }
     
+
+    // PUT /me/fcm-token : FCM デバイストークンを登録/更新（Push 送信先の登録）
+    func updateFCMToken(_ token: String, accessToken: String) async throws {
+        let output = try await makeClient(accessToken: accessToken).putMeFcmToken(
+            .init(body: .json(.Handler_UpdateFCMTokenRequest(.init(fcmToken: token))))
+        )
+        guard case .ok = output else { throw BeGitAPIError.invalidResponse }
+    }
 }
 
 // nonisolated 指定：アプリは MainActor 既定隔離のため、これを付けないと Decodable 適合も

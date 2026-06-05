@@ -7,12 +7,13 @@ import Combine
 @MainActor
 final class MakeNotificationViewModel: ObservableObject {
     let repository: Repository                      //  通知対象Repository
-    let adminMember: RepositoryMember?              //  管理者member
 
     @Published var members: [RepositoryMember]      //  Repository member一覧
+    @Published private(set) var repositoryMemberCandidates: [RepositoryMember] // Repository由来のmember候補一覧
     @Published var selectedMemberIDs: Set<UUID>     //  選択中member ID一覧
     @Published var comment = ""                     //  通知コメント入力値
     @Published private(set) var isSending = false   //  通知送信中
+    @Published private(set) var isLoadingMembers = false // member同期中
     @Published var errorMessage: String?            //  APIエラー表示
 
     private let repositoryAPI: any RepositoryAPI    // Repository関連API
@@ -20,9 +21,14 @@ final class MakeNotificationViewModel: ObservableObject {
     init(repository: Repository, repositoryAPI: any RepositoryAPI = BeGitBackendAPI()) {
         self.repository = repository
         self.members = repository.members                           //  初期member一覧
+        self.repositoryMemberCandidates = repository.members         //  初期Repository member候補一覧
         self.selectedMemberIDs = Set(repository.members.map(\.id))  //  初期状態では全memberを選択
-        self.adminMember = repository.members.first                 //  先頭memberを管理者として利用
         self.repositoryAPI = repositoryAPI
+    }
+
+    //  管理者member
+    var adminMember: RepositoryMember? {
+        members.first
     }
 
     //  選択中member一覧
@@ -53,14 +59,13 @@ final class MakeNotificationViewModel: ObservableObject {
         selectedMemberIDs.remove(member.id)
     }
 
-     //  Mock member追加
-    func addMockMember() {
-        //  次のmember番号
-        let nextNumber = members.count + 1
-        let member = RepositoryMember(login: "member\(nextNumber)")
-        //  member一覧へ追加
+    //  GitHub検索結果からmember追加
+    func addMember(_ member: RepositoryMember) {
+        guard members.contains(where: { $0.login.caseInsensitiveCompare(member.login) == .orderedSame }) == false else {
+            return
+        }
+
         members.append(member)
-        //  追加時は自動選択
         selectedMemberIDs.insert(member.id)
     }
 
@@ -75,30 +80,64 @@ final class MakeNotificationViewModel: ObservableObject {
         )
     }
 
-    func sendNotification(accessToken: String?) async -> RepositoryNotification? {
-        guard isSending == false else { return nil }
-        guard let accessToken else {
-            errorMessage = "アクセストークンが見つかりません。"
-            return nil
-        }
+    func loadMembers(accessToken: String?) async {
+        guard isLoadingMembers == false else { return }
+        guard let accessToken else { return }
         guard let backendID = repository.backendID else {
-            errorMessage = "Repository IDが見つかりません。"
-            return nil
+            members = repository.members
+            repositoryMemberCandidates = repository.members
+            selectedMemberIDs = Set(repository.members.map(\.id))
+            return
         }
 
+        isLoadingMembers = true
+        errorMessage = nil
+        defer { isLoadingMembers = false }
+
+        do {
+            let syncedRepository = try await repositoryAPI.getRepository(id: backendID, accessToken: accessToken)
+            members = syncedRepository.members
+            repositoryMemberCandidates = syncedRepository.members
+            selectedMemberIDs = Set(syncedRepository.members.map(\.id))
+        } catch {
+            members = repository.members
+            repositoryMemberCandidates = repository.members
+            selectedMemberIDs = Set(repository.members.map(\.id))
+        }
+    }
+
+    func sendNotification(accessToken: String?) async -> RepositoryNotification? {
+        guard isSending == false else { return nil }
         isSending = true
         errorMessage = nil
         defer { isSending = false }
 
-        do {
-            try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
-            return makeNotification()
-        }  catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
-            // 既に通知済み → そのままカメラへ進む
-            return makeNotification()
-        }catch {
-            errorMessage = error.localizedDescription
-            return nil
+        let notification = makeNotification()
+
+        guard NotificationDeliveryMode.current.usesLocalNotificationMock else {
+            guard let accessToken else {
+                errorMessage = "アクセストークンが見つかりません。"
+                return nil
+            }
+
+            guard let backendID = repository.backendID else {
+                errorMessage = "このRepositoryはバックエンドに同期されていません。"
+                return nil
+            }
+
+            do {
+                try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
+                return notification
+            } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
+                // 既に通知済み → そのままカメラへ進む
+                return makeNotification()
+            }catch {
+                errorMessage = "通知の送信に失敗しました。"
+                return nil
+            }
         }
+
+        LocalNotificationScheduler.shared.scheduleNotification(for: notification)
+        return notification
     }
 }

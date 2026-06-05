@@ -17,6 +17,7 @@ extension Components.Schemas.Handler_UserJSON {
         GitHubUser(
             id: id ?? 0,
             login: login ?? "",
+            name: name,
             avatarURL: avatarUrl.flatMap { URL(string: $0) },
             email: nil
         )
@@ -30,6 +31,7 @@ extension Components.Schemas.Handler_GroupJSON {
         return Repository(
             backendID: id.map(Int64.init),
             name: displayName,
+            ownerAvatarURL: ownerAvatarURL(from: displayName),
             memberCount: members.count,
             members: members
         )
@@ -44,10 +46,20 @@ extension Components.Schemas.Handler_GroupDetailJSON {
         return Repository(
             backendID: id.map(Int64.init),
             name: displayName,
+            ownerAvatarURL: ownerAvatarURL(from: displayName),
             memberCount: repositoryMembers.count,
             members: repositoryMembers
         )
     }
+}
+
+private func ownerAvatarURL(from repoFullName: String) -> URL? {
+    guard let owner = repoFullName.split(separator: "/", maxSplits: 1).first,
+          owner.isEmpty == false else {
+        return nil
+    }
+
+    return URL(string: "https://github.com/\(owner).png")
 }
 
 extension Components.Schemas.Handler_GroupMemberJSON {

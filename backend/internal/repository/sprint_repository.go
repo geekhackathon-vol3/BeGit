@@ -18,6 +18,12 @@ type SprintRepository interface {
 	GetCurrentSprint(ctx context.Context, groupID int64) (*model.Sprint, error)
 	// GetByID は sprint ID でスプリントを取得する
 	GetByID(ctx context.Context, sprintID int64) (*model.Sprint, error)
+	// ListReminderDue は ends_at の3日前に到達した（かつ未終了の）スプリントを返す（④ sprint_reminder 用）。
+	ListReminderDue(ctx context.Context) ([]model.Sprint, error)
+	// ListEnded は ends_at に到達した（終了済み）スプリントを返す（⑤ sprint_end 用）。
+	ListEnded(ctx context.Context) ([]model.Sprint, error)
+	// ListActive は現在アクティブなスプリントを返す（⑥ sprint_start 候補。冪等は deliveries で担保）。
+	ListActive(ctx context.Context) ([]model.Sprint, error)
 }
 
 // sprintRepository は SprintRepository インターフェースの実装
@@ -97,6 +103,73 @@ func (r *sprintRepository) GetByID(ctx context.Context, sprintID int64) (*model.
 	}
 
 	return scanSprint(rows[0])
+}
+
+// scanSprints は複数行をスライスへ変換する（Cron 走査クエリ共通）
+func scanSprints(rows []map[string]interface{}) ([]model.Sprint, error) {
+	sprints := make([]model.Sprint, 0, len(rows))
+	for _, row := range rows {
+		s, err := scanSprint(row)
+		if err != nil {
+			return nil, err
+		}
+		sprints = append(sprints, *s)
+	}
+	return sprints, nil
+}
+
+// ListReminderDue は ends_at の3日前に到達した（かつ未終了の）スプリントを返す。
+// 境界: datetime(ends_at, '-3 days') <= now() AND ends_at > now()
+func (r *sprintRepository) ListReminderDue(ctx context.Context) ([]model.Sprint, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, group_id, index_num, started_at, ends_at
+		 FROM sprints
+		 WHERE datetime(ends_at, '-3 days') <= datetime('now') AND ends_at > datetime('now')`,
+		[]interface{}{},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []model.Sprint{}, nil
+		}
+		return nil, fmt.Errorf("sprint_repository: ListReminderDue failed: %w", err)
+	}
+	return scanSprints(rows)
+}
+
+// ListEnded は ends_at に到達した（終了済み）スプリントを返す。
+// 境界: ends_at <= now()
+func (r *sprintRepository) ListEnded(ctx context.Context) ([]model.Sprint, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, group_id, index_num, started_at, ends_at
+		 FROM sprints
+		 WHERE ends_at <= datetime('now')`,
+		[]interface{}{},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []model.Sprint{}, nil
+		}
+		return nil, fmt.Errorf("sprint_repository: ListEnded failed: %w", err)
+	}
+	return scanSprints(rows)
+}
+
+// ListActive は現在アクティブなスプリントを返す（⑥ sprint_start 候補）。
+// 境界: started_at <= now() AND ends_at > now()
+func (r *sprintRepository) ListActive(ctx context.Context) ([]model.Sprint, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, group_id, index_num, started_at, ends_at
+		 FROM sprints
+		 WHERE started_at <= datetime('now') AND ends_at > datetime('now')`,
+		[]interface{}{},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []model.Sprint{}, nil
+		}
+		return nil, fmt.Errorf("sprint_repository: ListActive failed: %w", err)
+	}
+	return scanSprints(rows)
 }
 
 // GetOrCreateCurrentSprint は現在アクティブなスプリントを取得するか、存在しなければ作成する

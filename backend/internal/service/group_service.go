@@ -123,7 +123,14 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrConflict) {
-			return nil, ErrConflict
+			existingGroup, getErr := s.groupRepo.GetByRepoFullName(ctx, req.RepoFullName)
+			if getErr != nil {
+				return nil, fmt.Errorf("group_service: GetByRepoFullName after conflict failed: %w", getErr)
+			}
+			if addErr := s.groupRepo.AddMember(ctx, existingGroup.ID, userID, "member"); addErr != nil {
+				return nil, fmt.Errorf("group_service: AddMember after conflict failed: %w", addErr)
+			}
+			return existingGroup, nil
 		}
 		return nil, fmt.Errorf("group_service: CreateGroup failed: %w", err)
 	}
