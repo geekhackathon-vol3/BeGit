@@ -39,11 +39,11 @@ struct MemberAvatarRowView: View {
             //  表示しきれないmember数表示
             if members.count > visibleLimit {
                 Text("+\(members.count - visibleLimit)")
-                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .appFont(.sectionHeader)
                     .foregroundStyle(AppTheme.accent)
                     //  avatarサイズに合わせる
                     .frame(width: avatarSize, height: avatarSize)
-                    .background(Color.white.opacity(0.08))  //  overflow avatar背景
+                    .background(AppTheme.fieldBackground)  //  overflow avatar背景
                     .clipShape(Circle())                    //  Circle shape
                     //  avatar境界線
                     .overlay(

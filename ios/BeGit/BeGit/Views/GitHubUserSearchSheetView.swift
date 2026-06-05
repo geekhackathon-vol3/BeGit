@@ -39,12 +39,11 @@ struct GitHubUserSearchSheetView: View {
 
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Add Member")
-                        .font(.custom("Bitcount", size: 34))
-                        .foregroundStyle(.white)
+                        .appFont(.title)
+                        .foregroundStyle(AppTheme.Text.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     searchBar
-
                     resultList
 
                     Spacer(minLength: 0)
@@ -60,7 +59,7 @@ struct GitHubUserSearchSheetView: View {
                     Button("Close") {
                         dismiss()
                     }
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .appFont(.body)
                     .foregroundStyle(AppTheme.accent)
                 }
 
@@ -76,20 +75,18 @@ struct GitHubUserSearchSheetView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 14, weight: .black))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(AppTheme.Text.disabled)
                 .frame(width: 18, height: 18)
 
             TextField("Search GitHub username", text: $viewModel.searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
+                .appFont(.body)
+                .foregroundStyle(AppTheme.Text.primary)
                 .tint(AppTheme.accent)
                 .submitLabel(.search)
                 .onSubmit {
-                    Task {
-                        await viewModel.search()
-                    }
+                    Task { await viewModel.search() }
                 }
 
             if viewModel.searchText.isEmpty == false {
@@ -100,7 +97,7 @@ struct GitHubUserSearchSheetView: View {
                         .font(.system(size: 11, weight: .black))
                         .foregroundStyle(.black)
                         .frame(width: 22, height: 22)
-                        .background(Color.white.opacity(0.62))
+                        .background(AppTheme.Text.regular)
                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -108,9 +105,7 @@ struct GitHubUserSearchSheetView: View {
             }
 
             Button {
-                Task {
-                    await viewModel.search()
-                }
+                Task { await viewModel.search() }
             } label: {
                 Image(systemName: "arrow.right")
                     .font(.system(size: 13, weight: .black))
@@ -126,7 +121,7 @@ struct GitHubUserSearchSheetView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
         .padding(.horizontal, 10)
-        .background(Color.white.opacity(0.06))
+        .background(AppTheme.fieldBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -150,11 +145,11 @@ struct GitHubUserSearchSheetView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 160, alignment: .topLeading)
         .padding(14)
-        .background(Color(red: 0.247, green: 0.247, blue: 0.286))
+        .background(AppTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
+                .stroke(AppTheme.borderSubtle, lineWidth: 2)
         )
     }
 
@@ -164,30 +159,30 @@ struct GitHubUserSearchSheetView: View {
                 .tint(AppTheme.accent)
 
             Text("Searching users")
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.48))
+                .appFont(.body)
+                .foregroundStyle(AppTheme.Text.disabled)
         }
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
     }
 
     private var emptyState: some View {
         Text("No users found")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.42))
+            .appFont(.body)
+            .foregroundStyle(AppTheme.Text.disabled)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
     }
 
     private var initialState: some View {
         Text("Search by GitHub username")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.42))
+            .appFont(.body)
+            .foregroundStyle(AppTheme.Text.disabled)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
     }
 
     private func errorState(_ message: String) -> some View {
         Text(message)
-            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.72))
+            .appFont(.label)
+            .foregroundStyle(AppTheme.Text.high)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
     }
@@ -218,8 +213,8 @@ struct GitHubUserSearchSheetView: View {
 
     private func candidateSectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.54))
+            .appFont(.sectionHeader)
+            .foregroundStyle(AppTheme.Text.muted)
             .textCase(.uppercase)
     }
 
@@ -235,8 +230,8 @@ struct GitHubUserSearchSheetView: View {
                 AvatarView(member: member, size: 34)
 
                 Text(member.login)
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
+                    .appFont(.subheadline)
+                    .foregroundStyle(AppTheme.Text.primary)
                     .lineLimit(1)
 
                 Spacer()
@@ -244,7 +239,7 @@ struct GitHubUserSearchSheetView: View {
                 if isAdded {
                     Text("Added")
                         .font(.system(size: 12, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.46))
+                        .foregroundStyle(AppTheme.Text.disabled)
                 } else {
                     Image(systemName: "plus")
                         .font(.system(size: 16, weight: .black))
@@ -260,6 +255,7 @@ struct GitHubUserSearchSheetView: View {
         .disabled(isAdded)
         .accessibilityLabel(isAdded ? "\(member.login)は追加済み" : "\(member.login)を追加")
     }
+
 
     private func containsExistingMember(_ member: RepositoryMember) -> Bool {
         existingMembers.contains {

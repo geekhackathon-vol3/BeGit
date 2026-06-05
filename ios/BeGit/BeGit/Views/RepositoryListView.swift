@@ -38,7 +38,7 @@ struct RepositoryListView: View {
                         LazyVStack(alignment: .leading, spacing: 16) {
                             Text("Repositories")
                                 .font(.custom("Bitcount", size: 34))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppTheme.Text.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
 
                             //  ログイン中ユーザー情報
@@ -157,21 +157,21 @@ struct RepositoryListView: View {
             )
             .background(
                 Circle()
-                    .fill(AppTheme.background.opacity(0.82))
+                .fill(AppTheme.backgroundOpacity(0.82))
             )
             .overlay(
                 Circle()
-                    .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
+                .stroke(AppTheme.Text.high, lineWidth: 1.5)
             )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(displayedGitHubUserName)
                     .font(.system(size: 13, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.Text.primary)
 
                 Text(displayedUserIDText)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.64))
+                        .foregroundStyle(AppTheme.Text.medium)
             }
 
             Spacer()
@@ -234,7 +234,7 @@ struct RepositoryListView: View {
     private func statusText(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 13, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(AppTheme.Text.regular)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
     }
@@ -380,21 +380,7 @@ private struct SwipeToDeleteRepositoryRow: View {
     }
 }
 
-//  BeGit共通テーマカラー
-enum AppTheme {
-    //  アプリ背景色
-    static let background = Color(red: 0.149, green: 0.157, blue: 0.188)
-    //  カード背景色
-    static let cardBackground = Color(red: 0.07, green: 0.06, blue: 0.11)
-    //  Repository一覧カード背景色
-    static let repositoryCardBackground = Color(red: 0.267, green: 0.267, blue: 0.267)
-    //  入力欄背景色
-    static let fieldBackground = Color.white.opacity(0.07)
-    //  メインアクセントカラー
-    static let accent = Color(red: 0.804, green: 0.718, blue: 0.965)
-    //  Dashboard / Notificationで使うsoft pink
-    static let softPink = Color(red: 1.00, green: 0.72, blue: 0.84)
-}
+
 
 //  iPhone SE Preview
 struct RepositoryListView_iPhoneSE_Previews: PreviewProvider {

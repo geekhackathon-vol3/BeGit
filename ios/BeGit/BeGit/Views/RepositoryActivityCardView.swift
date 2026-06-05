@@ -4,11 +4,9 @@
 import SwiftUI
 import UIKit
 
-//  Repository Timeline activity一覧
 struct RepositoryActivityTimelineView: View {
-    let activities: [RepositoryActivity]    //  表示対象activity一覧
+    let activities: [RepositoryActivity]
 
-    //  Timeline日付見出しFormatter
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
@@ -25,10 +23,9 @@ struct RepositoryActivityTimelineView: View {
 
                 RepositoryActivityCardView(activity: activity)
 
-                //  activity背景画像同士をつなぐtimeline線
                 if index < activities.count - 1 {
                     Rectangle()
-                        .fill(Color(red: 0.333, green: 0.345, blue: 0.365))
+                        .fill(AppTheme.borderSubtle)
                         .frame(width: 6, height: 18)
                         .padding(.leading, 43)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -37,23 +34,18 @@ struct RepositoryActivityTimelineView: View {
         }
     }
 
-    //  日付が変わるactivityの前に見出しを表示する
     private func shouldShowDateHeader(at index: Int) -> Bool {
-        guard index > 0 else {
-            return true
-        }
-
+        guard index > 0 else { return true }
         return Calendar.current.isDate(
             activities[index].date,
             inSameDayAs: activities[index - 1].date
         ) == false
     }
 
-    //  Timeline日付見出し
     private func dateHeader(for date: Date) -> some View {
         Text(Self.dayFormatter.string(from: date))
-            .font(.system(size: 13, weight: .black, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.50))
+            .appFont(.label)
+            .foregroundStyle(AppTheme.Text.low)
             .textCase(.uppercase)
             .padding(.top, 4)
             .padding(.bottom, 10)
@@ -61,42 +53,36 @@ struct RepositoryActivityTimelineView: View {
     }
 }
 
-//  Repository Timeline activity card
 struct RepositoryActivityCardView: View {
-    let activity: RepositoryActivity    //  表示対象activity
-    @State private var isLiked: Bool    //  いいねON/OFF状態
+    let activity: RepositoryActivity
+    @State private var isLiked: Bool
 
     init(activity: RepositoryActivity) {
         self.activity = activity
         _isLiked = State(initialValue: false)
     }
 
-    //  activity日時表示Formatter
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "M月d日 HH:mm"   //  日時表示形式
+        formatter.dateFormat = "M月d日 HH:mm"
         return formatter
     }()
 
     var body: some View {
-        //  activity card本体
         ZStack(alignment: .topLeading) {
-            //  activity画像をcard全面の背景として表示
             activityBackground
 
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
-                    //  BeReal風の縦長thumbnail枠
                     activityThumbnailFrame
                 }
 
                 Spacer()
 
-                //  activityタイトル
                 Text(activity.title)
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
+                    .appFont(.headline)                         // size:17,black → size:18,semibold で近似
+                    .foregroundStyle(AppTheme.Text.primary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -104,7 +90,6 @@ struct RepositoryActivityCardView: View {
                 Spacer()
 
                 HStack(alignment: .center, spacing: 10) {
-                    //  activity実行member avatar
                     AvatarView(member: activity.author, size: 34)
                         .background(
                             Circle()
@@ -112,31 +97,27 @@ struct RepositoryActivityCardView: View {
                         )
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
+                                .stroke(AppTheme.Text.primary.opacity(0.72), lineWidth: 1.5)
                         )
 
                     VStack(alignment: .leading, spacing: 3) {
-                        //  GitHub login名
                         Text(activity.author.login)
-                            .font(.system(size: 13, weight: .black, design: .monospaced))
-                            .foregroundStyle(.white)
+                            .appFont(.label)
+                            .foregroundStyle(AppTheme.Text.primary)
 
-                        //  activity日時
                         Text(Self.dateFormatter.string(from: activity.date))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.64))
+                            .appFont(.caption)
+                            .foregroundStyle(AppTheme.Text.medium)
                     }
 
                     Spacer()
 
-                    //  いいねbutton
                     likeButton
                 }
             }
             .padding(16)
             .zIndex(1)
 
-            //  activity種別badge
             typeBadge
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .zIndex(2)
@@ -145,13 +126,12 @@ struct RepositoryActivityCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                .stroke(AppTheme.Text.primary.opacity(0.10), lineWidth: 1)
         )
     }
 
     // MARK: - Components
 
-    //  activity背景画像表示
     private var activityBackground: some View {
         GeometryReader { proxy in
             ZStack {
@@ -164,7 +144,6 @@ struct RepositoryActivityCardView: View {
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
                 } else {
-                    //  画像がないactivityの背景icon
                     Image(systemName: activity.type.systemImage)
                         .font(.system(size: 86, weight: .black))
                         .foregroundStyle(activity.type.tint.opacity(0.30))
@@ -193,7 +172,6 @@ struct RepositoryActivityCardView: View {
         }
     }
 
-    //  BeReal風の小さな縦長thumbnail枠
     private var activityThumbnailFrame: some View {
         ZStack {
             if UIImage(named: "begit_github_character") != nil {
@@ -217,7 +195,6 @@ struct RepositoryActivityCardView: View {
         .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
     }
 
-     //  activity種別badge
     private var typeBadge: some View {
         HStack(spacing: 5) {
             Image(activity.type.badgeIconName)
@@ -226,20 +203,19 @@ struct RepositoryActivityCardView: View {
                 .frame(width: 17, height: 17)
 
             Text(activity.type.badgeTitle)
-                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .appFont(.label)
                 .foregroundStyle(.black)
         }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(activity.type.tint)
-            .clipShape(BottomLeadingRoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(activity.type.tint)
+        .clipShape(BottomLeadingRoundedRectangle(cornerRadius: 10))
     }
 
-    //  card背景Gradient
     private var cardBackground: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.11, green: 0.08, blue: 0.14),
+                Color(red: 0.11, green: 0.08, blue: 0.14),  // card固有色のため保持
                 AppTheme.cardBackground
             ],
             startPoint: .topLeading,
@@ -247,21 +223,22 @@ struct RepositoryActivityCardView: View {
         )
     }
 
-    //  いいねON/OFF button
     private var likeButton: some View {
         Button {
             isLiked.toggle()
         } label: {
             Image(systemName: isLiked ? "heart.fill" : "heart")
                 .font(.system(size: 15, weight: .black))
-                .foregroundStyle(isLiked ? AppTheme.softPink : .white.opacity(0.72))
+                .foregroundStyle(isLiked ? AppTheme.softPink : AppTheme.Text.high)
                 .frame(width: 34, height: 34)
                 .background(Color.black.opacity(isLiked ? 0.42 : 0.30))
         }
         .buttonStyle(.plain)
-            .clipShape(Circle())
+        .clipShape(Circle())
     }
 }
+
+// 以降は変更なし（BottomLeadingRoundedRectangle, RepositoryActivityType extension）
 
 //  左下だけ丸角のbadge shape
 private struct BottomLeadingRoundedRectangle: Shape {

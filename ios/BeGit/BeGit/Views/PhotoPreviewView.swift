@@ -16,7 +16,7 @@ struct PhotoPreviewView: View {
 
         ZStack {
 
-            Color.black
+            AppTheme.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -33,20 +33,14 @@ struct PhotoPreviewView: View {
 
                         Image(systemName: "xmark")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(AppTheme.Text.primary)
                             .frame(width: 40, height: 40)
                     }
 
                     Spacer()
 
                     Text("BeGit_")
-                        .font(
-                            .system(
-                                size: 22,
-                                weight: .black,
-                                design: .monospaced
-                            )
-                        )
+                        .appFont(.logo)
                         .foregroundStyle(.white)
 
                     Spacer()
@@ -84,7 +78,7 @@ struct PhotoPreviewView: View {
                             .overlay(
                                 RoundedRectangle(cornerRadius: 18)
                                     .stroke(
-                                        Color.white.opacity(0.9),
+                                        AppTheme.Text.primary.opacity(0.9),
                                         lineWidth: 2
                                     )
                             )
@@ -108,12 +102,12 @@ struct PhotoPreviewView: View {
                     } label: {
 
                         Text("Retake")
-                            .font(.system(size: 18, weight: .bold))
+                            .appFont(.headline)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 58)
                             .background(
-                                Color.white.opacity(0.12)
+                                AppTheme.fieldBackground
                             )
                             .clipShape(Capsule())
                     }
@@ -127,11 +121,11 @@ struct PhotoPreviewView: View {
                     } label: {
 
                         Text("Post")
-                            .font(.system(size: 18, weight: .black))
+                            .appFont(.headline)
                             .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
                             .frame(height: 58)
-                            .background(.white)
+                            .background(AppTheme.Text.primary)
                             .clipShape(Capsule())
                     }
                 }

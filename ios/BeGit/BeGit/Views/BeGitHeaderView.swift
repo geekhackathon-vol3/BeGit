@@ -14,7 +14,7 @@ struct BeGitHeaderView: View {
         VStack(spacing: 4) {
             //  Headerタイトル表示
             Text(title)
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .appFont(.label)
                 .foregroundStyle(AppTheme.softPink)
                 .textCase(.uppercase)
 
@@ -22,7 +22,7 @@ struct BeGitHeaderView: View {
             if let subtitle {
                 Text(subtitle)
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.50))
+                    .foregroundStyle(AppTheme.Text.low)
                     .lineLimit(1)
                     .multilineTextAlignment(.center)
             }
