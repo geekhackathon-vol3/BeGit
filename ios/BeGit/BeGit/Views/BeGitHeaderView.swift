@@ -52,12 +52,14 @@ struct BeGitToolbarLogoView: View {
 
 struct BeGitBackButton: View {
     @Environment(\.dismiss) private var dismiss
+    var color: Color = AppTheme.softPink
     private let titleKey = LocalizedStringKey("Back")
 
     var body: some View {
         Button(action: dismiss.callAsFunction) {
             HStack(spacing: 5) {
                 Image("begit_back_arrow")
+                    .renderingMode(.template)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 22, height: 22)
@@ -67,7 +69,7 @@ struct BeGitBackButton: View {
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            .foregroundStyle(AppTheme.softPink)
+            .foregroundStyle(color)
             .frame(minWidth: 82, minHeight: 44, alignment: .leading)
         }
         .buttonStyle(.plain)
