@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestListUserRepos は push/admin 権限のあるリポジトリのみ返すことを確認する
+// TestListUserRepos は権限に関わらずアクセス可能なリポジトリをすべて返すことを確認する
 func TestListUserRepos(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -41,11 +41,14 @@ func TestListUserRepos(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListUserRepos() failed: %v", err)
 	}
-	if len(repos) != 1 {
-		t.Fatalf("expected 1 repo (push/admin only), got %d", len(repos))
+	if len(repos) != 2 {
+		t.Fatalf("expected 2 repos (all accessible), got %d", len(repos))
 	}
-	if repos[0].FullName != "alice/repo-push" || !repos[0].CanPush || repos[0].OwnerLogin != "alice" {
-		t.Errorf("unexpected repo: %+v", repos[0])
+	if repos[0].FullName != "alice/repo-push" || !repos[0].CanPush {
+		t.Errorf("unexpected repo[0]: %+v", repos[0])
+	}
+	if repos[1].FullName != "alice/repo-readonly" || repos[1].CanPush {
+		t.Errorf("unexpected repo[1]: %+v", repos[1])
 	}
 }
 
