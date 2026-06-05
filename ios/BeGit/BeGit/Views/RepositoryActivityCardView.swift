@@ -59,6 +59,8 @@ struct RepositoryActivityCardView: View {
     @State private var showReactionPicker = false
     @State private var myReaction: ActivityReactionType?
     @State private var reactionCounts: [ActivityReactionType: Int]
+    @State private var isSwapped = false //  背景と小窓の写真を入れ替えているか
+    @State private var thumbnailScale: CGFloat = 1.0 //  小窓タップ時の弾みアニメ
 
     init(activity: RepositoryActivity) {
         self.activity = activity
@@ -68,6 +70,21 @@ struct RepositoryActivityCardView: View {
         _reactionCounts = State(initialValue: counts)
     }
 
+    //  背面/前面の両方の写真がある時だけ入れ替え可能
+    private var canSwap: Bool {
+        activity.mainPhotoURL != nil && activity.frontPhotoURL != nil
+    }
+
+    //  入れ替え状態を反映した表示用URL
+    private var displayedMainURL: URL? {
+        isSwapped ? activity.frontPhotoURL : activity.mainPhotoURL
+    }
+
+    private var displayedFrontURL: URL? {
+        isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
+    }
+
+    //  activity日時表示Formatter
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
@@ -109,22 +126,51 @@ struct RepositoryActivityCardView: View {
                     }
                 }
 
-            //  投稿テキスト：背景画像全体の中央に絶対配置
-            Text(activity.title)
-                .font(.system(size: 17, weight: .black, design: .monospaced))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                .zIndex(1)
+            //  投稿テキスト：背景画像全体の中央に絶対配置。
+            //  コメントがあればコメントを表示（commit名は出さない）。無ければcommit名。
+            Group {
+                if let comment = activity.comment, comment.isEmpty == false {
+                    Text(comment)
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.92))
+                } else {
+                    Text(activity.title)
+                        .font(.system(size: 17, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .zIndex(1)
 
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top) {
+                    //  小窓タップで背景と入れ替え（何度でも可）＋ぽよよんアニメ
                     activityThumbnailFrame
+                        .scaleEffect(thumbnailScale)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard canSwap else { return }
+                            //  背景⇄小窓をバネで入れ替え
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                isSwapped.toggle()
+                            }
+                            //  ぽよよん：素早く拡大しきってから、よく弾むバネで戻す
+                            withAnimation(.easeOut(duration: 0.07)) {
+                                thumbnailScale = 1.25
+                            } completion: {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.3)) {
+                                    thumbnailScale = 1.0
+                                }
+                            }
+                        }
+                        .sensoryFeedback(.impact(weight: .light), trigger: isSwapped)
                 }
                 Spacer()
+
                 HStack(alignment: .center) {
                     if !displayedReactions.isEmpty {
                         reactionCountsRow
@@ -296,7 +342,7 @@ struct RepositoryActivityCardView: View {
             ZStack {
                 cardBackground
 
-                if let mainPhotoURL = activity.mainPhotoURL {
+                if let mainPhotoURL = displayedMainURL {
                     //  背面写真（実写真）を背景に表示
                     AsyncImage(url: mainPhotoURL) { phase in
                         switch phase {
@@ -348,7 +394,7 @@ struct RepositoryActivityCardView: View {
     //  BeReal風の小さな縦長thumbnail枠（前面写真）
     private var activityThumbnailFrame: some View {
         ZStack {
-            if let frontPhotoURL = activity.frontPhotoURL {
+            if let frontPhotoURL = displayedFrontURL {
                 //  前面写真（セルフィー）を小窓に表示
                 AsyncImage(url: frontPhotoURL) { phase in
                     switch phase {

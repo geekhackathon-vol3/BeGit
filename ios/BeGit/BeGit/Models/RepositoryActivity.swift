@@ -12,6 +12,7 @@ let id: UUID                        //  activity識別子
     
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
+    let comment: String?                //  投稿時に入力したコメント（body）
     let date: Date                      //  activity作成日時
     let imageName: String?              //  activity画像名（Mock/Asset 用）
     let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
@@ -23,6 +24,7 @@ let id: UUID                        //  activity識別子
         id: UUID = UUID(),
         type: RepositoryActivityType,
         title: String,
+        comment: String? = nil,
         date: Date = Date(),
         imageName: String? = nil,
         mainPhotoURL: URL? = nil,
@@ -33,6 +35,7 @@ let id: UUID                        //  activity識別子
         self.id = id
         self.type = type
         self.title = title
+        self.comment = comment
         self.date = date
         self.imageName = imageName
         self.mainPhotoURL = mainPhotoURL
