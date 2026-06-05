@@ -2,13 +2,11 @@
 //  Repository DashboardとResultで表示するTimeline card
 
 import SwiftUI
-import UIKit
 
 //  Repository Timeline activity一覧
 struct RepositoryActivityTimelineView: View {
-    let activities: [RepositoryActivity]    //  表示対象activity一覧
+    let activities: [RepositoryActivity]
 
-    //  Timeline日付見出しFormatter
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "ja_JP")
@@ -25,11 +23,10 @@ struct RepositoryActivityTimelineView: View {
 
                 RepositoryActivityCardView(activity: activity)
 
-                //  activity背景画像同士をつなぐtimeline線
                 if index < activities.count - 1 {
                     Rectangle()
                         .fill(Color(red: 0.333, green: 0.345, blue: 0.365))
-                        .frame(width: 6, height: 18)
+                        .frame(width: 6, height: 30)
                         .padding(.leading, 43)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -37,111 +34,116 @@ struct RepositoryActivityTimelineView: View {
         }
     }
 
-    //  日付が変わるactivityの前に見出しを表示する
     private func shouldShowDateHeader(at index: Int) -> Bool {
-        guard index > 0 else {
-            return true
-        }
-
+        guard index > 0 else { return true }
         return Calendar.current.isDate(
             activities[index].date,
             inSameDayAs: activities[index - 1].date
         ) == false
     }
 
-    //  Timeline日付見出し
     private func dateHeader(for date: Date) -> some View {
         Text(Self.dayFormatter.string(from: date))
             .font(.system(size: 13, weight: .black, design: .monospaced))
             .foregroundStyle(.white.opacity(0.50))
             .textCase(.uppercase)
-            .padding(.top, 4)
-            .padding(.bottom, 10)
+            .padding(.leading, 4)
+            .padding(.bottom, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 //  Repository Timeline activity card
 struct RepositoryActivityCardView: View {
-    let activity: RepositoryActivity    //  表示対象activity
-    @State private var isLiked: Bool    //  いいねON/OFF状態
+    let activity: RepositoryActivity
+    @State private var showReactionPicker = false
+    @State private var myReaction: ActivityReactionType?
+    @State private var reactionCounts: [ActivityReactionType: Int]
 
     init(activity: RepositoryActivity) {
         self.activity = activity
-        _isLiked = State(initialValue: false)
+        _myReaction = State(initialValue: activity.reactions.first(where: { $0.reactedByMe })?.type)
+        var counts: [ActivityReactionType: Int] = [:]
+        for r in activity.reactions { counts[r.type] = r.count }
+        _reactionCounts = State(initialValue: counts)
     }
 
-    //  activity日時表示Formatter
     private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "M月d日 HH:mm"   //  日時表示形式
-        return formatter
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ja_JP")
+        f.dateFormat = "M月d日 HH:mm"
+        return f
     }()
 
     var body: some View {
-        //  activity card本体
-        ZStack(alignment: .topLeading) {
-            //  activity画像をcard全面の背景として表示
-            activityBackground
+        VStack(alignment: .leading, spacing: 0) {
+            //  著者・日時（カード背景の外側・上部）
+            authorHeader
+                .padding(.bottom, 6)
 
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    //  BeReal風の縦長thumbnail枠
-                    activityThumbnailFrame
+            //  card本体 + リアクションピッカー
+            ZStack(alignment: .bottomTrailing) {
+                cardContent
+
+                if showReactionPicker {
+                    reactionPicker
+                        .padding(.trailing, 16)
+                        .padding(.bottom, reactionPickerBottomOffset)
+                        .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
+        }
+    }
+
+    // MARK: - Card
+
+    private var cardContent: some View {
+        ZStack(alignment: .topLeading) {
+            //  背景画像
+            activityBackground
+                .onTapGesture {
+                    guard showReactionPicker else { return }
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                        showReactionPicker = false
+                    }
                 }
 
+            //  投稿テキスト：背景画像全体の中央に絶対配置
+            Text(activity.title)
+                .font(.system(size: 17, weight: .black, design: .monospaced))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .zIndex(1)
+
+            //  サムネ（左上）・リアクション（右下）
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .top) {
+                    activityThumbnailFrame
+                }
                 Spacer()
-
-                //  activityタイトル
-                Text(activity.title)
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                Spacer()
-
-                HStack(alignment: .center, spacing: 10) {
-                    //  activity実行member avatar
-                    AvatarView(member: activity.author, size: 34)
-                        .background(
-                            Circle()
-                                .fill(AppTheme.background.opacity(0.82))
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.72), lineWidth: 1.5)
-                        )
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        //  GitHub login名
-                        Text(activity.author.login)
-                            .font(.system(size: 13, weight: .black, design: .monospaced))
-                            .foregroundStyle(.white)
-
-                        //  activity日時
-                        Text(Self.dateFormatter.string(from: activity.date))
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.64))
+                HStack(alignment: .center) {
+                    if !displayedReactions.isEmpty {
+                        reactionCountsRow
+                    } else {
+                        Spacer()
                     }
-
-                    Spacer()
-
-                    //  いいねbutton
-                    likeButton
+                    reactionButton
                 }
             }
             .padding(16)
-            .zIndex(1)
+            .zIndex(2)
 
-            //  activity種別badge
+            //  activity種別badge（右上）
             typeBadge
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .zIndex(2)
+                .zIndex(3)
         }
-        .frame(maxWidth: .infinity, minHeight: 248, alignment: .topLeading)
+        .frame(maxWidth: .infinity)
+        .aspectRatio(3/4, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -149,9 +151,146 @@ struct RepositoryActivityCardView: View {
         )
     }
 
-    // MARK: - Components
+    // MARK: - Author header（カード外・上部）
 
-    //  activity背景画像表示
+    private var authorHeader: some View {
+        HStack(alignment: .center, spacing: 10) {
+            AvatarView(member: activity.author, size: 34)
+                .padding(.leading, 4)
+                .background(Circle().fill(AppTheme.background.opacity(0.82)))
+                .overlay(Circle().stroke(Color.white.opacity(0.72), lineWidth: 1.5))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(activity.author.login)
+                    .font(.system(size: 13, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                Text(Self.dateFormatter.string(from: activity.date))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.64))
+            }
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Reaction picker
+
+    private var reactionPicker: some View {
+        HStack(spacing: 2) {
+            ForEach(ActivityReactionType.allCases, id: \.self) { type in
+                Button {
+                    toggleReaction(type)
+                } label: {
+                    Text(type.emoji)
+                        .font(.system(size: 22))
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Circle()
+                                .fill(myReaction == type
+                                      ? Color.white.opacity(0.25)
+                                      : Color.clear)
+                        )
+                        .scaleEffect(myReaction == type ? 1.15 : 1.0)
+                        .animation(.spring(response: 0.22, dampingFraction: 0.6), value: myReaction)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.78))
+                .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
+        )
+        .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 4)
+    }
+
+    //  ピッカーがreactionButtonの上に来るよう下端からのオフセットを計算
+    private var reactionPickerBottomOffset: CGFloat {
+        58   // 16 padding + 34 button + 8 gap
+    }
+
+    // MARK: - Reaction button
+
+    private var reactionButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) {
+                showReactionPicker.toggle()
+            }
+        } label: {
+            Group {
+                if let r = myReaction {
+                    Text(r.emoji)
+                        .font(.system(size: 20))
+                } else {
+                    Image(systemName: "face.smiling")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+            }
+            .frame(width: 34, height: 34)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Reaction counts
+
+    private var reactionCountsRow: some View {
+        HStack(spacing: 6) {
+            ForEach(displayedReactions, id: \.type) { reaction in
+                HStack(spacing: 3) {
+                    Text(reaction.type.emoji)
+                        .font(.system(size: 13))
+                    Text("\(reaction.count)")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule()
+                        .fill(reaction.reactedByMe
+                              ? Color.white.opacity(0.20)
+                              : Color.white.opacity(0.08))
+                )
+            }
+            Spacer()
+        }
+    }
+
+    private var displayedReactions: [ActivityReaction] {
+        ActivityReactionType.allCases
+            .compactMap { type -> ActivityReaction? in
+                let count = reactionCounts[type, default: 0]
+                guard count > 0 else { return nil }
+                return ActivityReaction(type: type, count: count, reactedByMe: myReaction == type)
+            }
+            .sorted { $0.count > $1.count }
+    }
+
+    // MARK: - Toggle logic
+
+    private func toggleReaction(_ type: ActivityReactionType) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
+            if myReaction == type {
+                reactionCounts[type, default: 1] -= 1
+                if reactionCounts[type, default: 0] <= 0 { reactionCounts.removeValue(forKey: type) }
+                myReaction = nil
+            } else {
+                if let prev = myReaction {
+                    reactionCounts[prev, default: 1] -= 1
+                    if reactionCounts[prev, default: 0] <= 0 { reactionCounts.removeValue(forKey: prev) }
+                }
+                reactionCounts[type, default: 0] += 1
+                myReaction = type
+            }
+            showReactionPicker = false
+        }
+    }
+
+    // MARK: - Subviews
+
     private var activityBackground: some View {
         GeometryReader { proxy in
             ZStack {
@@ -185,27 +324,19 @@ struct RepositoryActivityCardView: View {
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .clipped()
                 } else {
-                    //  画像がないactivityの背景icon
                     Image(systemName: activity.type.systemImage)
                         .font(.system(size: 86, weight: .black))
                         .foregroundStyle(activity.type.tint.opacity(0.30))
                 }
 
                 LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.24),
-                        Color.black.opacity(0.30),
-                        Color.black.opacity(0.82)
-                    ],
+                    colors: [.black.opacity(0.24), .black.opacity(0.30), .black.opacity(0.82)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
 
                 LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.24),
-                        Color.black.opacity(0.02)
-                    ],
+                    colors: [.black.opacity(0.24), .black.opacity(0.02)],
                     startPoint: .leading,
                     endPoint: .trailing
                 )
@@ -257,15 +388,20 @@ struct RepositoryActivityCardView: View {
                     .scaledToFill()
             } else {
                 activity.type.tint.opacity(0.16)
-
                 Image(systemName: activity.type.systemImage)
                     .font(.system(size: 22, weight: .black))
                     .foregroundStyle(activity.type.tint)
             }
         }
+        .frame(width: 120, height: 160)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.black, lineWidth: 2)
+        )
+        .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
     }
 
-     //  activity種別badge
     private var typeBadge: some View {
         HStack(spacing: 5) {
             Image(activity.type.badgeIconName)
@@ -277,13 +413,12 @@ struct RepositoryActivityCardView: View {
                 .font(.system(size: 13, weight: .black, design: .monospaced))
                 .foregroundStyle(.black)
         }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(activity.type.tint)
-            .clipShape(BottomLeadingRoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(activity.type.tint)
+        .clipShape(BottomLeadingRoundedRectangle(cornerRadius: 10))
     }
 
-    //  card背景Gradient
     private var cardBackground: some View {
         LinearGradient(
             colors: [
@@ -294,21 +429,6 @@ struct RepositoryActivityCardView: View {
             endPoint: .bottomTrailing
         )
     }
-
-    //  いいねON/OFF button
-    private var likeButton: some View {
-        Button {
-            isLiked.toggle()
-        } label: {
-            Image(systemName: isLiked ? "heart.fill" : "heart")
-                .font(.system(size: 15, weight: .black))
-                .foregroundStyle(isLiked ? AppTheme.softPink : .white.opacity(0.72))
-                .frame(width: 34, height: 34)
-                .background(Color.black.opacity(isLiked ? 0.42 : 0.30))
-        }
-        .buttonStyle(.plain)
-            .clipShape(Circle())
-    }
 }
 
 //  左下だけ丸角のbadge shape
@@ -317,7 +437,6 @@ private struct BottomLeadingRoundedRectangle: Shape {
 
     func path(in rect: CGRect) -> Path {
         let radius = min(cornerRadius, rect.width / 2, rect.height / 2)
-
         var path = Path()
         path.move(to: CGPoint(x: rect.minX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
@@ -329,7 +448,6 @@ private struct BottomLeadingRoundedRectangle: Shape {
         )
         path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
         path.closeSubpath()
-
         return path
     }
 }
@@ -338,48 +456,33 @@ private struct BottomLeadingRoundedRectangle: Shape {
 private extension RepositoryActivityType {
     var badgeTitle: String {
         switch self {
-        case .commit:
-            "commit"
-        case .pullRequest:
-            "PR"
-        case .memo:
-            "memo"
+        case .commit:      "commit"
+        case .pullRequest: "PR"
+        case .memo:        "sorry"
         }
     }
 
-    //  activity badge icon
     var badgeIconName: String {
         switch self {
-        case .commit:
-            "begit_badge_commit"
-        case .pullRequest:
-            "begit_badge_pr"
-        case .memo:
-            "begit_badge_sorry"
+        case .commit:      "begit_badge_commit"
+        case .pullRequest: "begit_badge_pr"
+        case .memo:        "begit_badge_sorry"
         }
     }
 
-    //  activityテーマカラー
     var tint: Color {
         switch self {
-        case .commit:
-            Color(red: 0.45, green: 0.94, blue: 0.67)
-        case .pullRequest:
-            Color(red: 1.00, green: 0.47, blue: 0.65)
-        case .memo:
-            Color(red: 0.47, green: 0.74, blue: 1.00)
+        case .commit:      Color(red: 0.45, green: 0.94, blue: 0.67)
+        case .pullRequest: Color(red: 1.00, green: 0.47, blue: 0.65)
+        case .memo:        Color(red: 0.47, green: 0.74, blue: 1.00)
         }
     }
 
-    //  activity icon
     var systemImage: String {
         switch self {
-        case .commit:
-            "checkmark.seal"
-        case .pullRequest:
-            "arrow.triangle.pull"
-        case .memo:
-            "hand.raised"
+        case .commit:      "checkmark.seal"
+        case .pullRequest: "arrow.triangle.pull"
+        case .memo:        "hand.raised"
         }
     }
 }

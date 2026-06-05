@@ -74,6 +74,7 @@ extension Components.Schemas.Handler_GroupMemberJSON {
 
 extension Components.Schemas.Handler_PostFeedJSON {
     func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
+
            let mainURL = photoURL(for: "main")
            let frontURL = photoURL(for: "front")
 
@@ -117,17 +118,6 @@ extension Components.Schemas.Handler_PostFeedJSON {
             return .memo
         default:
             return .commit
-        }
-    }
-
-    private var reaction: RepositoryReaction? {
-        switch activityType {
-        case .commit:
-            return .check
-        case .pullRequest:
-            return .heart
-        case .memo:
-            return .sorry
         }
     }
 

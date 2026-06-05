@@ -17,12 +17,11 @@ final class NotificationResultViewModel: ObservableObject {
         notification: RepositoryNotification,
         repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
     ) {
-        self.notification = notification
         self.repositoryAPI = repositoryAPI
-        self.activities = RepositoryActivity.mockActivities(for: notification.repository)   //  初期表示は Mock
-        self.completedCount = max(1, min(notification.selectedMembers.count, 3))            //  Mock達成人数
+        let mock = RepositoryActivity.mockActivities(for: notification.repository)
+        self.activities = mock
+        self.completedCount = mock.count    //  モックアクティビティ数に一致
     }
-
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
     func loadActivities(accessToken: String?) async {
         guard let accessToken, accessToken.isEmpty == false,
@@ -46,7 +45,7 @@ final class NotificationResultViewModel: ObservableObject {
 
     //  通知対象member総数
     var totalCount: Int {
-        max(notification.selectedMembers.count, 1)
+        activities.count
     }
 
     //  達成率

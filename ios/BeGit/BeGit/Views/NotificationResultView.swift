@@ -37,8 +37,9 @@ struct NotificationResultView: View {
                         //  通知結果サマリー
                         resultSummary
 
-                        //  Activity一覧
+                        //  Activity一覧（横幅フル）
                         RepositoryActivityTimelineView(activities: viewModel.activities)
+                            .padding(.horizontal, -20)
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
@@ -125,7 +126,7 @@ struct NotificationResultView: View {
                 //  達成状況テキスト
                 Text(viewModel.progressText)
                     .font(.system(size: 14, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.black)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                     .frame(maxWidth: .infinity, alignment: .center)
