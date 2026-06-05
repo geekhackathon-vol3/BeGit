@@ -58,7 +58,7 @@ struct LoginView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 240, maxHeight: 84)
+                    .frame(maxWidth: 320, maxHeight: 150)
             } else {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(AppTheme.accent)
