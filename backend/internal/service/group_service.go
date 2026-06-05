@@ -106,10 +106,10 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	// Step 2: GitHub Webhook を登録（失敗時はグループを作成しない）
-	// "hook already exists" エラーは非致命的として扱う
+	// "hook already exists" と 403 Forbidden（admin 権限不足）は非致命的として扱う
 	webhookURL := s.config.AppBaseURL + "/webhook/github"
 	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, req.AccessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
-		if !isHookAlreadyExistsError(err) {
+		if !isHookAlreadyExistsError(err) && !errors.Is(err, githubpkg.ErrForbidden) {
 			return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
 		}
 	}
