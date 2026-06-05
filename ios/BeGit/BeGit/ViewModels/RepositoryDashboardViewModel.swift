@@ -23,6 +23,27 @@ final class RepositoryDashboardViewModel: ObservableObject {
         self.repositoryAPI = repositoryAPI
     }
 
+    //  activityを投稿したmember数（達成済み）
+    var completedCount: Int {
+        Set(activities.map(\.author.login)).count
+    }
+
+    //  リポジトリ総member数（members未取得時はactivity数にフォールバック）
+    var totalCount: Int {
+        let memberCount = repository.members.count
+        return memberCount > 0 ? memberCount : max(completedCount, 1)
+    }
+
+    //  達成率
+    var progress: Double {
+        Double(min(completedCount, totalCount)) / Double(totalCount)
+    }
+
+    //  達成状況テキスト
+    var progressText: String {
+        "\(min(completedCount, totalCount))/\(totalCount)人が達成しました"
+    }
+
     func loadActivities(accessToken: String?) async {
         guard let accessToken else {
             activities = RepositoryActivity.mockActivities(for: repository)
@@ -39,7 +60,10 @@ final class RepositoryDashboardViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            activities = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
+            let fetched = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
+            activities = fetched.isEmpty
+                ? RepositoryActivity.mockActivities(for: repository)
+                : fetched
         } catch {
             activities = RepositoryActivity.mockActivities(for: repository)
         }

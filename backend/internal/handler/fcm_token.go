@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -16,11 +17,12 @@ type UpdateFCMTokenRequest struct {
 // FCMTokenHandler は FCM トークン登録エンドポイントのハンドラ
 type FCMTokenHandler struct {
 	fcmTokenService service.FCMTokenService
+	authService     service.AuthService
 }
 
 // NewFCMTokenHandler は FCMTokenHandler を作成する
-func NewFCMTokenHandler(fcmTokenService service.FCMTokenService) *FCMTokenHandler {
-	return &FCMTokenHandler{fcmTokenService: fcmTokenService}
+func NewFCMTokenHandler(fcmTokenService service.FCMTokenService, authService service.AuthService) *FCMTokenHandler {
+	return &FCMTokenHandler{fcmTokenService: fcmTokenService, authService: authService}
 }
 
 // Upsert は FCM トークンを登録/更新する。
@@ -64,12 +66,12 @@ func (h *FCMTokenHandler) Upsert(c *gin.Context) {
 
 // Logout はログアウト処理を行う。
 //
-// 認証は GitHub アクセストークンを暗号化して DB 照合するステートレス方式のため、
-// サーバー側でのトークン失効は不要（クライアントが Keychain からトークンを破棄する）。
-// 本エンドポイントは端末への Push 通知が継続しないよう FCM トークンを削除する。
+// GitHub OAuth トークンを失効させ（次回ログイン時にフル認証画面を表示させるため）、
+// FCM トークンを削除して Push 通知が継続しないようにする。
+// トークン失効が失敗しても FCM 削除とレスポンスは続行する（ベストエフォート）。
 //
 //	@Summary		ログアウト
-//	@Description	FCM トークンを削除する。認証はステートレス（GitHub アクセストークン）のためサーバー側のトークン失効は行わない。
+//	@Description	GitHub OAuth トークンを失効させ FCM トークンを削除する。
 //	@Tags			auth
 //	@Produce		json
 //	@Security		BearerAuth
@@ -82,6 +84,13 @@ func (h *FCMTokenHandler) Logout(c *gin.Context) {
 	if !ok {
 		respondError(c, http.StatusUnauthorized, "unauthorized")
 		return
+	}
+
+	// GitHub OAuthトークンを失効させる（失敗しても続行）
+	if token := accessTokenFromContext(c); token != "" {
+		if err := h.authService.RevokeToken(c.Request.Context(), token); err != nil {
+			log.Printf("logout: failed to revoke GitHub token for user %d: %v", userID, err)
+		}
 	}
 
 	if err := h.fcmTokenService.DeleteFCMTokens(c.Request.Context(), userID); err != nil {

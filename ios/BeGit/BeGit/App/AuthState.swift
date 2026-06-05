@@ -62,6 +62,14 @@ final class AuthState: ObservableObject {
 
     //  ログアウト処理
     func logout() {
+        // バックエンドでGitHub OAuthトークンを失効させる（次回ログイン時にフル認証を求めるため）
+        // ローカル状態のクリアはネットワーク結果を待たず即時実行する
+        if let token = accessToken {
+            Task {
+                try? await BeGitBackendAPI().logout(accessToken: token)
+            }
+        }
+
         do {
             try keychainManager.deleteAccessToken()
         } catch {

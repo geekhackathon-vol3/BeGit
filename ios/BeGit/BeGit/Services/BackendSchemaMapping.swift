@@ -74,12 +74,17 @@ extension Components.Schemas.Handler_GroupMemberJSON {
 
 extension Components.Schemas.Handler_PostFeedJSON {
     func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
+
            let mainURL = photoURL(for: "main")
            let frontURL = photoURL(for: "front")
 
            return RepositoryActivity(
                type: activityType,
                title: activityTitle(fallbackRepository: fallbackRepository),
+               comment: {
+                   let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines)
+                   return (trimmed?.isEmpty == false) ? trimmed : nil
+               }(),
                date: createdAt.flatMap {
                    sharedISO8601DateFormatter.date(from: $0)
                } ?? Date(),
@@ -92,7 +97,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
                    login: login ?? "",
                    avatarURL: avatarUrl.flatMap { URL(string: $0) }
                ),
-               reaction: reaction
+               reactions: []
            )
     }
 
@@ -117,17 +122,6 @@ extension Components.Schemas.Handler_PostFeedJSON {
             return .memo
         default:
             return .commit
-        }
-    }
-
-    private var reaction: RepositoryReaction? {
-        switch activityType {
-        case .commit:
-            return .check
-        case .pullRequest:
-            return .heart
-        case .memo:
-            return .sorry
         }
     }
 
