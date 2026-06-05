@@ -68,8 +68,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     //  userInfo を parse して、遷移先を共有 Router に積む。未知 type は無視。
     private func route(from userInfo: [AnyHashable: Any]) {
-        if localNotification(from: userInfo) != nil {
-            NotificationRouter.shared.requestRoute(.camera)
+        if let notification = localNotification(from: userInfo) {
+            NotificationRouter.shared.requestRoute(.camera(notification: notification))
             return
         }
 

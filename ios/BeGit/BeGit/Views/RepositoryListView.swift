@@ -263,9 +263,6 @@ struct RepositoryListView: View {
         //  Repository Dashboard画面へ遷移
         case .dashboard(let repository):
             RepositoryDashboardView(repository: repository)
-        //  カメラ画面へ遷移
-        case .camera:
-            CameraView()
         //  通知作成画面へ遷移
         case .makeNotification(let repository):
             MakeNotificationView(repository: repository) { notification in

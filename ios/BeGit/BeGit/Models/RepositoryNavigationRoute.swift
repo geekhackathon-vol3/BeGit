@@ -7,8 +7,6 @@ import Foundation
 enum RepositoryNavigationRoute: Hashable, Sendable {
     //  Repository Dashboard画面
     case dashboard(Repository)
-    //  カメラ画面
-    case camera
     //  通知作成画面
     case makeNotification(Repository)
     case camera(notification: RepositoryNotification) 
