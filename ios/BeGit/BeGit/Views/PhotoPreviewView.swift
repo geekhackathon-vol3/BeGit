@@ -7,12 +7,8 @@ import SwiftUI
 
 struct PhotoPreviewView: View {
 
-    let mainImage: UIImage
-    let frontImage: UIImage?
-
-    let repositoryID: Int64
-    let postID: Int64
-    let accessToken: String
+    @StateObject var viewModel: CreatePostViewModel
+    let onPostCompleted: () -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -70,7 +66,7 @@ struct PhotoPreviewView: View {
                 ZStack(alignment: .topLeading) {
 
                     // Main Photo
-                    Image(uiImage: mainImage)
+                    Image(uiImage: viewModel.mainImage ?? UIImage())
                         .resizable()
                         .scaledToFill()
                         .frame(maxWidth: .infinity)
@@ -79,7 +75,7 @@ struct PhotoPreviewView: View {
                         .cornerRadius(30)
 
                     // Front Camera Photo
-                    if let frontImage {
+                    if let frontImage = viewModel.frontImage {
 
                         Image(uiImage: frontImage)
                             .resizable()
@@ -127,33 +123,11 @@ struct PhotoPreviewView: View {
                     // Post
                     Button {
                         Task {
-
                             do {
-
-                                let api = BeGitBackendAPI()
-
-                                guard let mainData = mainImage.jpegData(
-                                    compressionQuality: 0.8
-                                ) else {
-                                    return
-                                }
-
-                                let frontData = frontImage?.jpegData(
-                                    compressionQuality: 0.8
-                                )
-
-                                try await api.uploadPhotos(
-                                    repositoryID: repositoryID,
-                                    postID: postID,
-                                    mainImageData: mainData,
-                                    frontImageData: frontData,
-                                    accessToken: accessToken
-                                )
-
+                                try await viewModel.submitPost()
                                 dismiss()
-
+                                onPostCompleted()        // → NavigationStack で Result へ push
                             } catch {
-
                                 print("Upload failed:", error)
                             }
                         }
@@ -177,9 +151,15 @@ struct PhotoPreviewView: View {
 }
 
 #Preview {
-
     PhotoPreviewView(
-        mainImage: UIImage(systemName: "photo")!,
-        frontImage: UIImage(systemName: "person.fill")!
+        viewModel: CreatePostViewModel(
+            mainImage: UIImage(systemName: "photo"),
+            frontImage: UIImage(systemName: "person.fill"),
+            repositoryID: 1,
+            repoFullName: "owner/repo",
+            githubLogin: "tom",
+            accessToken: ""
+        ),
+        onPostCompleted: {}
     )
 }

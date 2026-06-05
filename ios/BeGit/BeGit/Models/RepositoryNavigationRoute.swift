@@ -9,6 +9,7 @@ enum RepositoryNavigationRoute: Hashable, Sendable {
     case dashboard(Repository)
     //  通知作成画面
     case makeNotification(Repository)
+    case camera(notification: RepositoryNotification) 
     //  通知結果画面
     case notificationResult(RepositoryNotification)
 }

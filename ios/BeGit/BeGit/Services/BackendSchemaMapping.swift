@@ -62,18 +62,24 @@ extension Components.Schemas.Handler_GroupMemberJSON {
 
 extension Components.Schemas.Handler_PostFeedJSON {
     func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
-        RepositoryActivity(
-            type: activityType,
-            title: activityTitle(fallbackRepository: fallbackRepository),
-            date: createdAt.flatMap { sharedISO8601DateFormatter.date(from: $0) } ?? Date(),
-            imageName: "begit_timeline_mock",
-            author: RepositoryMember(
-                backendUserID: userId.map(Int64.init),
-                login: login ?? "",
-                avatarURL: avatarUrl.flatMap { URL(string: $0) }
-            ),
-            reaction: reaction
-        )
+
+           print("===== PostFeedJSON =====")
+           dump(self)
+
+           return RepositoryActivity(
+               type: activityType,
+               title: activityTitle(fallbackRepository: fallbackRepository),
+               date: createdAt.flatMap {
+                   sharedISO8601DateFormatter.date(from: $0)
+               } ?? Date(),
+               imageName: "begit_timeline_mock",
+               author: RepositoryMember(
+                   backendUserID: userId.map(Int64.init),
+                   login: login ?? "",
+                   avatarURL: avatarUrl.flatMap { URL(string: $0) }
+               ),
+               reaction: reaction
+           )
     }
 
     private var activityType: RepositoryActivityType {

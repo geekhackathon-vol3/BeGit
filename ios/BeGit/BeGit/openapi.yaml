@@ -1070,7 +1070,7 @@ paths:
           type: integer
       - description: 投稿 ID
         in: path
-        name: postId
+        Handler_PostFeedJSONname: postId
         required: true
         schema:
           type: integer

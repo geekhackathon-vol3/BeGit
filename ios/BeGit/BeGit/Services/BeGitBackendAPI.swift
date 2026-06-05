@@ -141,7 +141,9 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         let output = try await makeClient(accessToken: accessToken).getGroupsIdPosts(
             .init(path: .init(id: Int(backendID)))
         )
+        print("API response")
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        print(try ok.body.json)
         return (try ok.body.json.posts ?? []).map { $0.toActivity(fallbackRepository: repository) }
     }
     
@@ -158,6 +160,42 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         let output = try await makeClient(accessToken: accessToken).getMe()
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return try ok.body.json.toGitHubUser()
+    }
+    
+    func createPost(
+        repositoryID: Int64,
+        body: String,
+        repoFullName: String,
+        githubLogin: String,
+        accessToken: String
+    ) async throws -> Int64 {
+
+        let request = Components.Schemas.Handler_CreatePostRequest(
+            body: body,
+            githubLogin: githubLogin,
+            notificationId: nil,
+            repoFullName: repoFullName
+        )
+
+        let output = try await makeClient(accessToken: accessToken)
+            .postGroupsIdPosts(
+                path: .init(id: Int(repositoryID)),
+                body: .json(
+                    .Handler_CreatePostRequest(request)
+                )
+            )
+
+        guard case let .created(created) = output else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        let post = try created.body.json
+
+        guard let postID = post.id else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        return Int64(postID)
     }
     
     func uploadPhotos(
@@ -211,6 +249,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             throw BeGitAPIError.invalidResponse
         }
     }
+    
 }
 
 // nonisolated 指定：アプリは MainActor 既定隔離のため、これを付けないと Decodable 適合も

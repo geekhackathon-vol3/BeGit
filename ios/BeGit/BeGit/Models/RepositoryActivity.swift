@@ -6,6 +6,9 @@ import Foundation
 //  Repository Timeline activity
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID                        //  activity識別子
+
+//    let backendPostID: Int64
+    
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
     let date: Date                      //  activity作成日時

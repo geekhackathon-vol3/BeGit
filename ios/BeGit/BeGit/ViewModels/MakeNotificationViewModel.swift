@@ -93,7 +93,10 @@ final class MakeNotificationViewModel: ObservableObject {
         do {
             try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
             return makeNotification()
-        } catch {
+        }  catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
+            // 既に通知済み → そのままカメラへ進む
+            return makeNotification()
+        }catch {
             errorMessage = error.localizedDescription
             return nil
         }

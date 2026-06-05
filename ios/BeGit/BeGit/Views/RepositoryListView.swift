@@ -121,27 +121,6 @@ struct RepositoryListView: View {
         VStack(spacing: 12) {
             PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
                 .accessibilityIdentifier("add_repository_button")
-
-            //  デバッグ用カメラボタン
-            NavigationLink {
-                CameraView()
-            } label: {
-                Text("Debug Camera")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 999)
-                            .fill(Color.white.opacity(0.08))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 999)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-            }
-            .buttonStyle(.plain)
         }
     }
 
@@ -247,6 +226,16 @@ struct RepositoryListView: View {
         case .makeNotification(let repository):
             MakeNotificationView(repository: repository) { notification in
                 navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
+            }
+        case .camera(let notification):
+                CameraView(
+                    repositoryID: notification.repository.backendID ?? 0,
+                    repoFullName: notification.repository.name,
+                    githubLogin: authState.githubUser?.login ?? "",
+                    accessToken: authState.accessToken ?? ""
+                ) {
+                    // 投稿完了後 → Result画面へ
+                    navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
             }
         //  通知結果画面へ遷移
         case .notificationResult(let notification):
