@@ -7,10 +7,12 @@ import SwiftUI
 
 struct PhotoPreviewView: View {
 
-    let mainImage: UIImage
-    let frontImage: UIImage?
+    @StateObject var viewModel: CreatePostViewModel
+    let onPostCompleted: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+
+    @State private var isPosting = false
 
     var body: some View {
 
@@ -64,7 +66,7 @@ struct PhotoPreviewView: View {
                 ZStack(alignment: .topLeading) {
 
                     // Main Photo
-                    Image(uiImage: mainImage)
+                    Image(uiImage: viewModel.mainImage ?? UIImage())
                         .resizable()
                         .scaledToFill()
                         .frame(maxWidth: .infinity)
@@ -73,7 +75,7 @@ struct PhotoPreviewView: View {
                         .cornerRadius(30)
 
                     // Front Camera Photo
-                    if let frontImage {
+                    if let frontImage = viewModel.frontImage {
 
                         Image(uiImage: frontImage)
                             .resizable()
@@ -120,9 +122,18 @@ struct PhotoPreviewView: View {
 
                     // Post
                     Button {
-
-                        // TODO:
-                        // 投稿処理
+                        Task {
+                            do {
+                                try await viewModel.submitPost()
+                                dismiss()
+                                onPostCompleted()        // → NavigationStack で Result へ push
+                            } catch {
+                                await MainActor.run {
+                                    viewModel.postError = error
+                                }
+                                print("Upload failed:", error)
+                            }
+                        }
 
                     } label: {
 
@@ -143,9 +154,15 @@ struct PhotoPreviewView: View {
 }
 
 #Preview {
-
     PhotoPreviewView(
-        mainImage: UIImage(systemName: "photo")!,
-        frontImage: UIImage(systemName: "person.fill")!
+        viewModel: CreatePostViewModel(
+            mainImage: UIImage(systemName: "photo"),
+            frontImage: UIImage(systemName: "person.fill"),
+            repositoryID: 1,
+            repoFullName: "owner/repo",
+            githubLogin: "tom",
+            accessToken: ""
+        ),
+        onPostCompleted: {}
     )
 }

@@ -296,8 +296,28 @@ struct RepositoryActivityCardView: View {
             ZStack {
                 cardBackground
 
-                if let imageName = activity.imageName,
-                   UIImage(named: imageName) != nil {
+                if let mainPhotoURL = activity.mainPhotoURL {
+                    //  背面写真（実写真）を背景に表示
+                    AsyncImage(url: mainPhotoURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        case .empty:
+                            ProgressView()
+                                .tint(.white)
+                        case .failure:
+                            Image(systemName: activity.type.systemImage)
+                                .font(.system(size: 86, weight: .black))
+                                .foregroundStyle(activity.type.tint.opacity(0.30))
+                        @unknown default:
+                            Color.clear
+                        }
+                    }
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                } else if let imageName = activity.imageName, UIImage(named: imageName) != nil {
                     Image(imageName)
                         .resizable()
                         .scaledToFill()
@@ -325,7 +345,42 @@ struct RepositoryActivityCardView: View {
         }
     }
 
+    //  BeReal風の小さな縦長thumbnail枠（前面写真）
     private var activityThumbnailFrame: some View {
+        ZStack {
+            if let frontPhotoURL = activity.frontPhotoURL {
+                //  前面写真（セルフィー）を小窓に表示
+                AsyncImage(url: frontPhotoURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty:
+                        activity.type.tint.opacity(0.16)
+                        ProgressView()
+                            .tint(.white)
+                    case .failure:
+                        thumbnailFallback
+                    @unknown default:
+                        Color.clear
+                    }
+                }
+            } else {
+                thumbnailFallback
+            }
+        }
+        .frame(width: 60, height: 80)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color.black, lineWidth: 2)
+        )
+        .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
+    }
+
+    //  前面写真が無い場合の小窓フォールバック
+    private var thumbnailFallback: some View {
         ZStack {
             if UIImage(named: "begit_github_character") != nil {
                 Image("begit_github_character")

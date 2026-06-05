@@ -7,6 +7,7 @@ import SwiftUI
 struct NotificationResultView: View {
     //  通知結果画面の状態を管理するViewModel
     @StateObject private var viewModel: NotificationResultViewModel
+    @EnvironmentObject private var authState: AuthState     //  アクセストークン取得用
     let onReturnHome: () -> Void    //  通知結果画面の状態を管理するViewModel
 
     //  通知モデルからViewModelを生成
@@ -66,6 +67,10 @@ struct NotificationResultView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
+        .task {
+            //  実写真付きフィードを取得して Timeline を差し替える
+            await viewModel.loadActivities(accessToken: authState.accessToken)
+        }
     }
 
     // MARK: - Components
@@ -153,6 +158,7 @@ struct NotificationResultView_Previews: PreviewProvider {
                 ),
                 onReturnHome: {}
             )
+            .environmentObject(AuthState.shared)
         }
         .previewDevice("iPhone 16 Pro Max")
     }

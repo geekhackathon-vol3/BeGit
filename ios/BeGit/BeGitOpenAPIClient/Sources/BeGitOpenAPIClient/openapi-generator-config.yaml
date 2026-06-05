@@ -17,3 +17,4 @@ filter:
     - /groups/{id}
     - /groups/{id}/posts
     - /groups/{id}/notifications
+    - /groups/{id}/posts/{postId}/photos

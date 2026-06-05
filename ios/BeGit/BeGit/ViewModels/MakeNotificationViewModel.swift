@@ -40,9 +40,7 @@ final class MakeNotificationViewModel: ObservableObject {
     var canSend: Bool {
         selectedMembers.isEmpty == false && isSending == false
     }
-
     // MARK: - Actions
-
     //  member選択状態切り替え
     func toggleSelection(for member: RepositoryMember) {
         if selectedMemberIDs.contains(member.id) {
@@ -130,7 +128,10 @@ final class MakeNotificationViewModel: ObservableObject {
             do {
                 try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
                 return notification
-            } catch {
+            } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
+                // 既に通知済み → 既に作成済みの notification オブジェクトを返す
+                return notification
+            }catch {
                 errorMessage = "通知の送信に失敗しました。"
                 return nil
             }

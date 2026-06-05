@@ -9,15 +9,41 @@ final class NotificationResultViewModel: ObservableObject {
     let notification: RepositoryNotification                        //  通知結果情報
     @Published private(set) var activities: [RepositoryActivity]    //  Timeline表示用activity一覧
     @Published private(set) var completedCount: Int                 //  達成済みmember数
+    @Published private(set) var isLoading = false                   //  フィード取得中
 
-    init(notification: RepositoryNotification) {
-        self.notification = notification
+    private let repositoryAPI: any RepositoryAPI
+
+    init(
+        notification: RepositoryNotification,
+        repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
+    ) {
+        self.repositoryAPI = repositoryAPI
         let mock = RepositoryActivity.mockActivities(for: notification.repository)
         self.activities = mock
         self.completedCount = mock.count    //  モックアクティビティ数に一致
     }
+    //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
+    func loadActivities(accessToken: String?) async {
+        guard let accessToken, accessToken.isEmpty == false,
+              notification.repository.backendID != nil else {
+            return
+        }
 
-    //  通知対象member総数（モックはactivity数で揃える）
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            let fetched = try await repositoryAPI.listActivities(
+                repository: notification.repository,
+                accessToken: accessToken
+            )
+            activities = fetched
+        } catch {
+            //  取得失敗時は初期 Mock のまま表示を維持する
+        }
+    }
+
+    //  通知対象member総数
     var totalCount: Int {
         activities.count
     }
