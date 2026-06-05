@@ -65,10 +65,26 @@ struct RepositoryActivityTimelineView: View {
 struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity    //  表示対象activity
     @State private var isLiked: Bool    //  いいねON/OFF状態
+    @State private var isSwapped = false //  背景と小窓の写真を入れ替えているか
+    @State private var thumbnailScale: CGFloat = 1.0 //  小窓タップ時の弾みアニメ
 
     init(activity: RepositoryActivity) {
         self.activity = activity
         _isLiked = State(initialValue: false)
+    }
+
+    //  背面/前面の両方の写真がある時だけ入れ替え可能
+    private var canSwap: Bool {
+        activity.mainPhotoURL != nil && activity.frontPhotoURL != nil
+    }
+
+    //  入れ替え状態を反映した表示用URL
+    private var displayedMainURL: URL? {
+        isSwapped ? activity.frontPhotoURL : activity.mainPhotoURL
+    }
+
+    private var displayedFrontURL: URL? {
+        isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
     }
 
     //  activity日時表示Formatter
@@ -87,8 +103,26 @@ struct RepositoryActivityCardView: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top) {
-                    //  BeReal風の縦長thumbnail枠
+                    //  BeReal風の縦長thumbnail枠（タップで背景と入れ替え。何度でも可）
                     activityThumbnailFrame
+                        .scaleEffect(thumbnailScale)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard canSwap else { return }
+                            //  背景⇄小窓をバネで入れ替え
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                isSwapped.toggle()
+                            }
+                            //  ぽよよん：素早く拡大しきってから、よく弾むバネで戻す
+                            withAnimation(.easeOut(duration: 0.07)) {
+                                thumbnailScale = 1.25
+                            } completion: {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.3)) {
+                                    thumbnailScale = 1.0
+                                }
+                            }
+                        }
+                        .sensoryFeedback(.impact(weight: .light), trigger: isSwapped)
                 }
 
                 Spacer()
@@ -167,7 +201,7 @@ struct RepositoryActivityCardView: View {
             ZStack {
                 cardBackground
 
-                if let mainPhotoURL = activity.mainPhotoURL {
+                if let mainPhotoURL = displayedMainURL {
                     //  背面写真（実写真）を背景に表示
                     AsyncImage(url: mainPhotoURL) { phase in
                         switch phase {
@@ -227,7 +261,7 @@ struct RepositoryActivityCardView: View {
     //  BeReal風の小さな縦長thumbnail枠（前面写真）
     private var activityThumbnailFrame: some View {
         ZStack {
-            if let frontPhotoURL = activity.frontPhotoURL {
+            if let frontPhotoURL = displayedFrontURL {
                 //  前面写真（セルフィー）を小窓に表示
                 AsyncImage(url: frontPhotoURL) { phase in
                     switch phase {
