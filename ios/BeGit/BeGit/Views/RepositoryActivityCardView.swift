@@ -425,10 +425,14 @@ struct RepositoryActivityCardView: View {
         .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
     }
 
-    //  前面写真が無い場合の小窓フォールバック
+    //  前面写真が無い場合の小窓フォールバック（モック時はfrontImageName画像を使用）
     private var thumbnailFallback: some View {
         ZStack {
-            if UIImage(named: "begit_github_character") != nil {
+            if let name = activity.frontImageName, UIImage(named: name) != nil {
+                Image(name)
+                    .resizable()
+                    .scaledToFill()
+            } else if UIImage(named: "begit_github_character") != nil {
                 Image("begit_github_character")
                     .resizable()
                     .scaledToFill()
@@ -439,13 +443,6 @@ struct RepositoryActivityCardView: View {
                     .foregroundStyle(activity.type.tint)
             }
         }
-        .frame(width: 120, height: 160)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Color.black, lineWidth: 2)
-        )
-        .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
     }
 
     private var typeBadge: some View {

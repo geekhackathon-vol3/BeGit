@@ -14,7 +14,8 @@ let id: UUID                        //  activity識別子
     let title: String                   //  activityタイトル
     let comment: String?                //  投稿時に入力したコメント（body）
     let date: Date                      //  activity作成日時
-    let imageName: String?              //  activity画像名（Mock/Asset 用）
+    let imageName: String?              //  背景画像名（Mock/Asset 用）
+    let frontImageName: String?         //  左上小窓画像名（Mock/Asset 用）
     let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
     let frontPhotoURL: URL?             //  前面写真の presigned URL（BeReal 小窓表示用）
     let author: RepositoryMember        //  activity実行ユーザー
@@ -27,6 +28,7 @@ let id: UUID                        //  activity識別子
         comment: String? = nil,
         date: Date = Date(),
         imageName: String? = nil,
+        frontImageName: String? = nil,
         mainPhotoURL: URL? = nil,
         frontPhotoURL: URL? = nil,
         author: RepositoryMember,
@@ -38,6 +40,7 @@ let id: UUID                        //  activity識別子
         self.comment = comment
         self.date = date
         self.imageName = imageName
+        self.frontImageName = frontImageName
         self.mainPhotoURL = mainPhotoURL
         self.frontPhotoURL = frontPhotoURL
         self.author = author
@@ -92,7 +95,8 @@ extension RepositoryActivity {
                 type: .commit,
                 title: "feat: タイムライン画面をリアルタイム対応",
                 date: calendar.date(byAdding: .minute, value: -18, to: Date()) ?? Date(),
-                imageName: "begit_timeline_mock",
+                imageName: "begit_mock_post_1",
+                frontImageName: "begit_mock_front_1",
                 author: riochin,
                 reactions: [
                     ActivityReaction(type: .fire,   count: 3, reactedByMe: false),
@@ -103,7 +107,8 @@ extension RepositoryActivity {
                 type: .pullRequest,
                 title: "fix: PR #42 ダッシュボードの認証フロー修正",
                 date: calendar.date(byAdding: .hour, value: -3, to: Date()) ?? Date(),
-                imageName: "begit_timeline_mock",
+                imageName: "begit_mock_post_2",
+                frontImageName: "begit_mock_front_2",
                 author: tomoka,
                 reactions: [
                     ActivityReaction(type: .heart,     count: 2, reactedByMe: false),
@@ -114,7 +119,8 @@ extension RepositoryActivity {
                 type: .commit,
                 title: "refactor: リアクション機能をコンポーネント化",
                 date: calendar.date(byAdding: .hour, value: -8, to: Date()) ?? Date(),
-                imageName: "begit_timeline_mock",
+                imageName: "begit_mock_post_3",
+                frontImageName: "begit_mock_front_3",
                 author: palm,
                 reactions: [
                     ActivityReaction(type: .thumbsup, count: 2, reactedByMe: true),
@@ -124,7 +130,8 @@ extension RepositoryActivity {
                 type: .memo,
                 title: "ビルド落としてた…直しました🙏",
                 date: calendar.date(byAdding: .hour, value: -24, to: Date()) ?? Date(),
-                imageName: "begit_timeline_mock",
+                imageName: "begit_mock_post_4",
+                frontImageName: "begit_mock_front_4",
                 author: liruly,
                 reactions: []
             ),

@@ -38,7 +38,12 @@ final class NotificationResultViewModel: ObservableObject {
                 repository: notification.repository,
                 accessToken: accessToken
             )
-            activities = fetched
+            if !fetched.isEmpty {
+                //  実投稿（新しい順）をモックの上に積み重ねる
+                let mock = RepositoryActivity.mockActivities(for: notification.repository)
+                activities = fetched + mock
+                completedCount = Set(activities.map(\.author.login)).count
+            }
         } catch {
             //  取得失敗時は初期 Mock のまま表示を維持する
         }

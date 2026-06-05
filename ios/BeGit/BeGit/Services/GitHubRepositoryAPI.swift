@@ -149,6 +149,14 @@ struct MockGitHubRepositoryAPI: GitHubRepositoryAPI {
 
         return [
             GitHubRepository(
+                id: 0,
+                fullName: "hackathon/BeGit",
+                description: "チームのGitHub活動を可視化するアプリ",
+                isPrivate: false,
+                ownerAvatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4"),
+                updatedAt: nil
+            ),
+            GitHubRepository(
                 id: 1,
                 fullName: "apple/swift",
                 description: "The Swift Programming Language",
