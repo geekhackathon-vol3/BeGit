@@ -74,9 +74,8 @@ extension Components.Schemas.Handler_GroupMemberJSON {
 
 extension Components.Schemas.Handler_PostFeedJSON {
     func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
-
-           print("===== PostFeedJSON =====")
-           dump(self)
+           let mainURL = photoURL(for: "main")
+           let frontURL = photoURL(for: "front")
 
            return RepositoryActivity(
                type: activityType,
@@ -84,7 +83,10 @@ extension Components.Schemas.Handler_PostFeedJSON {
                date: createdAt.flatMap {
                    sharedISO8601DateFormatter.date(from: $0)
                } ?? Date(),
-               imageName: "begit_timeline_mock",
+               //  実写真が無い投稿のみ Mock 背景にフォールバックする
+               imageName: mainURL == nil ? "begit_timeline_mock" : nil,
+               mainPhotoURL: mainURL,
+               frontPhotoURL: frontURL,
                author: RepositoryMember(
                    backendUserID: userId.map(Int64.init),
                    login: login ?? "",
@@ -92,6 +94,18 @@ extension Components.Schemas.Handler_PostFeedJSON {
                ),
                reaction: reaction
            )
+    }
+
+    //  photo_type（main/front）に一致する写真の presigned URL を取り出す
+    private func photoURL(for type: String) -> URL? {
+        guard let photos else { return nil }
+        for photo in photos where photo.photoType == type {
+            if let urlString = photo.url, urlString.isEmpty == false,
+               let url = URL(string: urlString) {
+                return url
+            }
+        }
+        return nil
     }
 
     private var activityType: RepositoryActivityType {
