@@ -74,18 +74,38 @@ extension Components.Schemas.Handler_GroupMemberJSON {
 
 extension Components.Schemas.Handler_PostFeedJSON {
     func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
-        RepositoryActivity(
-            type: activityType,
-            title: activityTitle(fallbackRepository: fallbackRepository),
-            date: createdAt.flatMap { sharedISO8601DateFormatter.date(from: $0) } ?? Date(),
-            imageName: "begit_timeline_mock",
-            author: RepositoryMember(
-                backendUserID: userId.map(Int64.init),
-                login: login ?? "",
-                avatarURL: avatarUrl.flatMap { URL(string: $0) }
-            ),
-            reaction: reaction
-        )
+           let mainURL = photoURL(for: "main")
+           let frontURL = photoURL(for: "front")
+
+           return RepositoryActivity(
+               type: activityType,
+               title: activityTitle(fallbackRepository: fallbackRepository),
+               date: createdAt.flatMap {
+                   sharedISO8601DateFormatter.date(from: $0)
+               } ?? Date(),
+               //  実写真が無い投稿のみ Mock 背景にフォールバックする
+               imageName: mainURL == nil ? "begit_timeline_mock" : nil,
+               mainPhotoURL: mainURL,
+               frontPhotoURL: frontURL,
+               author: RepositoryMember(
+                   backendUserID: userId.map(Int64.init),
+                   login: login ?? "",
+                   avatarURL: avatarUrl.flatMap { URL(string: $0) }
+               ),
+               reaction: reaction
+           )
+    }
+
+    //  photo_type（main/front）に一致する写真の presigned URL を取り出す
+    private func photoURL(for type: String) -> URL? {
+        guard let photos else { return nil }
+        for photo in photos where photo.photoType == type {
+            if let urlString = photo.url, urlString.isEmpty == false,
+               let url = URL(string: urlString) {
+                return url
+            }
+        }
+        return nil
     }
 
     private var activityType: RepositoryActivityType {

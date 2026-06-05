@@ -14,13 +14,17 @@ final class LocalNotificationScheduler {
         content.title = notification.repository.name
         content.body = makeBody(for: notification)
         content.sound = .default
-        content.userInfo = [
+        var userInfo: [String: Any] = [
             "local_notification": "repository_send",
             "repository_name": notification.repository.name,
             "selected_member_count": notification.selectedMembers.count,
             "selected_member_logins": notification.selectedMembers.map(\.login),
             "comment": notification.comment
         ]
+        if let backendID = notification.repository.backendID {
+            userInfo["backend_id"] = backendID
+        }
+        content.userInfo = userInfo
 
         let request = UNNotificationRequest(
             identifier: notification.id.uuidString,

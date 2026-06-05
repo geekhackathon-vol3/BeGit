@@ -7,6 +7,12 @@ import SwiftUI
 
 struct CameraView: View {
 
+    let repositoryID: Int64
+    let repoFullName: String
+    let githubLogin: String
+    let accessToken: String
+    let onPostCompleted: () -> Void 
+
     @StateObject private var camera = CameraManager()
     @State private var showPreview = false
 
@@ -39,7 +45,7 @@ struct CameraView: View {
                 // Header
 
                 ZStack {
-                    Text("BeGit;")
+                    Text("BeGit_")
                         .font(
                             .system(
                                 size: 28,
@@ -114,9 +120,18 @@ struct CameraView: View {
 
         .fullScreenCover(isPresented: $showPreview) {
             if let mainImage = camera.capturedImage {
-                PhotoPreviewView(
+                let vm = CreatePostViewModel(
                     mainImage: mainImage,
-                    frontImage: camera.frontCapturedImage
+                    frontImage: camera.frontCapturedImage,
+                    repositoryID: repositoryID,
+                    repoFullName: repoFullName,
+                    githubLogin: githubLogin,
+                    accessToken: accessToken
+                )
+
+                PhotoPreviewView(
+                    viewModel: vm,
+                    onPostCompleted: onPostCompleted
                 )
             } else {
                 ProgressView()
@@ -126,5 +141,11 @@ struct CameraView: View {
 }
 
 #Preview {
-    CameraView()
+    CameraView(
+        repositoryID: 1,
+        repoFullName: "owner/repo",
+        githubLogin: "tom",
+        accessToken: "",
+        onPostCompleted: {} 
+    )
 }

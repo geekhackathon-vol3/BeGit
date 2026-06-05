@@ -68,8 +68,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
     //  userInfo を parse して、遷移先を共有 Router に積む。未知 type は無視。
     private func route(from userInfo: [AnyHashable: Any]) {
-        if localNotification(from: userInfo) != nil {
-            NotificationRouter.shared.requestRoute(.camera)
+        if let notification = localNotification(from: userInfo) {
+            NotificationRouter.shared.requestRoute(.camera(notification: notification))
             return
         }
 
@@ -92,7 +92,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         let comment = (userInfo["comment"] as? String) ?? ""
         let selectedMemberLogins = userInfo["selected_member_logins"] as? [String] ?? []
         let selectedMembers = selectedMemberLogins.map { RepositoryMember(login: $0) }
+        let backendID = (userInfo["backend_id"] as? Int64) ?? (userInfo["backend_id"] as? Int).map(Int64.init)
         let repository = Repository(
+            backendID: backendID,
             name: repositoryName,
             memberCount: max(selectedMembers.count, (userInfo["selected_member_count"] as? Int) ?? selectedMembers.count),
             members: selectedMembers

@@ -31,8 +31,6 @@ struct LoginView: View {
                         signInButton
                             .padding(.top, 20)
 
-                        debugCameraButton
-
                         Spacer(minLength: 12)
 
                         Spacer(minLength: proxy.size.height * 0.12)
@@ -100,26 +98,6 @@ struct LoginView: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("github_sign_in_button")
-    }
-
-    private var debugCameraButton: some View {
-        NavigationLink {
-            CameraView()
-        } label: {
-            Text("Debug Camera")
-                .appFont(.subheadline)
-                .foregroundStyle(AppTheme.Text.high)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 999)
-                        .fill(AppTheme.fieldBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 999)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                )
-        }
     }
 }
 
