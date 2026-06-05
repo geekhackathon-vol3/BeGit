@@ -9,6 +9,7 @@ struct RepositoryListView: View {
     @EnvironmentObject private var authState: AuthState         //  アプリ全体で共有される認証状態
     @StateObject private var viewModel: RepositoryListViewModel //  Repository一覧状態を管理するViewModel
     @ObservedObject private var notificationRouter = NotificationRouter.shared //  通知タップ由来の遷移要求
+    @ObservedObject private var oauthManager = GitHubOAuthManager.shared //  再ログイン用OAuthフロー
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
     private let currentUserAPI: any CurrentUserAPI
 
@@ -44,6 +45,11 @@ struct RepositoryListView: View {
                             //  ログイン中ユーザー情報
                             loggedInUserSummary
                                 .padding(.bottom, 2)
+
+                            //  認証期限切れバナー
+                            if viewModel.isAuthExpired {
+                                authExpiredBanner
+                            }
 
                             if viewModel.isLoading {
                                 statusText("Loading repositories...")
@@ -128,6 +134,16 @@ struct RepositoryListView: View {
             }
         }
         .tint(AppTheme.accent)
+        .alert(item: Binding(
+            get: { oauthManager.activeAlert },
+            set: { _ in oauthManager.clearAlert() }
+        )) { alertContext in
+            Alert(
+                title: Text(alertContext.title),
+                message: Text(alertContext.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 
     //  共有 Router に積まれた通知 route を push し、消費済みにする
@@ -138,6 +154,44 @@ struct RepositoryListView: View {
     }
 
     // MARK: - Components
+
+    //  認証期限切れ時のインラインバナー
+    private var authExpiredBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(AppTheme.softPink)
+                .font(.system(size: 16))
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("セッションの有効期限が切れました")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Button {
+                    oauthManager.startLogin()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("再ログインする")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundStyle(AppTheme.softPink)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .frame(width: 3)
+                .foregroundStyle(AppTheme.softPink)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
 
     //  Repository追加ボタン
     private var addRepositoryButton: some View {

@@ -21,6 +21,7 @@ type mockGitHubClient struct {
 	getRecentCommitsFunc func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.CommitSummary, error)
 	listUserReposFunc    func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
 	listCommitsFunc      func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
+	revokeTokenFunc      func(ctx context.Context, clientID, clientSecret, accessToken string) error
 }
 
 func (m *mockGitHubClient) ExchangeCode(ctx context.Context, clientID, clientSecret, code string) (string, error) {
@@ -77,6 +78,13 @@ func (m *mockGitHubClient) ListCommits(ctx context.Context, repoFullName, access
 		return m.listCommitsFunc(ctx, repoFullName, accessToken, opts)
 	}
 	return []githubpkg.Commit{}, nil
+}
+
+func (m *mockGitHubClient) RevokeToken(ctx context.Context, clientID, clientSecret, accessToken string) error {
+	if m.revokeTokenFunc != nil {
+		return m.revokeTokenFunc(ctx, clientID, clientSecret, accessToken)
+	}
+	return nil
 }
 
 // mockUserRepository はテスト用のユーザーリポジトリモック

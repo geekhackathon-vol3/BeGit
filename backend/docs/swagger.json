@@ -677,7 +677,7 @@
         },
         "/auth/logout": {
             "post": {
-                "description": "FCM トークンを削除する。認証はステートレス（GitHub アクセストークン）のためサーバー側のトークン失効は行わない。",
+                "description": "GitHub OAuth トークンを失効させ FCM トークンを削除する。",
                 "responses": {
                     "204": {
                         "description": "No Content"

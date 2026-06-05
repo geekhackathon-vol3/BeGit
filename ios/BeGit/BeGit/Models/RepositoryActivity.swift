@@ -5,7 +5,8 @@ import Foundation
 
 //  Repository Timeline activity
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
-    let id: UUID                        //  activity識別子
+
+let id: UUID                        //  activity識別子
 
 //    let backendPostID: Int64
     
@@ -17,7 +18,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
     let frontPhotoURL: URL?             //  前面写真の presigned URL（BeReal 小窓表示用）
     let author: RepositoryMember        //  activity実行ユーザー
-    let reaction: RepositoryReaction?   //  activityリアクション
+    let reactions: [ActivityReaction]   //  リアクション一覧
 
     init(
         id: UUID = UUID(),
@@ -29,7 +30,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         mainPhotoURL: URL? = nil,
         frontPhotoURL: URL? = nil,
         author: RepositoryMember,
-        reaction: RepositoryReaction? = nil
+        reactions: [ActivityReaction] = []
     ) {
         self.id = id
         self.type = type
@@ -40,7 +41,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         self.mainPhotoURL = mainPhotoURL
         self.frontPhotoURL = frontPhotoURL
         self.author = author
-        self.reaction = reaction
+        self.reactions = reactions
     }
 }
 
@@ -48,53 +49,85 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 enum RepositoryActivityType: String, CaseIterable, Hashable, Sendable {
     case commit         //  commit activity
     case pullRequest    //  Pull Request activity
-    case memo           //  進捗メモ投稿（今は作業できないが近況だけ共有）
+    case memo           //  進捗メモ投稿
 }
 
-//  activityリアクション種別
-enum RepositoryReaction: String, Hashable, Sendable {
-    case heart  //  お気に入りリアクション
-    case check  //  完了リアクション
-    case sorry  //  謝罪リアクション
+//  リアクション種別（バックエンドと一致）
+enum ActivityReactionType: String, CaseIterable, Hashable, Sendable {
+    case heart
+    case thumbsup
+    case celebrate
+    case fire
+    case rocket
+
+    var emoji: String {
+        switch self {
+        case .heart:     "❤️"
+        case .thumbsup:  "👍"
+        case .celebrate: "🎉"
+        case .fire:      "🔥"
+        case .rocket:    "🚀"
+        }
+    }
+}
+
+//  activity単体リアクション（種別 + 件数 + 自分がリアクション済みか）
+struct ActivityReaction: Hashable, Sendable {
+    let type: ActivityReactionType
+    var count: Int
+    var reactedByMe: Bool
 }
 
 //  Preview / Mock表示用activity
 extension RepositoryActivity {
     static func mockActivities(for repository: Repository) -> [RepositoryActivity] {
-        //  member未設定時のFallback member
-        let members = repository.members.isEmpty
-            ? [RepositoryMember(login: "begit")]
-            : repository.members
+        let riochin  = RepositoryMember(login: "Riochin",      avatarURL: URL(string: "https://avatars.githubusercontent.com/u/175614867?v=4"))
+        let tomoka   = RepositoryMember(login: "s2108tomoka",  avatarURL: URL(string: "https://avatars.githubusercontent.com/u/163800046?v=4"))
+        let palm     = RepositoryMember(login: "palm7710",     avatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4"))
+        let liruly   = RepositoryMember(login: "liruly",       avatarURL: URL(string: "https://avatars.githubusercontent.com/u/141731612?v=4"))
         let calendar = Calendar.current
 
         return [
-            //  commit activity mock
             RepositoryActivity(
                 type: .commit,
-                title: "Implemented realtime repository home",
+                title: "feat: タイムライン画面をリアルタイム対応",
                 date: calendar.date(byAdding: .minute, value: -18, to: Date()) ?? Date(),
                 imageName: "begit_timeline_mock",
-                author: members[0],
-                reaction: .check
+                author: riochin,
+                reactions: [
+                    ActivityReaction(type: .fire,   count: 3, reactedByMe: false),
+                    ActivityReaction(type: .rocket, count: 1, reactedByMe: true),
+                ]
             ),
-            //  Pull Request activity mock
             RepositoryActivity(
                 type: .pullRequest,
-                title: "Opened PR for dashboard flow",
-                date: calendar.date(byAdding: .hour, value: -31, to: Date()) ?? Date(),
+                title: "fix: PR #42 ダッシュボードの認証フロー修正",
+                date: calendar.date(byAdding: .hour, value: -3, to: Date()) ?? Date(),
                 imageName: "begit_timeline_mock",
-                author: members[min(1, members.count - 1)],
-                reaction: .heart
+                author: tomoka,
+                reactions: [
+                    ActivityReaction(type: .heart,     count: 2, reactedByMe: false),
+                    ActivityReaction(type: .celebrate, count: 1, reactedByMe: false),
+                ]
             ),
-            //  進捗メモ投稿 mock
+            RepositoryActivity(
+                type: .commit,
+                title: "refactor: リアクション機能をコンポーネント化",
+                date: calendar.date(byAdding: .hour, value: -8, to: Date()) ?? Date(),
+                imageName: "begit_timeline_mock",
+                author: palm,
+                reactions: [
+                    ActivityReaction(type: .thumbsup, count: 2, reactedByMe: true),
+                ]
+            ),
             RepositoryActivity(
                 type: .memo,
-                title: "Sorry, build was red for 12 minutes",
-                date: calendar.date(byAdding: .hour, value: -76, to: Date()) ?? Date(),
+                title: "ビルド落としてた…直しました🙏",
+                date: calendar.date(byAdding: .hour, value: -24, to: Date()) ?? Date(),
                 imageName: "begit_timeline_mock",
-                author: members[min(2, members.count - 1)],
-                reaction: .sorry
-            )
+                author: liruly,
+                reactions: []
+            ),
         ]
     }
 }
