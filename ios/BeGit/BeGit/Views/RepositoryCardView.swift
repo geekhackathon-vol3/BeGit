@@ -109,7 +109,7 @@ struct RepositoryCardView: View {
                     //  avatar境界線
                     .overlay(
                         Circle()
-                            .stroke(AppTheme.repositoryCardBackground, lineWidth: 2)
+                            .stroke(AppTheme.background, lineWidth: 2)
                     )
             }
         }
@@ -117,7 +117,7 @@ struct RepositoryCardView: View {
 
     //  card背景
     private var cardBackground: some ShapeStyle {
-        AppTheme.repositoryCardBackground
+        Color.clear
     }
 }
 

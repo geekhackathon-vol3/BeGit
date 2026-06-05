@@ -39,8 +39,10 @@ struct CameraView: View {
 
                 // Header
                 HStack {
+                    BeGitBackButton()
+
                     Spacer()
-                    
+
                     Text("BeGit_")
                         .font(
                             .system(
@@ -52,6 +54,7 @@ struct CameraView: View {
                         .foregroundStyle(.white)
 
                     Spacer()
+                        .frame(minWidth: 82)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 14)

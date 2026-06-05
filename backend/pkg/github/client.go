@@ -21,6 +21,8 @@ import (
 var (
 	// ErrUnauthorized は GitHub API が 401 を返した場合に返す
 	ErrUnauthorized = errors.New("unauthorized")
+	// ErrForbidden は GitHub API が 403 を返した場合に返す（admin 権限不足など）
+	ErrForbidden = errors.New("forbidden")
 	// ErrExternalAPI は GitHub API で予期しないエラーが発生した場合に返す
 	ErrExternalAPI = errors.New("external api error")
 )
@@ -142,6 +144,11 @@ func (c *githubClient) doAPIRequest(ctx context.Context, method, path, accessTok
 	if resp.StatusCode == http.StatusUnauthorized {
 		resp.Body.Close()
 		return nil, ErrUnauthorized
+	}
+
+	if resp.StatusCode == http.StatusForbidden {
+		resp.Body.Close()
+		return nil, ErrForbidden
 	}
 
 	// 2xx 以外のステータスコードをエラーとして扱う
