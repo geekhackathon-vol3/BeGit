@@ -281,6 +281,9 @@ func (c *githubClient) RegisterWebhook(ctx context.Context, repoFullName, access
 
 	resp, err := c.doAPIRequest(ctx, http.MethodPost, "/repos/"+repoFullName+"/hooks", accessToken, payload)
 	if err != nil {
+		if errors.Is(err, ErrForbidden) {
+			return ErrForbidden
+		}
 		return fmt.Errorf("%w: failed to register webhook: %v", ErrExternalAPI, err)
 	}
 	defer resp.Body.Close()

@@ -38,11 +38,7 @@ struct CameraView: View {
             VStack {
 
                 // Header
-                HStack {
-                    BeGitBackButton()
-
-                    Spacer()
-
+                ZStack {
                     Text("BeGit_")
                         .font(
                             .system(
@@ -52,9 +48,12 @@ struct CameraView: View {
                             )
                         )
                         .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
 
-                    Spacer()
-                        .frame(minWidth: 82)
+                    HStack {
+                        BeGitBackButton(color: .white)
+                        Spacer()
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
