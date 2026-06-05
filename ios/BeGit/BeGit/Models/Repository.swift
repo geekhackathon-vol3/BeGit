@@ -53,6 +53,13 @@ extension Repository {
     }
 
     nonisolated static let mockRepositories: [Repository] = [
+        //  発表用デモリポジトリ（先頭に固定）
+        Repository(
+            name: "hackathon/BeGit",
+            ownerAvatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4"),
+            memberCount: 4,
+            members: Self.mockMembers()
+        ),
         Repository(
             name: "apple/swift",
             memberCount: 4,

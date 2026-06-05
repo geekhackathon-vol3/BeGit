@@ -93,9 +93,12 @@ struct RepositoryListView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     //  ログアウト
-                    Button("Log Out", action: authState.logout)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AppTheme.accent)
+                    Button(action: authState.logout) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("ログアウト")
                 }
             }
             //  Repository追加Sheet

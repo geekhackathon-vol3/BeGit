@@ -32,9 +32,6 @@ struct RepositoryDashboardView: View {
                         //  Timeline Header
                         timelineHeader
 
-                        //  Repository member一覧
-                        memberStrip
-
                         if viewModel.isLoading {
                             statusText("Loading timeline...")
                         }

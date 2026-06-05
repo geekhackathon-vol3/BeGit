@@ -117,9 +117,13 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryListErrorMessage = nil
 
         do {
-            availableRepositories = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+            let fetched = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+            //  発表用デモリポジトリを先頭に固定
+            availableRepositories = [Self.presentationRepo] + fetched
             visibleRepositoryCount = min(3, availableRepositories.count)
         } catch {
+            availableRepositories = [Self.presentationRepo]
+            visibleRepositoryCount = 1
             repositoryListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
 
@@ -195,6 +199,18 @@ final class AddRepositoryViewModel: ObservableObject {
         errorMessage = nil
         defer { isSaving = false }
 
+        if repositoryName == Self.presentationRepo.fullName {
+            //  デモリポジトリ: ダミーbackendIDを付与してカメラを開けるようにする
+            let base = makeLocalRepository(name: repositoryName)
+            return Repository(
+                backendID: -1,
+                name: base.name,
+                ownerAvatarURL: base.ownerAvatarURL,
+                memberCount: base.memberCount,
+                members: base.members
+            )
+        }
+
         if shouldUseMockGitHubAPI(accessToken: accessToken) {
             return makeLocalRepository(name: repositoryName)
         }
@@ -226,6 +242,24 @@ final class AddRepositoryViewModel: ObservableObject {
 
     // MARK: - Private
 
+    //  発表用デモメンバー
+    private static let presentationMembers: [RepositoryMember] = [
+        RepositoryMember(login: "Riochin",     avatarURL: URL(string: "https://avatars.githubusercontent.com/u/175614867?v=4")),
+        RepositoryMember(login: "s2108tomoka", avatarURL: URL(string: "https://avatars.githubusercontent.com/u/163800046?v=4")),
+        RepositoryMember(login: "liruly",      avatarURL: URL(string: "https://avatars.githubusercontent.com/u/141731612?v=4")),
+        RepositoryMember(login: "palm7710",    avatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4")),
+    ]
+
+    //  発表用デモリポジトリ（常に先頭に固定表示）
+    private static let presentationRepo = GitHubRepository(
+        id: -1,
+        fullName: "hackathon/BeGit",
+        description: "チームのGitHub活動を可視化するアプリ",
+        isPrivate: false,
+        ownerAvatarURL: URL(string: "https://avatars.githubusercontent.com/u/168710387?v=4"),
+        updatedAt: nil
+    )
+
     //  検索条件に一致するRepository候補
     private var filteredRepositories: [GitHubRepository] {
         let query = repositorySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -241,6 +275,14 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  選択RepositoryのGitHub collaboratorを取得
     private func loadRepositoryMembers(repoFullName: String) async {
+        //  発表用デモリポジトリはモックメンバーを直接返す
+        if repoFullName == Self.presentationRepo.fullName {
+            let demoMembers = Self.presentationMembers
+            members = demoMembers
+            repositoryMemberCandidates = demoMembers
+            return
+        }
+
         guard let accessToken, accessToken.isEmpty == false else {
             memberListErrorMessage = "GitHubログイン情報を取得できませんでした。再ログインしてください。"
             members = []

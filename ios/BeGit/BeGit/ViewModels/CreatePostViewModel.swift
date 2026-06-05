@@ -45,6 +45,9 @@ final class CreatePostViewModel: ObservableObject {
         isPosting = true
         defer { isPosting = false }
 
+        //  デモリポジトリ（backendID < 0）はAPI呼び出しをスキップして正常完了
+        if repositoryID < 0 { return }
+
         let api = BeGitBackendAPI()
 
         guard let mainImage,

@@ -45,13 +45,10 @@ final class RepositoryDashboardViewModel: ObservableObject {
     }
 
     func loadActivities(accessToken: String?) async {
-        guard let accessToken else {
-            activities = RepositoryActivity.mockActivities(for: repository)
-            return
-        }
+        let mock = RepositoryActivity.mockActivities(for: repository)
 
-        guard repository.backendID != nil else {
-            activities = RepositoryActivity.mockActivities(for: repository)
+        guard let accessToken, repository.backendID != nil else {
+            activities = mock
             return
         }
 
@@ -61,11 +58,10 @@ final class RepositoryDashboardViewModel: ObservableObject {
 
         do {
             let fetched = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
-            activities = fetched.isEmpty
-                ? RepositoryActivity.mockActivities(for: repository)
-                : fetched
+            //  実投稿（新しい順）をモックの上に積み重ねる
+            activities = fetched + mock
         } catch {
-            activities = RepositoryActivity.mockActivities(for: repository)
+            activities = mock
         }
     }
 }

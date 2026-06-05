@@ -195,11 +195,12 @@ struct AddRepositoryView: View {
                 .frame(width: 18, height: 18)
 
             TextField(
-                "Search repositories",
+                "",
                 text: Binding(
                     get: { viewModel.repositorySearchText },
                     set: { viewModel.updateRepositorySearchText($0) }
-                )
+                ),
+                prompt: Text("Search repositories").foregroundColor(.white.opacity(0.72))
             )
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
