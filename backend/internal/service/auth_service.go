@@ -27,6 +27,7 @@ type AuthServiceConfig struct {
 type AuthService interface {
 	ExchangeCode(ctx context.Context, code string) (*AuthResult, error)
 	GetUser(ctx context.Context, userID int64) (*model.User, error)
+	RevokeToken(ctx context.Context, accessToken string) error
 }
 
 // authService は AuthService インターフェースの実装
@@ -101,4 +102,12 @@ func (s *authService) ExchangeCode(ctx context.Context, code string) (*AuthResul
 // GetUser は userID からユーザーを取得する（GET /me 用）
 func (s *authService) GetUser(ctx context.Context, userID int64) (*model.User, error) {
 	return s.userRepo.GetByID(ctx, userID)
+}
+
+// RevokeToken は GitHub OAuth アクセストークンを失効させる
+func (s *authService) RevokeToken(ctx context.Context, accessToken string) error {
+	if err := s.githubClient.RevokeToken(ctx, s.config.GitHubClientID, s.config.GitHubClientSecret, accessToken); err != nil {
+		return fmt.Errorf("auth_service: revoke token failed: %w", err)
+	}
+	return nil
 }

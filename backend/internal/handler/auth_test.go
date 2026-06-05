@@ -19,6 +19,7 @@ import (
 type mockAuthService struct {
 	exchangeCodeFunc func(ctx context.Context, code string) (*service.AuthResult, error)
 	getUserFunc      func(ctx context.Context, userID int64) (*model.User, error)
+	revokeTokenFunc  func(ctx context.Context, accessToken string) error
 }
 
 func (m *mockAuthService) ExchangeCode(ctx context.Context, code string) (*service.AuthResult, error) {
@@ -36,6 +37,13 @@ func (m *mockAuthService) GetUser(ctx context.Context, userID int64) (*model.Use
 		return m.getUserFunc(ctx, userID)
 	}
 	return &model.User{ID: userID, GitHubLogin: "testuser"}, nil
+}
+
+func (m *mockAuthService) RevokeToken(ctx context.Context, accessToken string) error {
+	if m.revokeTokenFunc != nil {
+		return m.revokeTokenFunc(ctx, accessToken)
+	}
+	return nil
 }
 
 // newAuthRouter は /auth/github を登録したテスト用 gin エンジンを作る

@@ -8,6 +8,7 @@ struct RepositoryDashboardView: View {
     @EnvironmentObject private var authState: AuthState
     //  Dashboard画面の状態を管理するViewModel
     @StateObject private var viewModel: RepositoryDashboardViewModel
+    @State private var showRepoSetting = false
 
     //  Dashboard画面の状態を管理するViewModel
     init(repository: Repository) {
@@ -79,11 +80,26 @@ struct RepositoryDashboardView: View {
             ToolbarItem(placement: .principal) {
                 BeGitToolbarLogoView()
             }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showRepoSetting = true
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .foregroundStyle(AppTheme.softPink)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("リポジトリ設定")
+            }
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
-        .task {
+        //  accessToken変更時に前のタスクを自動キャンセルしてリロード
+        .task(id: authState.accessToken) {
             await viewModel.loadActivities(accessToken: authState.accessToken)
+        }
+        .sheet(isPresented: $showRepoSetting) {
+            RepoSettingView(repository: viewModel.repository)
         }
     }
 

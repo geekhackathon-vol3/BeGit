@@ -90,6 +90,7 @@ type Client interface {
 	GetRecentCommits(ctx context.Context, repoFullName, login, accessToken string) (*CommitSummary, error)
 	ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error)
 	ListCommits(ctx context.Context, repoFullName, accessToken string, opts CommitListOptions) ([]Commit, error)
+	RevokeToken(ctx context.Context, clientID, clientSecret, accessToken string) error
 }
 
 // githubClient は Client インターフェースの実装
@@ -492,6 +493,38 @@ func (c *githubClient) ListCommits(ctx context.Context, repoFullName, accessToke
 	}
 
 	return commits, nil
+}
+
+// RevokeToken は GitHub OAuth アクセストークンを失効させる。
+// DELETE /applications/{client_id}/token を Basic 認証で呼び出す。
+func (c *githubClient) RevokeToken(ctx context.Context, clientID, clientSecret, accessToken string) error {
+	url := c.apiEndpoint + "/applications/" + clientID + "/token"
+
+	payload := map[string]string{"access_token": accessToken}
+	data, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("github: failed to create revoke request: %w", err)
+	}
+	req.SetBasicAuth(clientID, clientSecret)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("github: revoke request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		bodySnippet := make([]byte, 200)
+		n, _ := io.ReadFull(resp.Body, bodySnippet)
+		return fmt.Errorf("%w: revoke returned status %d, body: %s", ErrExternalAPI, resp.StatusCode, string(bodySnippet[:n]))
+	}
+
+	return nil
 }
 
 // commitStats は単一コミットの additions/deletions を取得する。
