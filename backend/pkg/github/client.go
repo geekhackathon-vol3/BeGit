@@ -363,7 +363,8 @@ func (c *githubClient) GetRecentCommits(ctx context.Context, repoFullName, login
 
 // ListUserRepos は認証ユーザーがアクセスできるリポジトリ一覧を取得する。
 // GET /user/repos?affiliation=owner,collaborator&sort=updated&per_page=100 のプロキシ。
-// グループ作成では Webhook 登録のため push / admin 権限が要るので、その権限のあるものに絞る。
+// Webhook 登録は push / admin 権限がある場合のみ成功するが、失敗は非致命的に扱うため
+// 権限によるフィルタリングはしない（read-only コラボレーターのリポジトリも追加可能）。
 func (c *githubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
 	resp, err := c.doAPIRequest(ctx, http.MethodGet,
 		"/user/repos?affiliation=owner,collaborator&sort=updated&per_page=100",
@@ -392,10 +393,6 @@ func (c *githubClient) ListUserRepos(ctx context.Context, accessToken string) ([
 
 	repos := make([]Repo, 0, len(raw))
 	for _, r := range raw {
-		// push / admin 権限がないリポジトリは Webhook 登録できないため除外する
-		if !r.Permissions.Push && !r.Permissions.Admin {
-			continue
-		}
 		repos = append(repos, Repo{
 			FullName:   r.FullName,
 			Name:       r.Name,
