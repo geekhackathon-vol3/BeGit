@@ -90,12 +90,9 @@ struct RepositoryDashboardView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
-        .task {
+        //  accessToken変更時に前のタスクを自動キャンセルしてリロード
+        .task(id: authState.accessToken) {
             await viewModel.loadActivities(accessToken: authState.accessToken)
-        }
-        //  再認証成功後にアクティビティをリロード
-        .onChange(of: authState.accessToken) { _, newToken in
-            Task { await viewModel.loadActivities(accessToken: newToken) }
         }
         .sheet(isPresented: $showRepoSetting) {
             RepoSettingView(repository: viewModel.repository)
