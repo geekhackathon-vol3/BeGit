@@ -14,7 +14,6 @@ struct CameraView: View {
     let onPostCompleted: () -> Void 
 
     @StateObject private var camera = CameraManager()
-
     @State private var showPreview = false
 
     var body: some View {
@@ -44,6 +43,7 @@ struct CameraView: View {
             VStack {
 
                 // Header
+
                 ZStack {
                     Text("BeGit_")
                         .font(
@@ -53,7 +53,7 @@ struct CameraView: View {
                                 design: .monospaced
                             )
                         )
-                        .foregroundStyle(.white)
+                        .foregroundStyle(AppTheme.Text.primary)
                         .frame(maxWidth: .infinity)
 
                     HStack {
@@ -68,32 +68,23 @@ struct CameraView: View {
 
                 // Front camera ON/OFF
                 HStack {
-
                     Toggle(isOn: $camera.useFrontCamera) {
-
-                        Label(
-                            "Front Camera",
-                            systemImage: "camera.rotate"
-                        )
-                        .foregroundStyle(.white)
-                        .font(.system(size: 16, weight: .bold))
+                        Label("Front Camera", systemImage: "camera.rotate")
+                            .foregroundStyle(AppTheme.Text.primary)
+                            .appFont(.subheadline)
                     }
-                    .tint(.white)
+                    .tint(AppTheme.Text.primary)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
 
                 // Shutter Button
                 Button {
-
                     camera.takeBeRealPhoto()
-
                 } label: {
-
                     ZStack {
-
                         Circle()
-                            .fill(.white)
+                            .fill(AppTheme.Text.primary)
                             .frame(width: 86, height: 86)
 
                         Circle()
@@ -109,23 +100,17 @@ struct CameraView: View {
         // MARK: - Start Camera
 
         .onAppear {
-
             camera.startSession()
         }
-
         .onDisappear {
-
             camera.stopSession()
         }
 
         // MARK: - Show Preview
 
         .onReceive(camera.$capturedImage) { image in
-
             if image != nil {
-
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-
                     showPreview = true
                 }
             }
@@ -134,9 +119,7 @@ struct CameraView: View {
         // MARK: - Preview Screen
 
         .fullScreenCover(isPresented: $showPreview) {
-
             if let mainImage = camera.capturedImage {
-
                 let vm = CreatePostViewModel(
                     mainImage: mainImage,
                     frontImage: camera.frontCapturedImage,
@@ -145,12 +128,12 @@ struct CameraView: View {
                     githubLogin: githubLogin,
                     accessToken: accessToken
                 )
-                
+
                 PhotoPreviewView(
                     viewModel: vm,
                     onPostCompleted: onPostCompleted
                 )
-            }else {
+            } else {
                 ProgressView()
             }
         }

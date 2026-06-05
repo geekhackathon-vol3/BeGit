@@ -15,8 +15,8 @@ struct MemberChipView: View {
 
             //  GitHub login名
             Text(member.login)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.88))
+                .appFont(.label)
+                .foregroundStyle(AppTheme.Text.high)
                 .lineLimit(1)
 
             //  削除ボタン表示
@@ -38,7 +38,7 @@ struct MemberChipView: View {
         //  削除ボタン有無で右padding調整
         .padding(.trailing, onRemove == nil ? 12 : 8)
         //  chip背景
-        .background(Color.white.opacity(0.08))
+        .background(AppTheme.fieldBackground)
         //  Capsule shape
         .clipShape(Capsule())
         //  chip border

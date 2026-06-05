@@ -18,7 +18,7 @@ struct SectionTitleView: View {
         VStack(alignment: .leading, spacing: 4) {
             //  Sectionタイトル表示
             Text(title)
-                .font(.system(size: 18, weight: .black, design: .monospaced))
+                .appFont(.logo)
                 .foregroundStyle(.white)
 
             //  caption表示

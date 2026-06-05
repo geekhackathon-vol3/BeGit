@@ -4,17 +4,14 @@
 import SwiftUI
 import UIKit
 
-//  GitHubログイン画面
 @MainActor
 struct LoginView: View {
-    @StateObject private var viewModel: LoginViewModel  //  ログイン画面の状態と処理を管理するViewModel
+    @StateObject private var viewModel: LoginViewModel
 
-    //  通常利用時はデフォルトのViewModelを生成
     init() {
         _viewModel = StateObject(wrappedValue: LoginViewModel.makeDefault())
     }
 
-    //  テスト・Preview用にViewModelを外部注入
     init(viewModel: LoginViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
     }
@@ -23,7 +20,7 @@ struct LoginView: View {
         NavigationStack {
             GeometryReader { proxy in
                 ZStack {
-                    Color.black
+                    AppTheme.background
                         .ignoresSafeArea()
 
                     VStack(spacing: 24) {
@@ -45,7 +42,6 @@ struct LoginView: View {
                     .safeAreaPadding(.vertical, 8)
                 }
             }
-            // alertはそのまま
             .alert(item: $viewModel.alertContext) { context in
                 Alert(
                     title: Text(context.title),
@@ -56,7 +52,6 @@ struct LoginView: View {
         }
     }
 
-    //  ロゴとキャッチコピー
     private var logoSection: some View {
         VStack(spacing: 2) {
             if let image = UIImage(named: "begit_logo") {
@@ -66,25 +61,24 @@ struct LoginView: View {
                     .frame(maxWidth: 240, maxHeight: 84)
             } else {
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(Color(red: 0.80, green: 0.72, blue: 0.96))
+                    .fill(AppTheme.accent)
                     .frame(width: 124, height: 124)
                     .overlay(
                         Text("BeGit")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .appFont(.logo, design: .rounded)
                             .foregroundStyle(.black)
                     )
             }
 
             Text("Real-time development or nothing.")
-                .font(.system(size: 18, weight: .regular, design: .rounded))
+                .appFont(.headline, design: .rounded)
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.Text.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
     }
 
-    //  GitHubログイン開始ボタン
     private var signInButton: some View {
         Button(action: viewModel.signInWithGitHub) {
             HStack(spacing: 14) {
@@ -94,12 +88,12 @@ struct LoginView: View {
                     .frame(width: 24, height: 24)
 
                 Text("[Sign in with GitHub]")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .appFont(.headline, design: .rounded)
                     .foregroundStyle(.black)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 64)
-            .background(Color(red: 0.804, green: 0.718, blue: 0.965))
+            .background(AppTheme.accent)
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)

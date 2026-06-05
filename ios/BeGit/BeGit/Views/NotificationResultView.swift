@@ -79,13 +79,13 @@ struct NotificationResultView: View {
     private var resultHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Result")
-                .font(.custom("Bitcount", size: 34))
-                .foregroundStyle(.white)
+                .appFont(.title)
+                .foregroundStyle(AppTheme.Text.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(viewModel.notification.repository.name)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.50))
+                .appFont(.sectionHeader)
+                .foregroundStyle(AppTheme.Text.low)
                 .lineLimit(1)
         }
     }
@@ -99,7 +99,7 @@ struct NotificationResultView: View {
             //  通知コメント表示
             if viewModel.notification.comment.isEmpty == false {
                 Text(viewModel.notification.comment)
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .appFont(.body)
                     .foregroundStyle(AppTheme.softPink.opacity(0.82))
                     .lineSpacing(4)
             }
@@ -125,8 +125,8 @@ struct NotificationResultView: View {
 
                 //  達成状況テキスト
                 Text(viewModel.progressText)
-                    .font(.system(size: 14, weight: .black, design: .monospaced))
-                    .foregroundStyle(.black)
+                    .appFont(.body)
+                    .foregroundStyle(AppTheme.Text.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                     .frame(maxWidth: .infinity, alignment: .center)

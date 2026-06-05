@@ -6,18 +6,15 @@ import SwiftUI
 @MainActor
 struct MakeNotificationView: View {
     @EnvironmentObject private var authState: AuthState
-    //  通知作成画面の状態を管理するViewModel
     @StateObject private var viewModel: MakeNotificationViewModel
     @State private var isMemberSearchPresented = false
     private let onSend: (RepositoryNotification) -> Void
 
-     //  通知作成画面の状態を管理するViewModel
     init(repository: Repository, onSend: @escaping (RepositoryNotification) -> Void = { _ in }) {
         _viewModel = StateObject(wrappedValue: MakeNotificationViewModel(repository: repository))
         self.onSend = onSend
     }
 
-    //  外部ViewModel注入用
     init(
         viewModel: MakeNotificationViewModel,
         onSend: @escaping (RepositoryNotification) -> Void = { _ in }
@@ -28,34 +25,28 @@ struct MakeNotificationView: View {
 
     var body: some View {
         ZStack {
-            //  背景色
             AppTheme.background
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        //  通知作成Header
                         makeNotificationHeader
-
-                        //  通知対象member選択
                         membersSection
-                        //  通知コメント入力
                         commentsSection
 
                         if let errorMessage = viewModel.errorMessage {
                             Text(errorMessage)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .appFont(.label)
                                 .foregroundStyle(AppTheme.softPink)
                                 .lineSpacing(3)
                         }
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 20)
-                    .padding(.bottom, 104)  //  下部固定button領域分の余白  
+                    .padding(.bottom, 104)
                 }
 
-                //  通知を生成して結果画面へ遷移
                 Button(action: sendNotification) {
                     PrimaryCapsuleButtonLabel(
                         title: viewModel.isSending ? "送信中..." : "通知を送る",
@@ -68,7 +59,7 @@ struct MakeNotificationView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
                 .padding(.bottom, 18)
-                .background(bottomBarBackground)    //  下部固定エリア背景
+                .background(bottomBarBackground)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -77,7 +68,6 @@ struct MakeNotificationView: View {
             ToolbarItem(placement: .topBarLeading) {
                 BeGitBackButton()
             }
-
             ToolbarItem(placement: .principal) {
                 BeGitToolbarLogoView()
             }
@@ -100,32 +90,27 @@ struct MakeNotificationView: View {
 
     // MARK: - Components
 
-    //  通知作成画面Header
     private var makeNotificationHeader: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Make Notification")
-                .font(.custom("Bitcount", size: 34))
-                .foregroundStyle(.white)
+                .appFont(.title)
+                .foregroundStyle(AppTheme.Text.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(viewModel.repository.name)
-                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.50))
+                .appFont(.sectionHeader)
+                .foregroundStyle(AppTheme.Text.low)
                 .lineLimit(1)
         }
     }
 
-    //  Team member選択Section
     private var membersSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            //  Section title
             sectionTitle("■ Team Members")
-
             memberListBox
         }
     }
 
-    //  member選択リスト
     private var memberListBox: some View {
         VStack(alignment: .leading, spacing: 12) {
             memberListSubheader("Selected members")
@@ -146,46 +131,42 @@ struct MakeNotificationView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
         .padding(14)
-        .background(Color(red: 0.247, green: 0.247, blue: 0.286))
+        .background(AppTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(Color(red: 0.310, green: 0.322, blue: 0.357), lineWidth: 2)
+                .stroke(AppTheme.borderSubtle, lineWidth: 2)
         )
     }
 
-    //  member同期中表示
     private var memberLoadingState: some View {
         Text("Loading members")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.42))
+            .appFont(.body)
+            .foregroundStyle(AppTheme.Text.disabled)
             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
     }
 
-    //  member未選択表示
     private var emptyMemberState: some View {
         Text("No members selected")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.42))
+            .appFont(.body)
+            .foregroundStyle(AppTheme.Text.disabled)
             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
     }
 
-    //  memberリスト内小見出し
     private func memberListSubheader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.54))
+            .appFont(.sectionHeader)
+            .foregroundStyle(AppTheme.Text.muted)
             .textCase(.uppercase)
     }
 
-    //  選択済みmember行
     private func selectedMemberRow(_ member: RepositoryMember) -> some View {
         HStack(spacing: 12) {
             AvatarView(member: member, size: 34)
 
             Text(member.login)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
+                .appFont(.subheadline)
+                .foregroundStyle(AppTheme.Text.primary)
                 .lineLimit(1)
 
             Spacer()
@@ -197,7 +178,7 @@ struct MakeNotificationView: View {
                     .font(.system(size: 16, weight: .black))
                     .foregroundStyle(.black)
                     .frame(width: 30, height: 30)
-                    .background(Color(red: 0.969, green: 0.749, blue: 0.761))
+                    .background(AppTheme.softPink)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -205,7 +186,6 @@ struct MakeNotificationView: View {
         }
     }
 
-    //  GitHub member検索Sheet表示button
     private var addMemberButton: some View {
         Button {
             isMemberSearchPresented = true
@@ -215,7 +195,7 @@ struct MakeNotificationView: View {
                     .font(.system(size: 16, weight: .black))
 
                 Text("Add member")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .appFont(.label)
             }
             .foregroundStyle(.black)
             .frame(maxWidth: .infinity)
@@ -227,37 +207,31 @@ struct MakeNotificationView: View {
         .accessibilityLabel("GitHubユーザーを検索してTeam Membersに追加")
     }
 
-    //  通知コメント入力Section
     private var commentsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            //  Section title
             sectionTitle("■ Comments")
 
-            //  通知コメント入力欄
             TextEditor(text: $viewModel.comment)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
+                .appFont(.subheadline)
+                .foregroundStyle(AppTheme.Text.primary)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 132)
                 .padding(12)
                 .background(AppTheme.fieldBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                //  TextEditor placeholder
                 .overlay(alignment: .topLeading) {
                     if viewModel.comment.isEmpty {
                         Text("今から実装タイムです。準備できたらpushしてね。")
-                            .font(.system(size: 14, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.32))
+                            .appFont(.body)
+                            .foregroundStyle(AppTheme.Text.muted)
                             .padding(.horizontal, 18)
                             .padding(.vertical, 20)
-                            //  placeholderが入力操作を邪魔しないようにする
                             .allowsHitTesting(false)
                     }
                 }
         }
     }
 
-    //  下部固定エリア背景
     private var bottomBarBackground: some View {
         LinearGradient(
             colors: [AppTheme.background.opacity(0.70), AppTheme.background],
@@ -267,11 +241,10 @@ struct MakeNotificationView: View {
         .ignoresSafeArea(edges: .bottom)
     }
 
-    //  Repo Settingと揃えたSection title
     private func sectionTitle(_ title: String) -> some View {
         Text(title)
             .font(.system(size: 20, weight: .regular, design: .monospaced))
-            .foregroundStyle(Color(red: 0.929, green: 0.784, blue: 0.827))
+            .foregroundStyle(AppTheme.sectionPink)
     }
 
     private func sendNotification() {

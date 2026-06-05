@@ -36,8 +36,8 @@ struct AddRepositoryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         Text("Repo Setting")
-                            .font(.custom("Bitcount", size: 34))
-                            .foregroundStyle(.white)
+                            .appFont(.title)
+                            .foregroundStyle(AppTheme.Text.primary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.bottom, 2)
 
@@ -48,7 +48,7 @@ struct AddRepositoryView: View {
 
                         if let errorMessage = viewModel.errorMessage {
                             Text(errorMessage)
-                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .appFont(.label)
                                 .foregroundStyle(AppTheme.softPink)
                                 .lineSpacing(3)
                         }
@@ -118,10 +118,10 @@ struct AddRepositoryView: View {
     //  Repository入力状態preview
     private var repositoryPreview: some View {
         HStack(spacing: 12) {
-            if viewModel.repositoryPreviewName == nil {
+                if viewModel.repositoryPreviewName == nil {
                 Image(systemName: "shippingbox")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.50))
+                    .foregroundStyle(AppTheme.Text.low)
             } else {
                 Image("github_default_icon")
                     .resizable()
@@ -131,8 +131,8 @@ struct AddRepositoryView: View {
             }
 
             Text(viewModel.repositoryPreviewName ?? "Repository not selected")
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(viewModel.repositoryPreviewName == nil ? 0.42 : 0.62))
+                .appFont(.label)
+                .foregroundStyle(viewModel.repositoryPreviewName == nil ? AppTheme.Text.disabled : AppTheme.Text.regular)
                 .lineLimit(1)
 
             Spacer()
@@ -178,7 +178,7 @@ struct AddRepositoryView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
         .padding(12)
-        .background(Color(red: 0.247, green: 0.247, blue: 0.286))
+        .background(AppTheme.repositoryCardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -191,7 +191,7 @@ struct AddRepositoryView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 14, weight: .black))
-                .foregroundStyle(.white.opacity(0.42))
+                .foregroundStyle(AppTheme.Text.disabled)
                 .frame(width: 18, height: 18)
 
             TextField(
@@ -204,8 +204,8 @@ struct AddRepositoryView: View {
             )
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white)
+            .appFont(.body)
+            .foregroundStyle(AppTheme.Text.primary)
             .tint(AppTheme.accent)
 
             if viewModel.repositorySearchText.isEmpty == false {
@@ -216,7 +216,7 @@ struct AddRepositoryView: View {
                         .font(.system(size: 11, weight: .black))
                         .foregroundStyle(.black)
                         .frame(width: 22, height: 22)
-                        .background(Color.white.opacity(0.62))
+                        .background(AppTheme.Text.regular)
                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -225,10 +225,10 @@ struct AddRepositoryView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .padding(.horizontal, 10)
-        .background(Color.white.opacity(0.06))
+        .background(AppTheme.fieldBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
     }
@@ -239,9 +239,9 @@ struct AddRepositoryView: View {
             ProgressView()
                 .tint(AppTheme.accent)
 
-            Text("Loading repositories")
-                .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.54))
+                Text("Loading repositories")
+                .appFont(.body)
+                .foregroundStyle(AppTheme.Text.regular)
         }
         .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
     }
@@ -249,8 +249,8 @@ struct AddRepositoryView: View {
     //  Repository候補なし表示
     private var repositoryEmptyState: some View {
         Text("No repositories found")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.42))
+            .appFont(.body)
+            .foregroundStyle(AppTheme.Text.disabled)
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
     }
 
@@ -277,9 +277,9 @@ struct AddRepositoryView: View {
     //  Repository取得エラー表示
     private func repositoryErrorState(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(message)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.72))
+                Text(message)
+                .appFont(.label)
+                .foregroundStyle(AppTheme.Text.high)
                 .fixedSize(horizontal: false, vertical: true)
 
             Button {
@@ -324,13 +324,13 @@ struct AddRepositoryView: View {
                             text: repository.fullName,
                             query: viewModel.repositorySearchText
                         )
-                        .foregroundStyle(.white.opacity(isAlreadyAdded ? 0.48 : 1))
+                        .foregroundStyle(isAlreadyAdded ? AppTheme.Text.low : AppTheme.Text.primary)
                             .lineLimit(1)
 
                         if repository.isPrivate {
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.58))
+                                .foregroundStyle(AppTheme.Text.regular)
                         }
 
                         if isAlreadyAdded {
@@ -340,8 +340,8 @@ struct AddRepositoryView: View {
 
                     if let description = repository.description, description.isEmpty == false {
                         Text(description)
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.white.opacity(isAlreadyAdded ? 0.30 : 0.48))
+                            .appFont(.caption)
+                            .foregroundStyle(isAlreadyAdded ? AppTheme.Text.muted : AppTheme.Text.low)
                             .lineLimit(1)
                     }
                 }
@@ -358,7 +358,7 @@ struct AddRepositoryView: View {
                 }
             }
             .padding(10)
-            .background(isSelected ? AppTheme.accent.opacity(0.18) : Color.white.opacity(isAlreadyAdded ? 0.025 : 0.04))
+            .background(isSelected ? AppTheme.accent.opacity(0.18) : (isAlreadyAdded ? Color.white.opacity(0.025) : Color.white.opacity(0.04)))
             .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -377,7 +377,7 @@ struct AddRepositoryView: View {
             .foregroundStyle(.black.opacity(0.78))
             .padding(.horizontal, 7)
             .frame(height: 20)
-            .background(Color.white.opacity(0.62))
+            .background(AppTheme.Text.regular)
             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 
@@ -451,7 +451,7 @@ struct AddRepositoryView: View {
     //  member未選択表示
     private var emptyMemberState: some View {
         Text(viewModel.selectedRepository == nil ? "Select a repository" : "No collaborators found")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .appFont(.body)
             .foregroundStyle(.white.opacity(0.42))
             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
     }
@@ -459,7 +459,7 @@ struct AddRepositoryView: View {
     //  member読み込み中表示
     private var memberLoadingState: some View {
         Text("Loading members")
-            .font(.system(size: 14, weight: .semibold, design: .monospaced))
+            .appFont(.body)
             .foregroundStyle(.white.opacity(0.42))
             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
     }
@@ -467,7 +467,7 @@ struct AddRepositoryView: View {
     //  member取得エラー表示
     private func memberErrorState(_ message: String) -> some View {
         Text(message)
-            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .appFont(.caption)
             .foregroundStyle(.white.opacity(0.72))
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
@@ -476,7 +476,7 @@ struct AddRepositoryView: View {
     //  memberリスト内小見出し
     private func memberListSubheader(_ title: String) -> some View {
         Text(title)
-            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .appFont(.sectionHeader)
             .foregroundStyle(.white.opacity(0.54))
             .textCase(.uppercase)
     }
@@ -487,8 +487,7 @@ struct AddRepositoryView: View {
             AvatarView(member: member, size: 34)
 
             Text(member.login)
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
+                .appFont(.subheadline)                .foregroundStyle(.white)
                 .lineLimit(1)
 
             Spacer()
@@ -500,7 +499,7 @@ struct AddRepositoryView: View {
                     .font(.system(size: 16, weight: .black))
                     .foregroundStyle(.black)
                     .frame(width: 30, height: 30)
-                    .background(Color(red: 0.969, green: 0.749, blue: 0.761))
+                    .background(AppTheme.softPink)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -539,7 +538,7 @@ struct AddRepositoryView: View {
                 AvatarView(member: member, size: 34)
 
                 Text(member.login)
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .appFont(.subheadline)
                     .foregroundStyle(.white)
                     .lineLimit(1)
 

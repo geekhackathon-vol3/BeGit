@@ -3,7 +3,6 @@
 
 import SwiftUI
 
-//  Repository Timeline activity一覧
 struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
 
@@ -25,8 +24,8 @@ struct RepositoryActivityTimelineView: View {
 
                 if index < activities.count - 1 {
                     Rectangle()
-                        .fill(Color(red: 0.333, green: 0.345, blue: 0.365))
-                        .frame(width: 6, height: 30)
+                        .fill(AppTheme.borderSubtle)
+                        .frame(width: 6, height: 18)
                         .padding(.leading, 43)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -44,8 +43,8 @@ struct RepositoryActivityTimelineView: View {
 
     private func dateHeader(for date: Date) -> some View {
         Text(Self.dayFormatter.string(from: date))
-            .font(.system(size: 13, weight: .black, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.50))
+            .appFont(.label)
+            .foregroundStyle(AppTheme.Text.low)
             .textCase(.uppercase)
             .padding(.leading, 4)
             .padding(.bottom, 6)
@@ -53,9 +52,9 @@ struct RepositoryActivityTimelineView: View {
     }
 }
 
-//  Repository Timeline activity card
 struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity
+
     @State private var showReactionPicker = false
     @State private var myReaction: ActivityReactionType?
     @State private var reactionCounts: [ActivityReactionType: Int]
@@ -84,7 +83,6 @@ struct RepositoryActivityCardView: View {
         isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
     }
 
-    //  activity日時表示Formatter
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
@@ -148,6 +146,7 @@ struct RepositoryActivityCardView: View {
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top) {
+
                     //  小窓タップで背景と入れ替え（何度でも可）＋ぽよよんアニメ
                     activityThumbnailFrame
                         .scaleEffect(thumbnailScale)
@@ -218,7 +217,6 @@ struct RepositoryActivityCardView: View {
             Spacer()
         }
     }
-
     // MARK: - Reaction picker
 
     private var reactionPicker: some View {
@@ -257,8 +255,6 @@ struct RepositoryActivityCardView: View {
         58   // 16 padding + 34 button + 8 gap
     }
 
-    // MARK: - Reaction button
-
     private var reactionButton: some View {
         Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) {
@@ -279,6 +275,7 @@ struct RepositoryActivityCardView: View {
         }
         .buttonStyle(.plain)
     }
+
 
     // MARK: - Reaction counts
 
@@ -304,6 +301,7 @@ struct RepositoryActivityCardView: View {
             Spacer()
         }
     }
+
 
     private var displayedReactions: [ActivityReaction] {
         ActivityReactionType.allCases
@@ -453,7 +451,7 @@ struct RepositoryActivityCardView: View {
                 .frame(width: 17, height: 17)
 
             Text(activity.type.badgeTitle)
-                .font(.system(size: 13, weight: .black, design: .monospaced))
+                .appFont(.label)
                 .foregroundStyle(.black)
         }
         .padding(.horizontal, 12)
@@ -465,14 +463,17 @@ struct RepositoryActivityCardView: View {
     private var cardBackground: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.11, green: 0.08, blue: 0.14),
+                Color(red: 0.11, green: 0.08, blue: 0.14),  // card固有色のため保持
                 AppTheme.cardBackground
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
     }
+
 }
+
+// 以降は変更なし（BottomLeadingRoundedRectangle, RepositoryActivityType extension）
 
 //  左下だけ丸角のbadge shape
 private struct BottomLeadingRoundedRectangle: Shape {
