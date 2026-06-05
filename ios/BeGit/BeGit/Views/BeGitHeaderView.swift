@@ -35,15 +35,15 @@ struct BeGitToolbarLogoView: View {
     var body: some View {
         Group {
             //  ロゴ画像が存在する場合
-            if let image = UIImage(named: "begit_logo") {
+            if let image = UIImage(named: "begit_logo2") {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
             } else {
                 //  ロゴ画像未設定時のFallback表示
-                Text("BG")
-                    .font(.system(size: 16, weight: .black, design: .monospaced))
-                    .foregroundStyle(.black)
+                Text("BeGit;")
+                    .font(.system(size: 20, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
             }
         }
         .frame(width: 118, height: 34)

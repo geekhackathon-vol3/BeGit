@@ -45,7 +45,7 @@ struct CameraView: View {
                 // Header
 
                 ZStack {
-                    Text("BeGit_")
+                    Text("BeGit;")
                         .font(
                             .system(
                                 size: 28,
