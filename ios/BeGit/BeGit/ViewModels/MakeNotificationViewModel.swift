@@ -129,8 +129,8 @@ final class MakeNotificationViewModel: ObservableObject {
                 try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
                 return notification
             } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
-                // 既に通知済み → そのままカメラへ進む
-                return makeNotification()
+                // 既に通知済み → 既に作成済みの notification オブジェクトを返す
+                return notification
             }catch {
                 errorMessage = "通知の送信に失敗しました。"
                 return nil

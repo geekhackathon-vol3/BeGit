@@ -175,8 +175,21 @@ func contentTypeOf(header *multipart.FileHeader, data []byte) string {
 		return detected
 	}
 	// Go の sniff が判定できない画像形式（HEIC 等）向けに、ヘッダが image/* ならそれを使う。
+	// ただし HEIC 署名検証を通過した場合のみ許可する。
 	if headerCT := header.Header.Get("Content-Type"); strings.HasPrefix(headerCT, "image/") {
-		return headerCT
+		if looksLikeHEIC(data) {
+			return headerCT
+		}
 	}
 	return http.DetectContentType(data)
+}
+
+// looksLikeHEIC は ISO BMFF フォーマットの ftyp box で HEIC 系の major brand を検査する。
+// バイト列 [8..12) が "heic", "heix", "hevc" のいずれかなら HEIC とみなす。
+func looksLikeHEIC(data []byte) bool {
+	if len(data) < 12 {
+		return false
+	}
+	brand := string(data[8:12])
+	return brand == "heic" || brand == "heix" || brand == "hevc"
 }
