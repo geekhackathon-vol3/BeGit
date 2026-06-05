@@ -6,10 +6,15 @@ import Foundation
 //  Repository Timeline activity
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID                        //  activity識別子
+
+//    let backendPostID: Int64
+    
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
     let date: Date                      //  activity作成日時
-    let imageName: String?              //  activity画像名
+    let imageName: String?              //  activity画像名（Mock/Asset 用）
+    let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
+    let frontPhotoURL: URL?             //  前面写真の presigned URL（BeReal 小窓表示用）
     let author: RepositoryMember        //  activity実行ユーザー
     let reaction: RepositoryReaction?   //  activityリアクション
 
@@ -19,6 +24,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         title: String,
         date: Date = Date(),
         imageName: String? = nil,
+        mainPhotoURL: URL? = nil,
+        frontPhotoURL: URL? = nil,
         author: RepositoryMember,
         reaction: RepositoryReaction? = nil
     ) {
@@ -27,6 +34,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         self.title = title
         self.date = date
         self.imageName = imageName
+        self.mainPhotoURL = mainPhotoURL
+        self.frontPhotoURL = frontPhotoURL
         self.author = author
         self.reaction = reaction
     }

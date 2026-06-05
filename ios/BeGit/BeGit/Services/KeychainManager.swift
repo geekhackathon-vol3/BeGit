@@ -10,7 +10,6 @@ protocol KeychainManaging: Sendable {
     func readAccessToken() throws -> String?        //  取得
     func deleteAccessToken() throws                 //  削除
 }
-
 //  Keychainを使ってアクセストークンを管理
 struct KeychainManager: KeychainManaging {
     //  保存データを識別するキー
