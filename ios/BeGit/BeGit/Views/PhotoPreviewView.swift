@@ -128,6 +128,9 @@ struct PhotoPreviewView: View {
                                 dismiss()
                                 onPostCompleted()        // → NavigationStack で Result へ push
                             } catch {
+                                await MainActor.run {
+                                    viewModel.postError = error
+                                }
                                 print("Upload failed:", error)
                             }
                         }

@@ -41,6 +41,7 @@ final class CreatePostViewModel: ObservableObject {
     @Published var postError: Error?
 
     func submitPost() async throws {
+        guard !isPosting else { return }
         isPosting = true
         defer { isPosting = false }
 
@@ -60,12 +61,25 @@ final class CreatePostViewModel: ObservableObject {
             accessToken: accessToken
         )
 
-        try await api.uploadPhotos(
-            repositoryID: repositoryID,
-            postID: postID,
-            mainImageData: mainData,
-            frontImageData: frontData,
-            accessToken: accessToken
-        )
+        // Retry photo upload once if it fails. If both attempts fail, the post will remain without photos.
+        // TODO: Implement deletePost API and call it here to clean up orphaned posts.
+        do {
+            try await api.uploadPhotos(
+                repositoryID: repositoryID,
+                postID: postID,
+                mainImageData: mainData,
+                frontImageData: frontData,
+                accessToken: accessToken
+            )
+        } catch {
+            // Retry once
+            try await api.uploadPhotos(
+                repositoryID: repositoryID,
+                postID: postID,
+                mainImageData: mainData,
+                frontImageData: frontData,
+                accessToken: accessToken
+            )
+        }
     }
 }

@@ -38,9 +38,7 @@ final class NotificationResultViewModel: ObservableObject {
                 repository: notification.repository,
                 accessToken: accessToken
             )
-            if fetched.isEmpty == false {
-                activities = fetched
-            }
+            activities = fetched
         } catch {
             //  取得失敗時は初期 Mock のまま表示を維持する
         }

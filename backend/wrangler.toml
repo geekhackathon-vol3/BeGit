@@ -14,6 +14,7 @@ invocation_logs = true
 
 [observability.traces]
 enabled = false
+# persist and head_sampling_rate are preset values for when enabled is switched to true
 persist = true
 head_sampling_rate = 1
 

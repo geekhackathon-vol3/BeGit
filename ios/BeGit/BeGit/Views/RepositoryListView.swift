@@ -269,14 +269,27 @@ struct RepositoryListView: View {
                 navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
             }
         case .camera(let notification):
+            if let backendID = notification.repository.backendID,
+               !notification.repository.name.isEmpty,
+               let githubLogin = authState.githubUser?.login,
+               !githubLogin.isEmpty,
+               let accessToken = authState.accessToken,
+               !accessToken.isEmpty {
                 CameraView(
-                    repositoryID: notification.repository.backendID ?? 0,
+                    repositoryID: backendID,
                     repoFullName: notification.repository.name,
-                    githubLogin: authState.githubUser?.login ?? "",
-                    accessToken: authState.accessToken ?? ""
+                    githubLogin: githubLogin,
+                    accessToken: accessToken
                 ) {
                     // 投稿完了後 → Result画面へ
                     navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
+                }
+            } else {
+                Text("必要な情報が不足しています")
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppTheme.background)
             }
         //  通知結果画面へ遷移
         case .notificationResult(let notification):

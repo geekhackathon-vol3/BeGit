@@ -142,9 +142,13 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         let output = try await makeClient(accessToken: accessToken).getGroupsIdPosts(
             .init(path: .init(id: Int(backendID)))
         )
+        #if DEBUG
         print("API response")
+        #endif
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        #if DEBUG
         print(try ok.body.json)
+        #endif
         return (try ok.body.json.posts ?? []).map { $0.toActivity(fallbackRepository: repository) }
     }
     
