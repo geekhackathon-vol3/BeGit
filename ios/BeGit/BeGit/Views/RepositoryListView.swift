@@ -11,6 +11,7 @@ struct RepositoryListView: View {
     @ObservedObject private var notificationRouter = NotificationRouter.shared //  通知タップ由来の遷移要求
     @ObservedObject private var oauthManager = GitHubOAuthManager.shared //  再ログイン用OAuthフロー
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
+    @State private var justPostedActivity: RepositoryActivity?  //  デモ投稿後の即時表示用activity
     private let currentUserAPI: any CurrentUserAPI
 
     //  デフォルトViewModelで初期化
@@ -337,8 +338,9 @@ struct RepositoryListView: View {
                     repoFullName: notification.repository.name,
                     githubLogin: githubLogin,
                     accessToken: accessToken
-                ) {
-                    // 投稿完了後 → Result画面へ
+                ) { activity in
+                    // 投稿完了後 → Result画面へ（デモ時は撮影activityを保持）
+                    justPostedActivity = activity
                     navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
                 }
             } else {
@@ -350,8 +352,9 @@ struct RepositoryListView: View {
             }
         //  通知結果画面へ遷移
         case .notificationResult(let notification):
-            NotificationResultView(notification: notification) {
+            NotificationResultView(notification: notification, justPostedActivity: justPostedActivity) {
                 //  NavigationStackをrootまで戻す
+                justPostedActivity = nil
                 navigationPath.removeLast(navigationPath.count)
             }
 

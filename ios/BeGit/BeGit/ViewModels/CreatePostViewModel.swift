@@ -39,14 +39,18 @@ final class CreatePostViewModel: ObservableObject {
 
     @Published var isPosting = false
     @Published var postError: Error?
+    @Published private(set) var postedActivity: RepositoryActivity?
 
     func submitPost() async throws {
         guard !isPosting else { return }
         isPosting = true
         defer { isPosting = false }
 
-        //  デモリポジトリ（backendID < 0）はAPI呼び出しをスキップして正常完了
-        if repositoryID < 0 { return }
+        //  デモリポジトリ（backendID < 0）はAPI呼び出しをスキップして即時activity生成
+        if repositoryID < 0 {
+            postedActivity = makeDemoActivity()
+            return
+        }
 
         let api = BeGitBackendAPI()
 
@@ -84,5 +88,30 @@ final class CreatePostViewModel: ObservableObject {
                 accessToken: accessToken
             )
         }
+    }
+
+    //  デモ用：撮影画像を temp ファイルに保存して即時表示できる RepositoryActivity を生成
+    private func makeDemoActivity() -> RepositoryActivity {
+        let tmp = FileManager.default.temporaryDirectory
+        var mainURL: URL? = nil
+        var frontURL: URL? = nil
+        if let data = mainImage?.jpegData(compressionQuality: 0.85) {
+            let url = tmp.appendingPathComponent(UUID().uuidString + ".jpg")
+            try? data.write(to: url)
+            mainURL = url
+        }
+        if let data = frontImage?.jpegData(compressionQuality: 0.85) {
+            let url = tmp.appendingPathComponent(UUID().uuidString + ".jpg")
+            try? data.write(to: url)
+            frontURL = url
+        }
+        return RepositoryActivity(
+            type: .commit,
+            title: repoFullName,
+            comment: bodyText.isEmpty ? nil : bodyText,
+            mainPhotoURL: mainURL,
+            frontPhotoURL: frontURL,
+            author: RepositoryMember(login: githubLogin)
+        )
     }
 }

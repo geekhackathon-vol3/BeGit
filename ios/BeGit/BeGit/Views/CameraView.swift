@@ -11,7 +11,7 @@ struct CameraView: View {
     let repoFullName: String
     let githubLogin: String
     let accessToken: String
-    let onPostCompleted: () -> Void 
+    let onPostCompleted: (RepositoryActivity?) -> Void
 
     @StateObject private var camera = CameraManager()
 
@@ -163,6 +163,6 @@ struct CameraView: View {
         repoFullName: "owner/repo",
         githubLogin: "tom",
         accessToken: "",
-        onPostCompleted: {} 
+        onPostCompleted: { _ in } 
     )
 }
