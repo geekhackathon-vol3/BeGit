@@ -15,13 +15,16 @@ final class NotificationResultViewModel: ObservableObject {
 
     init(
         notification: RepositoryNotification,
+        justPostedActivity: RepositoryActivity? = nil,
         repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
     ) {
         self.notification = notification
         self.repositoryAPI = repositoryAPI
         let mock = RepositoryActivity.mockActivities(for: notification.repository)
-        self.activities = mock
-        self.completedCount = mock.count    //  モックアクティビティ数に一致
+        //  デモ投稿がある場合は先頭に追加して即時表示
+        let initial = justPostedActivity.map { [$0] + mock } ?? mock
+        self.activities = initial
+        self.completedCount = initial.count
     }
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
     func loadActivities(accessToken: String?) async {

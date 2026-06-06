@@ -11,8 +11,8 @@ struct NotificationResultView: View {
     let onReturnHome: () -> Void    //  通知結果画面の状態を管理するViewModel
 
     //  通知モデルからViewModelを生成
-    init(notification: RepositoryNotification, onReturnHome: @escaping () -> Void) {
-        _viewModel = StateObject(wrappedValue: NotificationResultViewModel(notification: notification))
+    init(notification: RepositoryNotification, justPostedActivity: RepositoryActivity? = nil, onReturnHome: @escaping () -> Void) {
+        _viewModel = StateObject(wrappedValue: NotificationResultViewModel(notification: notification, justPostedActivity: justPostedActivity))
         self.onReturnHome = onReturnHome
     }
 

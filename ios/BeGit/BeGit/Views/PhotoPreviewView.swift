@@ -8,7 +8,7 @@ import SwiftUI
 struct PhotoPreviewView: View {
 
     @StateObject var viewModel: CreatePostViewModel
-    let onPostCompleted: () -> Void
+    let onPostCompleted: (RepositoryActivity?) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -151,7 +151,7 @@ struct PhotoPreviewView: View {
                             do {
                                 try await viewModel.submitPost()
                                 dismiss()
-                                onPostCompleted()        // → NavigationStack で Result へ push
+                                onPostCompleted(viewModel.postedActivity)  // → NavigationStack で Result へ push
                             } catch {
                                 await MainActor.run {
                                     viewModel.postError = error
@@ -188,6 +188,6 @@ struct PhotoPreviewView: View {
             githubLogin: "tom",
             accessToken: ""
         ),
-        onPostCompleted: {}
+        onPostCompleted: { _ in }
     )
 }
