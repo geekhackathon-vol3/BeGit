@@ -24,7 +24,8 @@ final class NotificationResultViewModel: ObservableObject {
         //  デモ投稿がある場合は先頭に追加して即時表示
         let initial = justPostedActivity.map { [$0] + mock } ?? mock
         self.activities = initial
-        self.completedCount = initial.count
+        //  デモ時は達成人数を 3/4 に固定
+        self.completedCount = justPostedActivity != nil ? 3 : mock.count
     }
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
     func loadActivities(accessToken: String?) async {
@@ -52,10 +53,12 @@ final class NotificationResultViewModel: ObservableObject {
         }
     }
 
-    //  通知対象member総数
+    //  通知対象member総数（デモ投稿分は除いてモック4件固定）
     var totalCount: Int {
-        activities.count
+        mockCount
     }
+
+    private let mockCount = 4
 
     //  達成率
     var progress: Double {
