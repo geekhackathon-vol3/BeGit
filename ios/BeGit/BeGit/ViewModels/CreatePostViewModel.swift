@@ -105,13 +105,14 @@ final class CreatePostViewModel: ObservableObject {
             try? data.write(to: url)
             frontURL = url
         }
+        let avatarURL = URL(string: "https://github.com/\(githubLogin).png")
         return RepositoryActivity(
             type: .commit,
             title: repoFullName,
             comment: bodyText.isEmpty ? nil : bodyText,
             mainPhotoURL: mainURL,
             frontPhotoURL: frontURL,
-            author: RepositoryMember(login: githubLogin)
+            author: RepositoryMember(login: githubLogin, avatarURL: avatarURL)
         )
     }
 }
