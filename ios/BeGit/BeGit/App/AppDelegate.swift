@@ -91,7 +91,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
         let comment = (userInfo["comment"] as? String) ?? ""
         let selectedMemberLogins = userInfo["selected_member_logins"] as? [String] ?? []
-        let selectedMembers = selectedMemberLogins.map { RepositoryMember(login: $0) }
+        let selectedMembers = selectedMemberLogins.map {
+            RepositoryMember(login: $0, avatarURL: URL(string: "https://github.com/\($0).png"))
+        }
         let backendID = (userInfo["backend_id"] as? Int64) ?? (userInfo["backend_id"] as? Int).map(Int64.init)
         let repository = Repository(
             backendID: backendID,
