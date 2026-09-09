@@ -41,6 +41,10 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
             return (response, responseBody)
         }
 
+        if response.status.code == 401 {
+            throw BeGitAPIError.authenticationRequired
+        }
+
         var message: String?
         if let responseBody,
            let data = try? await Data(collecting: responseBody, upTo: 64 * 1024) {
