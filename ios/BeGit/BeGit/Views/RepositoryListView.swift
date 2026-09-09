@@ -168,15 +168,20 @@ struct RepositoryListView: View {
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("セッションの有効期限が切れました")
+                Text("ログイン状態を確認できません")
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
+
+                Text("セッションがタイムアウトした可能性があります。続けるにはGitHubへ再ログインしてください。")
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Button {
                     oauthManager.startLogin()
                 } label: {
                     HStack(spacing: 4) {
-                        Text("再ログインする")
+                        Text("GitHubで再ログイン")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                         Image(systemName: "arrow.right")
                             .font(.system(size: 11, weight: .bold))
@@ -184,6 +189,8 @@ struct RepositoryListView: View {
                     .foregroundStyle(AppTheme.softPink)
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("reauthenticate_button")
+                .accessibilityLabel("GitHubで再ログイン")
             }
         }
         .padding(14)
@@ -202,6 +209,7 @@ struct RepositoryListView: View {
         VStack(spacing: 12) {
             PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
                 .accessibilityIdentifier("add_repository_button")
+                .disabled(viewModel.isAuthExpired)
         }
     }
 

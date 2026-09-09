@@ -46,16 +46,20 @@ final class RepositoryListViewModel: ObservableObject {
 
         do {
             repositories = try await repositoryAPI.listRepositories(accessToken: accessToken)
-        } catch let error as BeGitAPIError {
-            switch error {
-            case .requestFailed(statusCode: 401, _):
-                isAuthExpired = true
-                repositories = []
-            default:
-                errorMessage = error.localizedDescription
-            }
         } catch {
-            errorMessage = error.localizedDescription
+            if let apiError = beGitAPIError(from: error) {
+                switch apiError {
+                case .authenticationRequired,
+                     .requestFailed(statusCode: 401, _):
+                    isAuthExpired = true
+                    repositories = []
+                default:
+                    errorMessage = "リポジトリの読み込みに失敗しました。もう一度お試しください。"
+                }
+            } else {
+                // OpenAPI Runtime の内部情報やサーバーの生メッセージは表示しない。
+                errorMessage = "リポジトリの読み込みに失敗しました。通信状況を確認して、もう一度お試しください。"
+            }
         }
     }
 

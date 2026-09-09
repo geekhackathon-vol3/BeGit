@@ -28,10 +28,14 @@ extension Components.Schemas.Handler_GroupJSON {
     func toRepository(members: [RepositoryMember]) -> Repository {
         let fullName = repoFullName ?? ""
         let displayName = fullName.isEmpty ? (name ?? "") : fullName
+        // Backendが保持しているGitHubのavatar_urlを優先し、旧データや未設定時は
+        // リポジトリ名から生成した所有者アバターURLへフォールバックする。
+        let avatarURL = avatarUrl.flatMap { URL(string: $0) }
+            ?? ownerAvatarURL(from: displayName)
         return Repository(
             backendID: id.map(Int64.init),
             name: displayName,
-            ownerAvatarURL: ownerAvatarURL(from: displayName),
+            ownerAvatarURL: avatarURL,
             memberCount: members.count,
             members: members
         )
@@ -43,10 +47,12 @@ extension Components.Schemas.Handler_GroupDetailJSON {
         let repositoryMembers = (members ?? []).map { $0.toMember() }
         let fullName = repoFullName ?? ""
         let displayName = fullName.isEmpty ? (name ?? "") : fullName
+        let avatarURL = avatarUrl.flatMap { URL(string: $0) }
+            ?? ownerAvatarURL(from: displayName)
         return Repository(
             backendID: id.map(Int64.init),
             name: displayName,
-            ownerAvatarURL: ownerAvatarURL(from: displayName),
+            ownerAvatarURL: avatarURL,
             memberCount: repositoryMembers.count,
             members: repositoryMembers
         )
