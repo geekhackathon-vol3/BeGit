@@ -76,7 +76,6 @@ components:
     handler.CreateGroupRequest:
       properties:
         installation_id:
-          description: GitHub App installation ID
           example: 160548256
           type: integer
         name:
@@ -300,8 +299,6 @@ components:
       type: object
     handler.RepoJSON:
       properties:
-        id:
-          type: integer
         avatar_url:
           type: string
         can_admin:
@@ -310,6 +307,8 @@ components:
           type: boolean
         full_name:
           type: string
+        id:
+          type: integer
         name:
           type: string
         owner_login:
@@ -463,6 +462,51 @@ paths:
       summary: ログアウト
       tags:
       - auth
+  /github/app/setup:
+    get:
+      description: GitHub Appのインストール情報を検証して保存する
+      parameters:
+      - description: GitHub App installation ID
+        in: query
+        name: installation_id
+        required: true
+        schema:
+          type: integer
+      - description: install or update
+        in: query
+        name: setup_action
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                additionalProperties: {}
+                type: object
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      summary: GitHub Appインストール完了
+      tags:
+      - github-app
   /github/repos:
     get:
       description: 認証ユーザーが push / admin 権限を持つリポジトリ一覧を返す。グループ作成時のリポジトリ選択に使う。
@@ -470,7 +514,6 @@ paths:
       - description: GitHub App installation ID（指定時はAppの許可範囲を取得）
         in: query
         name: installation_id
-        required: false
         schema:
           type: integer
       responses:

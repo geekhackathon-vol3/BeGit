@@ -45,7 +45,7 @@ func NewGitHubHandler(githubService service.GitHubService) *GitHubHandler {
 //	@Tags			github
 //	@Produce		json
 //	@Security		BearerAuth
-//	@Param			installation_id	query	int	false	GitHub App installation ID（指定時はAppの許可範囲を取得）
+//	@Param			installation_id	query	int	false	"GitHub App installation ID（指定時はAppの許可範囲を取得）"
 //	@Success		200	{object}	RepoListResponse
 //	@Failure		401	{object}	ErrorResponse
 //	@Failure		502	{object}	ErrorResponse
