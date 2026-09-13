@@ -12,6 +12,7 @@ struct RepositoryListView: View {
     @ObservedObject private var oauthManager = GitHubOAuthManager.shared //  再ログイン用OAuthフロー
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
     @State private var justPostedActivity: RepositoryActivity?  //  デモ投稿後の即時表示用activity
+    @State private var isShowingAuthExpiredAlert = false       //  GitHub再接続アラートの表示状態
     private let currentUserAPI: any CurrentUserAPI
 
     //  デフォルトViewModelで初期化
@@ -47,9 +48,9 @@ struct RepositoryListView: View {
                             loggedInUserSummary
                                 .padding(.bottom, 2)
 
-                            //  認証期限切れバナー
+                            //  認証期限切れの接続状態
                             if viewModel.isAuthExpired {
-                                authExpiredBanner
+                                authExpiredStatusRow
                             }
 
                             if viewModel.isLoading {
@@ -160,57 +161,71 @@ struct RepositoryListView: View {
 
     // MARK: - Components
 
-    //  認証期限切れ時のインラインバナー
-    private var authExpiredBanner: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(AppTheme.softPink)
-                .font(.system(size: 16))
-                .padding(.top, 1)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("ログイン状態を確認できません")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white)
-
-                Text("セッションがタイムアウトした可能性があります。続けるにはGitHubへ再ログインしてください。")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.72))
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button {
-                    oauthManager.startLogin()
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("GitHubで再ログイン")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .bold))
-                    }
+    //  認証期限切れ時のインライン接続状態
+    private var authExpiredStatusRow: some View {
+        Button {
+            isShowingAuthExpiredAlert = true
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(AppTheme.softPink)
+                    .font(.system(size: 17, weight: .semibold))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("GitHubとの接続が切れました")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.primary)
+
+                    Text("セッションの有効期限が切れています")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppTheme.Text.medium)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("reauthenticate_button")
-                .accessibilityLabel("GitHubで再ログイン")
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.06))
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .frame(width: 3)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 4) {
+                    Text("再接続")
+                        .font(.system(size: 14, weight: .semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                }
                 .foregroundStyle(AppTheme.softPink)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .buttonStyle(.plain)
+        .padding(.vertical, 10)
+        .overlay(alignment: .top) {
+            Divider()
+                .overlay(AppTheme.borderSubtle.opacity(0.55))
+        }
+        .overlay(alignment: .bottom) {
+            Divider()
+                .overlay(AppTheme.borderSubtle.opacity(0.55))
+        }
+        .accessibilityIdentifier("reauthenticate_button")
+        .accessibilityLabel("GitHubに再接続")
     }
 
     //  Repository追加ボタン
     private var addRepositoryButton: some View {
         VStack(spacing: 12) {
-            PrimaryButton("リポジトリの追加", systemImage: "plus", action: viewModel.showAddRepository)
+            PrimaryButton("リポジトリの追加", systemImage: "plus") {
+                if viewModel.isAuthExpired {
+                    isShowingAuthExpiredAlert = true
+                } else {
+                    viewModel.showAddRepository()
+                }
+            }
                 .accessibilityIdentifier("add_repository_button")
-                .disabled(viewModel.isAuthExpired)
+        }
+        .alert("GitHubに再接続してください", isPresented: $isShowingAuthExpiredAlert) {
+            Button("GitHubで再ログイン") {
+                oauthManager.startLogin()
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("セッションの有効期限が切れています。GitHubに再ログインすると続行できます。")
         }
     }
 
