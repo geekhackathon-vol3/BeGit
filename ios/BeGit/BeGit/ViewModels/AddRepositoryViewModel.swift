@@ -33,17 +33,20 @@ final class AddRepositoryViewModel: ObservableObject {
     ]
 
     private let accessToken: String?
+    private let installationID: Int64?
     private let existingRepositoryNames: Set<String>
     private let backendRepositoryAPI: any RepositoryAPI                         // BeGit Repository関連API
     private let githubRepositoryAPI: any GitHubRepositoryAPI                    // GitHub Repository一覧API
 
     init(
         accessToken: String? = nil,
+        installationID: Int64? = nil,
         existingRepositories: [Repository] = [],
         backendRepositoryAPI: any RepositoryAPI = BeGitBackendAPI(),
         githubRepositoryAPI: (any GitHubRepositoryAPI)? = nil
     ) {
         self.accessToken = accessToken
+        self.installationID = installationID
         self.existingRepositoryNames = Set(existingRepositories.map { Self.normalizedRepositoryName($0.name) })
         self.backendRepositoryAPI = backendRepositoryAPI
 
@@ -117,7 +120,29 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryListErrorMessage = nil
 
         do {
-            let fetched = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+            var fetched: [GitHubRepository]
+            if let installationID, installationID > 0 {
+                // OAuth一覧に加えて、GitHub Appが許可した組織リポジトリを統合する。
+                let oauthRepositories = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+                fetched = oauthRepositories
+
+                do {
+                    let appRepositories = try await backendRepositoryAPI.listGitHubRepositories(
+                        accessToken: accessToken,
+                        installationID: installationID
+                    )
+                    let existingNames = Set(fetched.map { $0.fullName.lowercased() })
+                    fetched.append(contentsOf: appRepositories.filter {
+                        existingNames.contains($0.fullName.lowercased()) == false
+                    })
+                } catch {
+                    // App側の一時的な失敗で、OAuthで取得できる通常リポジトリまで
+                    // 画面から消さない。組織リポジトリが必要な場合はエラーを表示する。
+                    repositoryListErrorMessage = "組織リポジトリを取得できませんでした。GitHub Appの連携を確認してください。"
+                }
+            } else {
+                fetched = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+            }
             //  発表用デモリポジトリを先頭に固定
             availableRepositories = [Self.presentationRepo] + fetched
             visibleRepositoryCount = min(3, availableRepositories.count)
@@ -219,6 +244,7 @@ final class AddRepositoryViewModel: ObservableObject {
             let createdRepository = try await backendRepositoryAPI.createRepository(
                 repoFullName: repositoryName,
                 name: repositoryName,
+                installationID: installationID,
                 accessToken: accessToken
             )
             return repositoryWithSelectedOwnerAvatar(createdRepository)
@@ -235,7 +261,9 @@ final class AddRepositoryViewModel: ObservableObject {
                 return makeLocalRepository(name: repositoryName)
             }
 
-            errorMessage = error.localizedDescription
+            errorMessage = beGitAPIError(from: error)?.errorDescription
+                ?? (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
             return nil
         }
     }

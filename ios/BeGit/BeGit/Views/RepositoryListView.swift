@@ -107,6 +107,7 @@ struct RepositoryListView: View {
                 AddRepositoryView(
                     viewModel: AddRepositoryViewModel(
                         accessToken: authState.accessToken,
+                        installationID: authState.githubAppInstallationID,
                         existingRepositories: viewModel.repositories
                     )
                 ) { repository in

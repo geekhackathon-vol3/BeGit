@@ -160,18 +160,22 @@ struct AddRepositoryView: View {
 
             if viewModel.isLoadingRepositories {
                 repositoryLoadingRow
-            } else if let errorMessage = viewModel.repositoryListErrorMessage {
-                repositoryErrorState(errorMessage)
-            } else if viewModel.displayedRepositories.isEmpty {
-                repositoryEmptyState
             } else {
-                VStack(spacing: 8) {
-                    ForEach(viewModel.displayedRepositories) { repository in
-                        repositoryCandidateRow(repository)
-                    }
+                if let errorMessage = viewModel.repositoryListErrorMessage {
+                    repositoryErrorState(errorMessage)
+                }
 
-                    if viewModel.canShowMoreRepositories {
-                        showMoreRepositoriesButton
+                if viewModel.displayedRepositories.isEmpty {
+                    repositoryEmptyState
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(viewModel.displayedRepositories) { repository in
+                            repositoryCandidateRow(repository)
+                        }
+
+                        if viewModel.canShowMoreRepositories {
+                            showMoreRepositoriesButton
+                        }
                     }
                 }
             }

@@ -179,7 +179,7 @@ struct MockGitHubRepositoryAPI: GitHubRepositoryAPI {
                 isPrivate: true,
                 ownerAvatarURL: nil,
                 updatedAt: nil
-            )
+            ),
         ]
     }
 

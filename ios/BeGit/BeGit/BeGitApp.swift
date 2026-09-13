@@ -31,6 +31,9 @@ struct BeGitApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(AuthState.shared)    // ログイン状態をアプリ全体で共有
+                .onOpenURL { url in
+                    _ = AuthState.shared.handleGitHubAppInstallationURL(url)
+                }
         }
     }
 

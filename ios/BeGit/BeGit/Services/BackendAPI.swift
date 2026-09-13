@@ -23,6 +23,12 @@ enum BeGitAPIError: LocalizedError {
             if statusCode == 401 {
                 return "ログイン状態を確認できません。再ログインしてください。"
             }
+            if statusCode == 403 {
+                return "このリポジトリへのアクセス権がありません。所有者にGitHub Appをインストールして、対象リポジトリを選択してもらってください。"
+            }
+            if statusCode == 502 {
+                return "GitHub App経由のリポジトリ登録に失敗しました。Appのインストール先とリポジトリ権限を確認してください。"
+            }
             return message ?? "APIリクエストに失敗しました。status=\(statusCode)"
         }
     }
@@ -84,7 +90,13 @@ protocol CurrentUserAPI: Sendable {
 
 protocol RepositoryAPI: Sendable {
     func listRepositories(accessToken: String) async throws -> [Repository]
-    func createRepository(repoFullName: String, name: String, accessToken: String) async throws -> Repository
+    func listGitHubRepositories(accessToken: String, installationID: Int64) async throws -> [GitHubRepository]
+    func createRepository(
+        repoFullName: String,
+        name: String,
+        installationID: Int64?,
+        accessToken: String
+    ) async throws -> Repository
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
     func sendNotification(repositoryID: Int64, accessToken: String) async throws

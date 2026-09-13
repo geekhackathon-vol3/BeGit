@@ -121,11 +121,64 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return (try ok.body.json.groups ?? []).map { $0.toRepository(members: []) }
     }
+
+    /// GitHub AppのInstallation範囲を含む候補リポジトリをバックエンドから取得する。
+    /// 生成クライアントに依存せず、既存のGET /github/reposへInstallation IDを渡す。
+    func listGitHubRepositories(accessToken: String, installationID: Int64) async throws -> [GitHubRepository] {
+        guard installationID > 0 else { throw BeGitAPIError.invalidResponse }
+
+        var components = URLComponents(
+            url: baseURL.appending(path: "github/repos"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "installation_id", value: String(installationID))
+        ]
+        guard let url = components?.url else { throw BeGitAPIError.invalidURL }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 {
+                throw BeGitAPIError.authenticationRequired
+            }
+            let message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
+            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        let payload = try JSONDecoder().decode(GitHubRepoListResponseDTO.self, from: data)
+        return payload.repos.map { repo in
+            GitHubRepository(
+                id: repo.id,
+                fullName: repo.fullName,
+                description: nil,
+                isPrivate: repo.private,
+                ownerAvatarURL: repo.avatarURL.isEmpty ? nil : URL(string: repo.avatarURL),
+                updatedAt: nil
+            )
+        }
+    }
     
     // 作成成功は 201(.created)
-    func createRepository(repoFullName: String, name: String, accessToken: String) async throws -> Repository {
+    func createRepository(
+        repoFullName: String,
+        name: String,
+        installationID: Int64?,
+        accessToken: String
+    ) async throws -> Repository {
         let output = try await makeClient(accessToken: accessToken).postGroups(
-            .init(body: .json(.Handler_CreateGroupRequest(.init(name: name, repoFullName: repoFullName))))
+            .init(body: .json(.Handler_CreateGroupRequest(.init(
+                installationId: installationID.map { Int($0) },
+                name: name,
+                repoFullName: repoFullName
+            ))))
         )
         guard case let .created(created) = output else { throw BeGitAPIError.invalidResponse }
         guard let id = try created.body.json.id else { throw BeGitAPIError.invalidResponse }
@@ -279,4 +332,42 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
 // MainActor 隔離になり、上の nonisolated な ErrorThrowingMiddleware から decode できない。
 private nonisolated struct ErrorResponseDTO: Decodable {
     let error: String
+}
+
+private nonisolated struct GitHubRepoListResponseDTO: Decodable {
+    let repos: [GitHubRepoDTO]
+}
+
+private nonisolated struct GitHubRepoDTO: Decodable {
+    let id: Int
+    let fullName: String
+    let name: String
+    let `private`: Bool
+    let ownerLogin: String
+    let avatarURL: String
+    let canPush: Bool
+    let canAdmin: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fullName = "full_name"
+        case name
+        case `private`
+        case ownerLogin = "owner_login"
+        case avatarURL = "avatar_url"
+        case canPush = "can_push"
+        case canAdmin = "can_admin"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(Int.self, forKey: .id) ?? 0
+        fullName = try container.decodeIfPresent(String.self, forKey: .fullName) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        `private` = try container.decodeIfPresent(Bool.self, forKey: .private) ?? false
+        ownerLogin = try container.decodeIfPresent(String.self, forKey: .ownerLogin) ?? ""
+        avatarURL = try container.decodeIfPresent(String.self, forKey: .avatarURL) ?? ""
+        canPush = try container.decodeIfPresent(Bool.self, forKey: .canPush) ?? false
+        canAdmin = try container.decodeIfPresent(Bool.self, forKey: .canAdmin) ?? false
+    }
 }
