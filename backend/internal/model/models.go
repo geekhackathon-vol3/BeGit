@@ -19,6 +19,7 @@ type Group struct {
 	RepoFullName       string
 	Name               string
 	AvatarURL          string
+	ReadOnly           bool
 	OwnerUserID        int64
 	SprintDurationDays int
 	CreatedAt          time.Time

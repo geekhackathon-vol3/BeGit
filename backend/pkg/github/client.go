@@ -42,6 +42,7 @@ type User struct {
 type RepoInfo struct {
 	FullName  string `json:"full_name"`
 	AvatarURL string // owner.avatar_url
+	Private   bool
 }
 
 // AppInstallation は GitHub App のインストール先アカウント情報。
@@ -160,7 +161,9 @@ func (c *githubClient) doAPIRequest(ctx context.Context, method, path, accessTok
 	if err != nil {
 		return nil, fmt.Errorf("github: failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {
@@ -364,6 +367,9 @@ func (c *githubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToke
 	}
 	if fullName, ok := raw["full_name"].(string); ok {
 		info.FullName = fullName
+	}
+	if private, ok := raw["private"].(bool); ok {
+		info.Private = private
 	}
 	if owner, ok := raw["owner"].(map[string]interface{}); ok {
 		if avatarURL, ok := owner["avatar_url"].(string); ok {

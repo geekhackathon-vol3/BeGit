@@ -15,6 +15,7 @@ type CreateGroupRequest struct {
 	RepoFullName   string
 	Name           string
 	InstallationID int64
+	ReadOnly       bool
 	// AccessToken は旧OAuth方式との後方互換用。新規クライアントはInstallationIDを指定する。
 	AccessToken string
 }
@@ -123,6 +124,10 @@ func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]model.Gr
 // CreateGroup はリポジトリ情報取得 → Webhook 登録 → グループ作成 → オーナー追加 → コラボレーター自動追加の順に処理する。
 // Webhook 登録を先に行うことで、登録失敗時にグループが作成されないことを保証する。
 func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error) {
+	if req.ReadOnly && req.InstallationID > 0 {
+		return nil, fmt.Errorf("%w: read-only repositories cannot use a GitHub App installation", ErrValidation)
+	}
+
 	accessToken, err := s.resolveGitHubAccessToken(ctx, req)
 	if err != nil {
 		return nil, err
@@ -139,13 +144,18 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		}
 		return nil, fmt.Errorf("%w: get repo info failed: %v", ErrExternalAPI, err)
 	}
+	if req.ReadOnly && repoInfo.Private {
+		return nil, fmt.Errorf("%w: read-only mode is available only for public repositories", ErrForbidden)
+	}
 
-	// Step 2: GitHub Webhook を登録（失敗時はグループを作成しない）
-	// "hook already exists" と 403 Forbidden（admin 権限不足）は非致命的として扱う
-	webhookURL := s.config.AppBaseURL + "/webhook/github"
-	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, accessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
-		if !isHookAlreadyExistsError(err) && !errors.Is(err, githubpkg.ErrForbidden) {
-			return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
+	if !req.ReadOnly {
+		// Step 2: GitHub Webhook を登録（失敗時はグループを作成しない）
+		// "hook already exists" と 403 Forbidden（admin 権限不足）は非致命的として扱う
+		webhookURL := s.config.AppBaseURL + "/webhook/github"
+		if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, accessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
+			if !isHookAlreadyExistsError(err) && !errors.Is(err, githubpkg.ErrForbidden) {
+				return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
+			}
 		}
 	}
 
@@ -154,6 +164,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		RepoFullName: req.RepoFullName,
 		Name:         req.Name,
 		AvatarURL:    repoInfo.AvatarURL,
+		ReadOnly:     req.ReadOnly,
 		OwnerUserID:  userID,
 	})
 	if err != nil {
@@ -175,7 +186,11 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		return nil, fmt.Errorf("group_service: AddMember (owner) failed: %w", err)
 	}
 
-	// Step 5: GitHub コラボレーターを取得して BeGit 登録済みユーザーを自動追加
+	// Step 5: GitHub コラボレーターを取得して BeGit 登録済みユーザーを自動追加。
+	// 表示専用リポジトリはコラボレーター情報も権限対象のため取得しない。
+	if req.ReadOnly {
+		return group, nil
+	}
 	collaborators, err := s.githubClient.GetCollaborators(ctx, req.RepoFullName, accessToken)
 	if err == nil {
 		var memberIDs []int64
@@ -246,6 +261,13 @@ func (s *groupService) SyncMembers(ctx context.Context, groupID int64, accessTok
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("group_service: SyncMembers GetByID failed: %w", err)
+	}
+	if group.ReadOnly {
+		members, membersErr := s.groupRepo.GetMembers(ctx, groupID)
+		if membersErr != nil {
+			return nil, fmt.Errorf("group_service: SyncMembers GetMembers failed: %w", membersErr)
+		}
+		return members, nil
 	}
 
 	collaborators, err := s.githubClient.GetCollaborators(ctx, group.RepoFullName, accessToken)

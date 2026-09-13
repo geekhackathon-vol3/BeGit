@@ -15,6 +15,7 @@ type GroupCreateInput struct {
 	RepoFullName string
 	Name         string
 	AvatarURL    string
+	ReadOnly     bool
 	OwnerUserID  int64
 }
 
@@ -55,6 +56,9 @@ func scanGroup(row map[string]interface{}) (*model.Group, error) {
 	}
 	if v, ok := row["avatar_url"].(string); ok {
 		group.AvatarURL = v
+	}
+	if v, ok := row["read_only"].(float64); ok {
+		group.ReadOnly = v != 0
 	}
 	if v, ok := row["owner_user_id"].(float64); ok {
 		group.OwnerUserID = int64(v)
@@ -100,7 +104,7 @@ func scanGroupMember(row map[string]interface{}) model.GroupMember {
 // ListByUserID は userID が所属する全グループを取得する
 func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]model.Group, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT g.id, g.repo_full_name, g.name, g.avatar_url, g.owner_user_id, g.sprint_duration_days, g.created_at
+		`SELECT g.id, g.repo_full_name, g.name, g.avatar_url, g.read_only, g.owner_user_id, g.sprint_duration_days, g.created_at
 		 FROM groups g
 		 INNER JOIN group_members gm ON g.id = gm.group_id
 		 WHERE gm.user_id = ?`,
@@ -127,9 +131,9 @@ func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]mod
 // Create はグループを作成する
 func (r *groupRepository) Create(ctx context.Context, input *GroupCreateInput) (*model.Group, error) {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO groups (repo_full_name, name, avatar_url, owner_user_id)
-		 VALUES (?, ?, ?, ?)`,
-		[]interface{}{input.RepoFullName, input.Name, input.AvatarURL, input.OwnerUserID},
+		`INSERT INTO groups (repo_full_name, name, avatar_url, read_only, owner_user_id)
+		 VALUES (?, ?, ?, ?, ?)`,
+		[]interface{}{input.RepoFullName, input.Name, input.AvatarURL, boolToSQLite(input.ReadOnly), input.OwnerUserID},
 	)
 	if err != nil {
 		if errors.Is(err, d1.ErrConstraintViolation) {
@@ -144,7 +148,7 @@ func (r *groupRepository) Create(ctx context.Context, input *GroupCreateInput) (
 // GetByID は groupID でグループを取得する
 func (r *groupRepository) GetByID(ctx context.Context, groupID int64) (*model.Group, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, repo_full_name, name, avatar_url, owner_user_id, sprint_duration_days, created_at
+		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id, sprint_duration_days, created_at
 		 FROM groups WHERE id = ? LIMIT 1`,
 		[]interface{}{groupID},
 	)
@@ -161,7 +165,7 @@ func (r *groupRepository) GetByID(ctx context.Context, groupID int64) (*model.Gr
 // GetByRepoFullName は repo_full_name でグループを取得する
 func (r *groupRepository) GetByRepoFullName(ctx context.Context, repoFullName string) (*model.Group, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, repo_full_name, name, avatar_url, owner_user_id, sprint_duration_days, created_at
+		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id, sprint_duration_days, created_at
 		 FROM groups WHERE repo_full_name = ? LIMIT 1`,
 		[]interface{}{repoFullName},
 	)
@@ -177,6 +181,13 @@ func (r *groupRepository) GetByRepoFullName(ctx context.Context, repoFullName st
 	}
 
 	return scanGroup(rows[0])
+}
+
+func boolToSQLite(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // AddMember はグループにメンバーを追加する

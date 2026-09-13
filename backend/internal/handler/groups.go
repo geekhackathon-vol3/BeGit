@@ -15,6 +15,7 @@ type CreateGroupRequest struct {
 	RepoFullName   string `json:"repo_full_name" example:"owner/repo"`
 	Name           string `json:"name" example:"My Repo"`
 	InstallationID int64  `json:"installation_id,omitempty" example:"160548256"`
+	ReadOnly       bool   `json:"read_only,omitempty" example:"true"`
 }
 
 // GroupJSON は GET /groups レスポンスのグループ型
@@ -23,6 +24,7 @@ type GroupJSON struct {
 	Name         string `json:"name"`
 	RepoFullName string `json:"repo_full_name"`
 	AvatarURL    string `json:"avatar_url"`
+	ReadOnly     bool   `json:"read_only"`
 }
 
 // GroupListResponse は GET /groups のレスポンス
@@ -89,6 +91,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 			Name:         g.Name,
 			RepoFullName: g.RepoFullName,
 			AvatarURL:    g.AvatarURL,
+			ReadOnly:     g.ReadOnly,
 		})
 	}
 
@@ -143,6 +146,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RepoFullName:   req.RepoFullName,
 		Name:           req.Name,
 		InstallationID: req.InstallationID,
+		ReadOnly:       req.ReadOnly,
 		AccessToken:    accessToken,
 	}, userID)
 	if err != nil {
@@ -158,6 +162,10 @@ func (h *GroupHandler) Create(c *gin.Context) {
 			respondError(c, http.StatusBadGateway, "external api error")
 			return
 		}
+		if errors.Is(err, service.ErrValidation) {
+			respondError(c, http.StatusUnprocessableEntity, "invalid group request")
+			return
+		}
 		if errors.Is(err, service.ErrConflict) {
 			respondError(c, http.StatusConflict, "conflict")
 			return
@@ -171,6 +179,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Name:         group.Name,
 		RepoFullName: group.RepoFullName,
 		AvatarURL:    group.AvatarURL,
+		ReadOnly:     group.ReadOnly,
 	})
 }
 
@@ -230,6 +239,7 @@ func (h *GroupHandler) Get(c *gin.Context) {
 			Name:         detail.Name,
 			RepoFullName: detail.RepoFullName,
 			AvatarURL:    detail.AvatarURL,
+			ReadOnly:     detail.ReadOnly,
 		},
 		Members: members,
 	})

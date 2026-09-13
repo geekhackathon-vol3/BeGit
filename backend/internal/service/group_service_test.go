@@ -139,6 +139,53 @@ func TestGroupService_CreateGroup_WebhookSuccess(t *testing.T) {
 	}
 }
 
+func TestGroupService_CreateGroup_ReadOnlyPublicRepositorySkipsGitHubWrites(t *testing.T) {
+	webhookRegistered := false
+	collaboratorsListed := false
+	groupCreatedReadOnly := false
+
+	githubClient := &mockGitHubClient{
+		getRepoInfoFunc: func(ctx context.Context, repoFullName, accessToken string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName:  repoFullName,
+				AvatarURL: "https://example.com/avatar.png",
+				Private:   false,
+			}, nil
+		},
+		registerWebhookFunc: func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error {
+			webhookRegistered = true
+			return nil
+		},
+		getCollaboratorsFunc: func(ctx context.Context, repoFullName, accessToken string) ([]githubpkg.User, error) {
+			collaboratorsListed = true
+			return nil, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
+			groupCreatedReadOnly = input.ReadOnly
+			return &model.Group{ID: 7, RepoFullName: input.RepoFullName, Name: input.Name, ReadOnly: input.ReadOnly}, nil
+		},
+	}
+
+	svc := NewGroupService(GroupServiceConfig{AppBaseURL: "https://example.com"}, githubClient, groupRepo, &mockUserRepository{})
+	group, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "other-owner/public-repo",
+		Name:         "Public Repo",
+		ReadOnly:     true,
+		AccessToken:  "github-token",
+	}, 1)
+	if err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if webhookRegistered || collaboratorsListed {
+		t.Fatal("read-only repository must not register a webhook or list collaborators")
+	}
+	if !groupCreatedReadOnly || group == nil || !group.ReadOnly {
+		t.Fatal("expected a read-only group to be persisted")
+	}
+}
+
 func TestGroupService_CreateGroup_UsesInstallationToken(t *testing.T) {
 	var gotAppID string
 	var gotKey string

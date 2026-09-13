@@ -123,6 +123,10 @@
                         "example": "My Repo",
                         "type": "string"
                     },
+                    "read_only": {
+                        "example": true,
+                        "type": "boolean"
+                    },
                     "repo_full_name": {
                         "example": "owner/repo",
                         "type": "string"
@@ -190,6 +194,9 @@
                     "name": {
                         "type": "string"
                     },
+                    "read_only": {
+                        "type": "boolean"
+                    },
                     "repo_full_name": {
                         "type": "string"
                     }
@@ -206,6 +213,9 @@
                     },
                     "name": {
                         "type": "string"
+                    },
+                    "read_only": {
+                        "type": "boolean"
                     },
                     "repo_full_name": {
                         "type": "string"

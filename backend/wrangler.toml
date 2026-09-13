@@ -4,19 +4,9 @@ compatibility_date = "2024-09-23"
 
 [observability]
 enabled = true
-head_sampling_rate = 1
 
 [observability.logs]
 enabled = true
-head_sampling_rate = 1
-persist = true
-invocation_logs = true
-
-[observability.traces]
-enabled = false
-# persist and head_sampling_rate are preset values for when enabled is switched to true
-persist = true
-head_sampling_rate = 1
 
 [vars]
 CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
@@ -41,6 +31,7 @@ crons = ["* * * * *", "0 0 * * *"]
 #   cd backend && npx wrangler secret put R2_SECRET_ACCESS_KEY
 
 [[containers]]
+name = "begit-begitapi"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
 max_instances = 1
@@ -97,6 +88,7 @@ CRON_SECRET = "dev-cron-secret"  # dev 用の Cron 起動シークレット（�
 crons = ["* * * * *", "0 0 * * *"]
 
 [[env.dev.containers]]
+name = "begit-dev-begitapi-dev"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
 max_instances = 1
@@ -137,6 +129,7 @@ APP_BASE_URL = "https://begit-minimal.241it002i.workers.dev"
 GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
 
 [[env.minimal.containers]]
+name = "begit-minimal-begitapi-minimal"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
 max_instances = 1
