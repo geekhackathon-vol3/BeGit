@@ -6,6 +6,7 @@ import Foundation
 //  GitHub Repository一覧取得APIのインターフェース
 protocol GitHubRepositoryAPI {
     func listRepositories(accessToken: String) async throws -> [GitHubRepository]
+    func lookupPublicRepository(repoFullName: String, accessToken: String) async throws -> GitHubRepository
     func listRepositoryMembers(repoFullName: String, accessToken: String) async throws -> [RepositoryMember]
     func searchUsers(query: String, accessToken: String) async throws -> [RepositoryMember]
 }
@@ -56,6 +57,49 @@ struct GitHubRepositoryClient: GitHubRepositoryAPI {
             return try decoder.decode([GitHubRepositoryResponse].self, from: data).map(\.repository)
         case 401:
             throw GitHubRepositoryAPIError.unauthorized
+        default:
+            throw GitHubRepositoryAPIError.requestFailed(statusCode: httpResponse.statusCode)
+        }
+    }
+
+    func lookupPublicRepository(repoFullName: String, accessToken: String) async throws -> GitHubRepository {
+        let parts = repoFullName.split(separator: "/", maxSplits: 1).map(String.init)
+        guard parts.count == 2, parts.allSatisfy({ $0.isEmpty == false }) else {
+            throw GitHubRepositoryAPIError.invalidURL
+        }
+
+        let url = apiBaseURL.appending(path: "repos").appending(path: parts[0]).appending(path: parts[1])
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        // 認証トークンはレート制限緩和のために使うだけで、所有者の権限を代替しない。
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw GitHubRepositoryAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200..<300:
+            let repository = try JSONDecoder().decode(GitHubRepositoryResponse.self, from: data).repository
+            guard repository.isPrivate == false else {
+                throw GitHubRepositoryAPIError.privateRepository
+            }
+            return GitHubRepository(
+                id: repository.id,
+                fullName: repository.fullName,
+                description: repository.description,
+                isPrivate: false,
+                ownerAvatarURL: repository.ownerAvatarURL,
+                updatedAt: repository.updatedAt,
+                isReadOnly: true
+            )
+        case 401:
+            throw GitHubRepositoryAPIError.unauthorized
+        case 404:
+            throw GitHubRepositoryAPIError.repositoryNotFound
         default:
             throw GitHubRepositoryAPIError.requestFailed(statusCode: httpResponse.statusCode)
         }
@@ -183,6 +227,19 @@ struct MockGitHubRepositoryAPI: GitHubRepositoryAPI {
         ]
     }
 
+    func lookupPublicRepository(repoFullName: String, accessToken: String) async throws -> GitHubRepository {
+        let owner = repoFullName.split(separator: "/").first.map(String.init) ?? "github"
+        return GitHubRepository(
+            id: -2,
+            fullName: repoFullName,
+            description: "公開リポジトリ（表示専用）",
+            isPrivate: false,
+            ownerAvatarURL: URL(string: "https://github.com/\(owner).png"),
+            updatedAt: nil,
+            isReadOnly: true
+        )
+    }
+
     func listRepositoryMembers(repoFullName: String, accessToken: String) async throws -> [RepositoryMember] {
         try await Task.sleep(for: .milliseconds(250))
 
@@ -239,6 +296,8 @@ enum GitHubRepositoryAPIError: LocalizedError {
     case invalidURL
     case invalidResponse
     case unauthorized
+    case privateRepository
+    case repositoryNotFound
     case requestFailed(statusCode: Int)
 
     var errorDescription: String? {
@@ -249,6 +308,10 @@ enum GitHubRepositoryAPIError: LocalizedError {
             return "GitHubから不正なレスポンスを受け取りました。"
         case .unauthorized:
             return "GitHub認証が無効です。再ログインしてください。"
+        case .privateRepository:
+            return "非公開リポジトリは、所有者の許可なしには表示専用登録できません。"
+        case .repositoryNotFound:
+            return "公開リポジトリが見つかりません。owner/repository の形式を確認してください。"
         case let .requestFailed(statusCode):
             return "GitHub Repository一覧の取得に失敗しました。status=\(statusCode)"
         }

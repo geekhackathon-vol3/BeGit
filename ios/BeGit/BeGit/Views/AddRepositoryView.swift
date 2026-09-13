@@ -7,6 +7,7 @@ import SwiftUI
 struct AddRepositoryView: View {
     @Environment(\.dismiss) private var dismiss                 //  Sheetを閉じるためのdismiss action
     @EnvironmentObject private var authState: AuthState         //  API認証トークン
+    @Environment(\.openURL) private var openURL
     @StateObject private var viewModel: AddRepositoryViewModel  //  画面状態を管理するViewModel
     @ObservedObject private var oauthManager = GitHubOAuthManager.shared
     @State private var isMemberSearchPresented = false          //  GitHub member検索Sheet表示状態
@@ -102,6 +103,12 @@ struct AddRepositoryView: View {
         .task {
             await viewModel.loadRepositories()
         }
+        .onChange(of: authState.githubAppInstallationID) { _, installationID in
+            viewModel.updateInstallationID(installationID)
+            Task {
+                await viewModel.reloadRepositories()
+            }
+        }
         .sheet(isPresented: $isMemberSearchPresented) {
             GitHubUserSearchSheetView(
                 accessToken: authState.accessToken,
@@ -150,6 +157,7 @@ struct AddRepositoryView: View {
             )
 
             repositoryPickerBox
+            publicRepositoryLookupSection
         }
     }
 
@@ -258,6 +266,66 @@ struct AddRepositoryView: View {
             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
     }
 
+    //  GitHub App未接続の公開Repositoryを表示専用で追加する入力欄
+    private var publicRepositoryLookupSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("公開リポジトリを表示専用で追加")
+                .appFont(.label)
+                .foregroundStyle(AppTheme.Text.regular)
+
+            HStack(spacing: 8) {
+                TextField(
+                    "owner/repository または GitHub URL",
+                    text: $viewModel.publicRepositoryInput
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .appFont(.caption)
+                .foregroundStyle(AppTheme.Text.primary)
+                .tint(AppTheme.accent)
+
+                Button {
+                    Task { await viewModel.lookupPublicRepository() }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.black)
+                        .frame(width: 34, height: 34)
+                        .background(AppTheme.accent)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("公開リポジトリを検索")
+            }
+
+            Text("所有者の許可なしで追加できますが、Webhookやメンバー同期は利用できません。")
+                .appFont(.caption)
+                .foregroundStyle(AppTheme.Text.low)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 14) {
+                Button {
+                    Task { await viewModel.reloadRepositories() }
+                } label: {
+                    Label("許可済みリポジトリを更新", systemImage: "arrow.clockwise")
+                }
+
+                Button {
+                    guard let url = URL(string: "https://github.com/apps/begit-webhooks/installations/new") else { return }
+                    openURL(url)
+                } label: {
+                    Label(
+                        authState.githubAppInstallationID == nil ? "GitHub Appを設定" : "Appの許可を変更",
+                        systemImage: "person.badge.key"
+                    )
+                }
+            }
+            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .foregroundStyle(AppTheme.accent)
+        }
+        .padding(.top, 2)
+    }
+
     //  Repository候補の追加表示button
     private var showMoreRepositoriesButton: some View {
         Button(action: viewModel.showMoreRepositories) {
@@ -335,6 +403,16 @@ struct AddRepositoryView: View {
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(AppTheme.Text.regular)
+                        }
+
+                        if repository.isReadOnly {
+                            Text("表示専用")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.black.opacity(0.78))
+                                .padding(.horizontal, 7)
+                                .frame(height: 20)
+                                .background(AppTheme.accent)
+                                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                         }
 
                         if isAlreadyAdded {

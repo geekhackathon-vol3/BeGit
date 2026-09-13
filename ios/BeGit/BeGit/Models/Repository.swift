@@ -11,6 +11,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
     let ownerAvatarURL: URL?        //  Repository ownerのavatar画像URL
     let memberCount: Int            //  Team member数
     let members: [RepositoryMember] //  Repository member一覧
+    let isReadOnly: Bool            //  GitHub App未接続の公開リポジトリ（表示専用）
 
     init(
         id: UUID = UUID(),
@@ -18,7 +19,8 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         name: String,
         ownerAvatarURL: URL? = nil,
         memberCount: Int,
-        members: [RepositoryMember]
+        members: [RepositoryMember],
+        isReadOnly: Bool = false
     ) {
         self.id = id
         self.backendID = backendID
@@ -26,6 +28,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         self.ownerAvatarURL = ownerAvatarURL
         self.memberCount = memberCount
         self.members = members
+        self.isReadOnly = isReadOnly
     }
 }
 

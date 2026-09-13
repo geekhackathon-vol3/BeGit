@@ -16,11 +16,23 @@ struct RepositoryCardView: View {
 
             VStack(alignment: .leading, spacing: 14) {
                 //  Repository名
-                Text(repository.name)
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.82)
+                HStack(spacing: 8) {
+                    Text(repository.name)
+                        .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.82)
+
+                    if repository.isReadOnly {
+                        Text("表示専用")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.black.opacity(0.78))
+                            .padding(.horizontal, 6)
+                            .frame(height: 20)
+                            .background(AppTheme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    }
+                }
 
                 HStack(spacing: 12) {
                      //  member avatar一覧

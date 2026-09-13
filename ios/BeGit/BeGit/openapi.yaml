@@ -81,6 +81,9 @@ components:
         name:
           example: My Repo
           type: string
+        read_only:
+          example: true
+          type: boolean
         repo_full_name:
           example: owner/repo
           type: string
@@ -125,6 +128,8 @@ components:
           uniqueItems: false
         name:
           type: string
+        read_only:
+          type: boolean
         repo_full_name:
           type: string
       type: object
@@ -136,6 +141,8 @@ components:
           type: integer
         name:
           type: string
+        read_only:
+          type: boolean
         repo_full_name:
           type: string
       type: object

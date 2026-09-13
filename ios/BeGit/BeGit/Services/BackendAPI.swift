@@ -95,6 +95,7 @@ protocol RepositoryAPI: Sendable {
         repoFullName: String,
         name: String,
         installationID: Int64?,
+        readOnly: Bool,
         accessToken: String
     ) async throws -> Repository
     func getRepository(id: Int64, accessToken: String) async throws -> Repository

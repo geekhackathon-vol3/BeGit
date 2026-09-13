@@ -171,13 +171,14 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         repoFullName: String,
         name: String,
         installationID: Int64?,
+        readOnly: Bool,
         accessToken: String
     ) async throws -> Repository {
         let output = try await makeClient(accessToken: accessToken).postGroups(
             .init(body: .json(.Handler_CreateGroupRequest(.init(
                 installationId: installationID.map { Int($0) },
                 name: name,
-                repoFullName: repoFullName
+                readOnly: readOnly, repoFullName: repoFullName
             ))))
         )
         guard case let .created(created) = output else { throw BeGitAPIError.invalidResponse }

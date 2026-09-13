@@ -37,7 +37,8 @@ extension Components.Schemas.Handler_GroupJSON {
             name: displayName,
             ownerAvatarURL: avatarURL,
             memberCount: members.count,
-            members: members
+            members: members,
+            isReadOnly: readOnly ?? false
         )
     }
 }
@@ -54,7 +55,8 @@ extension Components.Schemas.Handler_GroupDetailJSON {
             name: displayName,
             ownerAvatarURL: avatarURL,
             memberCount: repositoryMembers.count,
-            members: repositoryMembers
+            members: repositoryMembers,
+            isReadOnly: readOnly ?? false
         )
     }
 }
