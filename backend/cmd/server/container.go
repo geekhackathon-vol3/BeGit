@@ -83,6 +83,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	notifRepo := repository.NewNotificationRepository(d1Client)
 	postRepo := repository.NewPostRepository(d1Client)
 	webhookRepo := repository.NewWebhookRepository(d1Client)
+	githubAppInstallationRepo := repository.NewGitHubAppInstallationRepository(d1Client)
 	fcmTokenRepo := repository.NewFCMTokenRepository(d1Client)
 	reactionRepo := repository.NewReactionRepository(d1Client)
 	commentRepo := repository.NewCommentRepository(d1Client)
@@ -98,16 +99,6 @@ func (s *server) buildHandler() (http.Handler, error) {
 		githubClient,
 		userRepo,
 		encryptor,
-	)
-
-	groupSvc := service.NewGroupService(
-		service.GroupServiceConfig{
-			AppBaseURL:          cfg.AppBaseURL,
-			GitHubWebhookSecret: cfg.GitHubWebhookSecret,
-		},
-		githubClient,
-		groupRepo,
-		userRepo,
 	)
 
 	notifSvc := service.NewNotificationServiceFull(
@@ -138,7 +129,43 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// ③④⑤⑥ Cron サービス
 	cronSvc := service.NewCronService(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient)
 
-	githubSvc := service.NewGitHubService(githubClient, groupRepo)
+	appInstallationClient, ok := githubClient.(githubpkg.AppInstallationClient)
+	if !ok {
+		return nil, fmt.Errorf("GitHub client does not support App installations")
+	}
+	appInstallationTokenClient, ok := githubClient.(githubpkg.AppInstallationTokenClient)
+	if !ok {
+		return nil, fmt.Errorf("GitHub client does not support Installation Tokens")
+	}
+	githubSvc := service.NewGitHubServiceWithAppToken(
+		service.GitHubServiceConfig{
+			GitHubAppID:         cfg.GitHubAppID,
+			GitHubAppPrivateKey: cfg.GitHubAppPrivateKey,
+		},
+		githubClient,
+		appInstallationTokenClient,
+		groupRepo,
+	)
+	groupSvc := service.NewGroupServiceWithAppToken(
+		service.GroupServiceConfig{
+			AppBaseURL:          cfg.AppBaseURL,
+			GitHubWebhookSecret: cfg.GitHubWebhookSecret,
+			GitHubAppID:         cfg.GitHubAppID,
+			GitHubAppPrivateKey: cfg.GitHubAppPrivateKey,
+		},
+		githubClient,
+		appInstallationTokenClient,
+		groupRepo,
+		userRepo,
+	)
+	githubAppInstallationSvc := service.NewGitHubAppInstallationService(
+		service.GitHubAppInstallationServiceConfig{
+			AppID:         cfg.GitHubAppID,
+			PrivateKeyPEM: cfg.GitHubAppPrivateKey,
+		},
+		appInstallationClient,
+		githubAppInstallationRepo,
+	)
 
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
@@ -151,6 +178,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	reactionHandler := handler.NewReactionHandler(reactionSvc)
 	commentHandler := handler.NewCommentHandler(commentSvc)
 	githubHandler := handler.NewGitHubHandler(githubSvc)
+	githubAppHandler := handler.NewGitHubAppHandler(githubAppInstallationSvc, cfg.GitHubAppIOSRedirectURI)
 	cronHandler := handler.NewCronHandler(cronSvc, cfg.CronSecret)
 
 	// ミドルウェアの初期化
@@ -186,6 +214,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// 認証不要エンドポイント
 	r.POST("/auth/github", authHandler.GitHub)
 	r.POST("/webhook/github", webhookHandler.Receive)
+	r.GET("/github/app/setup", githubAppHandler.Setup)
 
 	// 内部 Cron エンドポイント（bearer 不要。X-Cron-Secret 一致時のみ受理。
 	// Workers scheduled() 経由でのみ到達する想定で公開はしない）。

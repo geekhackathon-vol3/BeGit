@@ -2,12 +2,28 @@ package github
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func testPrivateKeyPEM(t *testing.T) string {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate test key: %v", err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}))
+}
 
 // TestExchangeCode はコード交換が正しく access_token を返すことを確認する
 func TestExchangeCode(t *testing.T) {
@@ -109,6 +125,45 @@ func TestGetUser_Unauthorized(t *testing.T) {
 	_, err := client.GetUser(context.Background(), "bad_token")
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Errorf("expected ErrUnauthorized, got %v", err)
+	}
+}
+
+// TestCreateInstallationAccessToken はApp JWTでInstallation Tokenを取得することを確認する。
+func TestCreateInstallationAccessToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/app/installations/160548256/access_tokens" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); len(got) < len("Bearer ")+10 || got[:len("Bearer ")] != "Bearer " {
+			t.Errorf("expected Bearer authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"token": "ghs_installation_token"})
+	}))
+	defer server.Close()
+
+	client := &githubClient{
+		httpClient:    server.Client(),
+		oauthEndpoint: server.URL,
+		apiEndpoint:   server.URL,
+	}
+
+	token, err := client.CreateInstallationAccessToken(context.Background(), "4886659", testPrivateKeyPEM(t), 160548256)
+	if err != nil {
+		t.Fatalf("CreateInstallationAccessToken() failed: %v", err)
+	}
+	if token != "ghs_installation_token" {
+		t.Errorf("expected installation token, got %q", token)
+	}
+}
+
+func TestCreateInstallationAccessToken_RejectsInvalidInstallationID(t *testing.T) {
+	client := &githubClient{}
+	if _, err := client.CreateInstallationAccessToken(context.Background(), "4886659", "private-key", 0); err == nil {
+		t.Fatal("expected validation error")
 	}
 }
 

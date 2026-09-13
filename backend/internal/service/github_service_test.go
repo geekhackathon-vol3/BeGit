@@ -28,6 +28,38 @@ func TestGitHubService_ListRepos_Success(t *testing.T) {
 	}
 }
 
+func TestGitHubService_ListInstallationRepos_UsesInstallationToken(t *testing.T) {
+	var gotToken string
+	gh := &mockGitHubClient{
+		listInstallationReposFunc: func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error) {
+			gotToken = accessToken
+			return []githubpkg.Repo{{FullName: "geekhackathon-vol3/BeGit", CanPush: true}}, nil
+		},
+	}
+	tokenClient := &mockInstallationTokenClient{
+		createFunc: func(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error) {
+			if appID != "4886659" || privateKeyPEM != "private-key" || installationID != 160548256 {
+				t.Fatalf("unexpected token request: %s %s %d", appID, privateKeyPEM, installationID)
+			}
+			return "installation-token", nil
+		},
+	}
+	svc := NewGitHubServiceWithAppToken(
+		GitHubServiceConfig{GitHubAppID: "4886659", GitHubAppPrivateKey: "private-key"},
+		gh,
+		tokenClient,
+		&mockGroupRepository{},
+	)
+
+	repos, err := svc.ListInstallationRepos(context.Background(), 160548256)
+	if err != nil {
+		t.Fatalf("ListInstallationRepos() failed: %v", err)
+	}
+	if gotToken != "installation-token" || len(repos) != 1 || repos[0].FullName != "geekhackathon-vol3/BeGit" {
+		t.Fatalf("unexpected installation repos: token=%q repos=%+v", gotToken, repos)
+	}
+}
+
 // TestGitHubService_ListGroupCommits_Success はグループのコミット一覧を返すことを確認する
 func TestGitHubService_ListGroupCommits_Success(t *testing.T) {
 	var capturedRepo string

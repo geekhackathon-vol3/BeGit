@@ -115,6 +115,11 @@
             },
             "handler.CreateGroupRequest": {
                 "properties": {
+                    "installation_id": {
+                        "description": "GitHub App installation ID",
+                        "example": 160548256,
+                        "type": "integer"
+                    },
                     "name": {
                         "example": "My Repo",
                         "type": "string"
@@ -450,6 +455,9 @@
             },
             "handler.RepoJSON": {
                 "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
                     "avatar_url": {
                         "type": "string"
                     },
@@ -717,6 +725,17 @@
         "/github/repos": {
             "get": {
                 "description": "認証ユーザーが push / admin 権限を持つリポジトリ一覧を返す。グループ作成時のリポジトリ選択に使う。",
+                "parameters": [
+                    {
+                        "description": "GitHub App installation ID（指定時はAppの許可範囲を取得）",
+                        "in": "query",
+                        "name": "installation_id",
+                        "required": false,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "content": {

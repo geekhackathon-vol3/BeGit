@@ -12,9 +12,11 @@ import (
 
 // CreateGroupRequest はグループ作成リクエスト
 type CreateGroupRequest struct {
-	RepoFullName string
-	Name         string
-	AccessToken  string
+	RepoFullName   string
+	Name           string
+	InstallationID int64
+	// AccessToken は旧OAuth方式との後方互換用。新規クライアントはInstallationIDを指定する。
+	AccessToken string
 }
 
 // GroupDetail はグループ詳細（メンバー一覧付き）
@@ -27,6 +29,8 @@ type GroupDetail struct {
 type GroupServiceConfig struct {
 	AppBaseURL          string
 	GitHubWebhookSecret string
+	GitHubAppID         string
+	GitHubAppPrivateKey string
 }
 
 // GroupService はグループ管理サービスインターフェース
@@ -39,10 +43,11 @@ type GroupService interface {
 
 // groupService は GroupService インターフェースの実装
 type groupService struct {
-	config       GroupServiceConfig
-	githubClient githubpkg.Client
-	groupRepo    repository.GroupRepository
-	userRepo     repository.UserRepository
+	config                  GroupServiceConfig
+	githubClient            githubpkg.Client
+	installationTokenClient githubpkg.AppInstallationTokenClient
+	groupRepo               repository.GroupRepository
+	userRepo                repository.UserRepository
 }
 
 // NewGroupService は GroupService を作成する
@@ -52,11 +57,33 @@ func NewGroupService(
 	groupRepo repository.GroupRepository,
 	userRepo repository.UserRepository,
 ) GroupService {
+	return newGroupService(config, githubClient, nil, groupRepo, userRepo)
+}
+
+// NewGroupServiceWithAppToken はGitHub AppのInstallation Tokenを使うグループサービスを作成する。
+func NewGroupServiceWithAppToken(
+	config GroupServiceConfig,
+	githubClient githubpkg.Client,
+	installationTokenClient githubpkg.AppInstallationTokenClient,
+	groupRepo repository.GroupRepository,
+	userRepo repository.UserRepository,
+) GroupService {
+	return newGroupService(config, githubClient, installationTokenClient, groupRepo, userRepo)
+}
+
+func newGroupService(
+	config GroupServiceConfig,
+	githubClient githubpkg.Client,
+	installationTokenClient githubpkg.AppInstallationTokenClient,
+	groupRepo repository.GroupRepository,
+	userRepo repository.UserRepository,
+) GroupService {
 	return &groupService{
-		config:       config,
-		githubClient: githubClient,
-		groupRepo:    groupRepo,
-		userRepo:     userRepo,
+		config:                  config,
+		githubClient:            githubClient,
+		installationTokenClient: installationTokenClient,
+		groupRepo:               groupRepo,
+		userRepo:                userRepo,
 	}
 }
 
@@ -96,11 +123,19 @@ func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]model.Gr
 // CreateGroup はリポジトリ情報取得 → Webhook 登録 → グループ作成 → オーナー追加 → コラボレーター自動追加の順に処理する。
 // Webhook 登録を先に行うことで、登録失敗時にグループが作成されないことを保証する。
 func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error) {
+	accessToken, err := s.resolveGitHubAccessToken(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
 	// Step 1: リポジトリ情報（avatar_url）を取得
-	repoInfo, err := s.githubClient.GetRepoInfo(ctx, req.RepoFullName, req.AccessToken)
+	repoInfo, err := s.githubClient.GetRepoInfo(ctx, req.RepoFullName, accessToken)
 	if err != nil {
 		if errors.Is(err, githubpkg.ErrUnauthorized) {
 			return nil, ErrUnauthorized
+		}
+		if errors.Is(err, githubpkg.ErrForbidden) || errors.Is(err, githubpkg.ErrNotFound) {
+			return nil, ErrForbidden
 		}
 		return nil, fmt.Errorf("%w: get repo info failed: %v", ErrExternalAPI, err)
 	}
@@ -108,7 +143,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	// Step 2: GitHub Webhook を登録（失敗時はグループを作成しない）
 	// "hook already exists" と 403 Forbidden（admin 権限不足）は非致命的として扱う
 	webhookURL := s.config.AppBaseURL + "/webhook/github"
-	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, req.AccessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
+	if err := s.githubClient.RegisterWebhook(ctx, req.RepoFullName, accessToken, webhookURL, s.config.GitHubWebhookSecret); err != nil {
 		if !isHookAlreadyExistsError(err) && !errors.Is(err, githubpkg.ErrForbidden) {
 			return nil, fmt.Errorf("%w: webhook registration failed: %v", ErrExternalAPI, err)
 		}
@@ -141,7 +176,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	// Step 5: GitHub コラボレーターを取得して BeGit 登録済みユーザーを自動追加
-	collaborators, err := s.githubClient.GetCollaborators(ctx, req.RepoFullName, req.AccessToken)
+	collaborators, err := s.githubClient.GetCollaborators(ctx, req.RepoFullName, accessToken)
 	if err == nil {
 		var memberIDs []int64
 		for _, collab := range collaborators {
@@ -162,6 +197,40 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	return group, nil
+}
+
+// resolveGitHubAccessToken はInstallation IDが指定された場合にApp方式へ切り替える。
+// 旧OAuthクライアントとの段階移行中はAccessTokenへのフォールバックを許可する。
+func (s *groupService) resolveGitHubAccessToken(ctx context.Context, req CreateGroupRequest) (string, error) {
+	if req.InstallationID <= 0 {
+		if req.AccessToken == "" {
+			return "", ErrUnauthorized
+		}
+		return req.AccessToken, nil
+	}
+	if s.installationTokenClient == nil || s.config.GitHubAppID == "" || s.config.GitHubAppPrivateKey == "" {
+		return "", fmt.Errorf("%w: GitHub App token client is not configured", ErrExternalAPI)
+	}
+
+	token, err := s.installationTokenClient.CreateInstallationAccessToken(
+		ctx,
+		s.config.GitHubAppID,
+		s.config.GitHubAppPrivateKey,
+		req.InstallationID,
+	)
+	if err != nil {
+		if errors.Is(err, githubpkg.ErrUnauthorized) {
+			return "", ErrUnauthorized
+		}
+		if errors.Is(err, githubpkg.ErrForbidden) || errors.Is(err, githubpkg.ErrNotFound) {
+			return "", ErrForbidden
+		}
+		return "", fmt.Errorf("%w: failed to create installation token: %v", ErrExternalAPI, err)
+	}
+	if token == "" {
+		return "", fmt.Errorf("%w: empty installation token", ErrExternalAPI)
+	}
+	return token, nil
 }
 
 // SyncMembers は GitHub コラボレーターを取得し、BeGit 登録済みユーザーを

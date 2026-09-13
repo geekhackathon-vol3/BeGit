@@ -11,6 +11,17 @@ import (
 	githubpkg "github.com/irj0927/begit/pkg/github"
 )
 
+type mockInstallationTokenClient struct {
+	createFunc func(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error)
+}
+
+func (m *mockInstallationTokenClient) CreateInstallationAccessToken(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error) {
+	if m.createFunc != nil {
+		return m.createFunc(ctx, appID, privateKeyPEM, installationID)
+	}
+	return "installation-token", nil
+}
+
 // mockGroupRepository はテスト用のグループリポジトリモック
 type mockGroupRepository struct {
 	listByUserIDFunc      func(ctx context.Context, userID int64) ([]model.Group, error)
@@ -125,6 +136,56 @@ func TestGroupService_CreateGroup_WebhookSuccess(t *testing.T) {
 	}
 	if group.RepoFullName != "owner/repo" {
 		t.Errorf("expected RepoFullName=owner/repo, got %s", group.RepoFullName)
+	}
+}
+
+func TestGroupService_CreateGroup_UsesInstallationToken(t *testing.T) {
+	var gotAppID string
+	var gotKey string
+	var gotInstallationID int64
+	var gotWebhookToken string
+
+	githubClient := &mockGitHubClient{
+		registerWebhookFunc: func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error {
+			gotWebhookToken = accessToken
+			return nil
+		},
+	}
+	tokenClient := &mockInstallationTokenClient{
+		createFunc: func(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error) {
+			gotAppID = appID
+			gotKey = privateKeyPEM
+			gotInstallationID = installationID
+			return "ghs_test_installation_token", nil
+		},
+	}
+
+	svc := NewGroupServiceWithAppToken(
+		GroupServiceConfig{
+			AppBaseURL:          "https://example.com",
+			GitHubWebhookSecret: "webhook_secret",
+			GitHubAppID:         "4886659",
+			GitHubAppPrivateKey: "test-private-key",
+		},
+		githubClient,
+		tokenClient,
+		&mockGroupRepository{},
+		&mockUserRepository{},
+	)
+
+	if _, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName:   "geekhackathon-vol3/BeGit",
+		Name:           "BeGit",
+		InstallationID: 160548256,
+		AccessToken:    "must-not-be-used",
+	}, 1); err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if gotAppID != "4886659" || gotKey != "test-private-key" || gotInstallationID != 160548256 {
+		t.Fatalf("unexpected token request: appID=%q key=%q installationID=%d", gotAppID, gotKey, gotInstallationID)
+	}
+	if gotWebhookToken != "ghs_test_installation_token" {
+		t.Fatalf("expected Installation Token for webhook, got %q", gotWebhookToken)
 	}
 }
 

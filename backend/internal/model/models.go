@@ -34,6 +34,20 @@ type GroupMember struct {
 	AutoJoined bool
 }
 
+// GitHubAppInstallation は GitHub App のインストール情報。
+// Installation ID はGitHubアカウント（個人または組織）ごとに発行される。
+type GitHubAppInstallation struct {
+	ID                  int64
+	InstallationID      int64
+	AccountID           int64
+	AccountLogin        string
+	AccountType         string
+	RepositorySelection string
+	InstalledByUserID   *int64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
+}
+
 // Sprint はグループのアクティブな期間
 type Sprint struct {
 	ID        int64

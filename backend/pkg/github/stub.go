@@ -28,6 +28,22 @@ func (c *stubClient) GetUser(ctx context.Context, accessToken string) (*User, er
 	}, nil
 }
 
+// GetAppInstallation は開発環境用の固定Installation情報を返す。
+func (c *stubClient) GetAppInstallation(ctx context.Context, appID, privateKeyPEM string, installationID int64) (*AppInstallation, error) {
+	return &AppInstallation{
+		ID:                  installationID,
+		AccountID:           -2000,
+		AccountLogin:        "dev-stub-account",
+		AccountType:         "Organization",
+		RepositorySelection: "selected",
+	}, nil
+}
+
+// CreateInstallationAccessToken は開発環境用の固定Installation Tokenを返す。
+func (c *stubClient) CreateInstallationAccessToken(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error) {
+	return "dev-stub-installation-access-token", nil
+}
+
 // GetRepoInfo はリクエストされた repoFullName をそのまま返す（avatar はダミー）。
 func (c *stubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToken string) (*RepoInfo, error) {
 	return &RepoInfo{
@@ -65,8 +81,15 @@ func (c *stubClient) GetRecentCommits(ctx context.Context, repoFullName, login, 
 // ListUserRepos は固定のダミーリポジトリ一覧を返す。
 func (c *stubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
 	return []Repo{
-		{FullName: "dev-stub-user/sample-repo", Name: "sample-repo", Private: false, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: true},
-		{FullName: "dev-stub-user/private-repo", Name: "private-repo", Private: true, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: false},
+		{ID: 1001, FullName: "dev-stub-user/sample-repo", Name: "sample-repo", Private: false, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: true},
+		{ID: 1002, FullName: "dev-stub-user/private-repo", Name: "private-repo", Private: true, OwnerLogin: "dev-stub-user", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: false},
+	}, nil
+}
+
+// ListInstallationRepos は開発環境用のInstallationリポジトリ一覧を返す。
+func (c *stubClient) ListInstallationRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	return []Repo{
+		{ID: 2001, FullName: "dev-stub-account/BeGit", Name: "BeGit", Private: true, OwnerLogin: "dev-stub-account", AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4", CanPush: true, CanAdmin: true},
 	}, nil
 }
 

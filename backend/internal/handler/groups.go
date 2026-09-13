@@ -12,8 +12,9 @@ import (
 
 // CreateGroupRequest は POST /groups のリクエストボディ
 type CreateGroupRequest struct {
-	RepoFullName string `json:"repo_full_name" example:"owner/repo"`
-	Name         string `json:"name" example:"My Repo"`
+	RepoFullName   string `json:"repo_full_name" example:"owner/repo"`
+	Name           string `json:"name" example:"My Repo"`
+	InstallationID int64  `json:"installation_id,omitempty" example:"160548256"`
 }
 
 // GroupJSON は GET /groups レスポンスのグループ型
@@ -133,13 +134,26 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		respondError(c, http.StatusUnprocessableEntity, "name: required")
 		return
 	}
+	if req.InstallationID < 0 {
+		respondError(c, http.StatusUnprocessableEntity, "installation_id: must be positive")
+		return
+	}
 
 	group, err := h.groupService.CreateGroup(c.Request.Context(), service.CreateGroupRequest{
-		RepoFullName: req.RepoFullName,
-		Name:         req.Name,
-		AccessToken:  accessToken,
+		RepoFullName:   req.RepoFullName,
+		Name:           req.Name,
+		InstallationID: req.InstallationID,
+		AccessToken:    accessToken,
 	}, userID)
 	if err != nil {
+		if errors.Is(err, service.ErrUnauthorized) {
+			respondError(c, http.StatusUnauthorized, "GitHub authentication required")
+			return
+		}
+		if errors.Is(err, service.ErrForbidden) {
+			respondError(c, http.StatusForbidden, "GitHub App installation has no access to this repository")
+			return
+		}
 		if errors.Is(err, service.ErrExternalAPI) {
 			respondError(c, http.StatusBadGateway, "external api error")
 			return

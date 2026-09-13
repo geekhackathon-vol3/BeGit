@@ -7,6 +7,7 @@ import (
 
 // stubClient が Client インターフェースを満たすことをコンパイル時にチェックする。
 var _ Client = (*stubClient)(nil)
+var _ AppInstallationTokenClient = (*stubClient)(nil)
 
 // TestStubClient_GetRecentCommits は固定のコミットサマリーを返すことを確認する。
 func TestStubClient_GetRecentCommits(t *testing.T) {
@@ -43,5 +44,17 @@ func TestStubClient_RegisterWebhook(t *testing.T) {
 	c := NewStubClient()
 	if err := c.RegisterWebhook(context.Background(), "owner/repo", "tok", "https://example.com/webhook", "secret"); err != nil {
 		t.Errorf("expected no error, got %v", err)
+	}
+}
+
+// TestStubClient_CreateInstallationAccessToken は固定トークンを返すことを確認する。
+func TestStubClient_CreateInstallationAccessToken(t *testing.T) {
+	c := NewStubClient()
+	token, err := c.(AppInstallationTokenClient).CreateInstallationAccessToken(context.Background(), "4886659", "private-key", 123)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "dev-stub-installation-access-token" {
+		t.Errorf("unexpected token: %q", token)
 	}
 }
