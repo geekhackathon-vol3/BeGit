@@ -22,10 +22,13 @@ openapi:
 # OpenAPI 仕様を再生成し、iOS (swift-openapi-generator) のターゲットへ配布する。
 # iOS 側はソースフォルダ内の openapi.yaml をビルド時に読んで型/クライアントを生成する。
 IOS_OPENAPI_DEST ?= ios/BeGit/BeGit/openapi.yaml
+IOS_OPENAPI_PACKAGE_DEST ?= ios/BeGit/BeGitOpenAPIClient/Sources/BeGitOpenAPIClient/openapi.yaml
 openapi-sync: openapi
 	cp backend/docs/swagger.yaml $(IOS_OPENAPI_DEST)
 	./scripts/sanitize-openapi-for-ios.sh $(IOS_OPENAPI_DEST)
-	@echo "✅ OpenAPI 仕様を $(IOS_OPENAPI_DEST) へ同期しました（iOS をリビルドすると型が追随します）"
+	cp backend/docs/swagger.yaml $(IOS_OPENAPI_PACKAGE_DEST)
+	./scripts/sanitize-openapi-for-ios.sh $(IOS_OPENAPI_PACKAGE_DEST)
+	@echo "✅ OpenAPI 仕様を iOS本体とSwift Packageへ同期しました（iOS をリビルドすると型が追随します）"
 
 # ローカル開発サーバー起動（.envrc の変数を使用）
 # 必要な環境変数: TF_VAR_cloudflare_api_token, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET
