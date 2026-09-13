@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]
@@ -23,6 +23,7 @@ CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 R2_BUCKET = "begit-photos"
 APP_BASE_URL = "https://begit.118029-ichikama.workers.dev"
+GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
 
 # Cron トリガー（③④⑤⑥ の時刻起点通知）。
 #   "* * * * *" → scheduled() で kind=minutely（③ challenge_end: 発行+1h）
@@ -74,6 +75,7 @@ CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 R2_BUCKET = "begit-photos"
 APP_BASE_URL = "https://begit-dev.118029-ichikama.workers.dev"
+GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
 # 実 GitHub OAuth を dev でも使う：GITHUB_CLIENT_ID は本物（iOS アプリと同じ公開 ID）。
 # GITHUB_CLIENT_SECRET は秘密なので var に置かず secret で登録する（var に置くと毎デプロイで上書きされる）:
 #   cd backend && npx wrangler secret put GITHUB_CLIENT_SECRET --env dev
@@ -117,3 +119,37 @@ database_id = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 [[env.dev.r2_buckets]]
 binding = "PHOTOS"
 bucket_name = "begit-photos"
+
+# ── minimal 環境（既存 begit / D1 から分離した検証用）────────────────────
+# 新しく作成したD1のID・Account ID・Workersサブドメインに置き換えてからデプロイする。
+# 既存のトップレベル環境と env.dev のD1は変更しない。
+[env.minimal]
+name = "begit-minimal"
+# Cloudflare account that owns the minimal D1 (the 241it002i account).
+account_id = "1aa384b0d3cea7785597101e04881a41"
+
+[env.minimal.vars]
+# Account ID (32-character hexadecimal ID; do not put an API token here).
+CF_ACCOUNT_ID = "1aa384b0d3cea7785597101e04881a41"
+D1_DATABASE_ID = "6eb5ab31-c2df-4c5e-84c4-609d7382c784"
+R2_BUCKET = "begit-photos"
+APP_BASE_URL = "https://begit-minimal.241it002i.workers.dev"
+GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
+
+[[env.minimal.containers]]
+class_name = "BeGitAPI"
+image = "./Dockerfile"
+max_instances = 1
+
+[[env.minimal.durable_objects.bindings]]
+name = "BEGIT_API"
+class_name = "BeGitAPI"
+
+[[env.minimal.migrations]]
+tag = "v1"
+new_sqlite_classes = ["BeGitAPI"]
+
+[[env.minimal.d1_databases]]
+binding = "DB"
+database_name = "begit-minimal-db"
+database_id = "6eb5ab31-c2df-4c5e-84c4-609d7382c784"
