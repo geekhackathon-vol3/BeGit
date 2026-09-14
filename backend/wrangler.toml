@@ -1,29 +1,19 @@
-# backend/wrangler.toml
 name = 'begit'
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
 [observability]
-enabled = false
-head_sampling_rate = 1
+enabled = true
 
 [observability.logs]
 enabled = true
-head_sampling_rate = 1
-persist = true
-invocation_logs = true
-
-[observability.traces]
-enabled = false
-# persist and head_sampling_rate are preset values for when enabled is switched to true
-persist = true
-head_sampling_rate = 1
 
 [vars]
 CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 R2_BUCKET = "begit-photos"
 APP_BASE_URL = "https://begit.118029-ichikama.workers.dev"
+GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
 
 # Cron トリガー（③④⑤⑥ の時刻起点通知）。
 #   "* * * * *" → scheduled() で kind=minutely（③ challenge_end: 発行+1h）
@@ -41,6 +31,7 @@ crons = ["* * * * *", "0 0 * * *"]
 #   cd backend && npx wrangler secret put R2_SECRET_ACCESS_KEY
 
 [[containers]]
+name = "begit-begitapi"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
 max_instances = 1
@@ -75,6 +66,7 @@ CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 R2_BUCKET = "begit-photos"
 APP_BASE_URL = "https://begit-dev.118029-ichikama.workers.dev"
+GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
 # 実 GitHub OAuth を dev でも使う：GITHUB_CLIENT_ID は本物（iOS アプリと同じ公開 ID）。
 # GITHUB_CLIENT_SECRET は秘密なので var に置かず secret で登録する（var に置くと毎デプロイで上書きされる）:
 #   cd backend && npx wrangler secret put GITHUB_CLIENT_SECRET --env dev
@@ -96,6 +88,7 @@ CRON_SECRET = "dev-cron-secret"  # dev 用の Cron 起動シークレット（�
 crons = ["* * * * *", "0 0 * * *"]
 
 [[env.dev.containers]]
+name = "begit-dev-begitapi-dev"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
 max_instances = 1
@@ -153,4 +146,3 @@ new_sqlite_classes = ["BeGitAPI"]
 binding = "DB"
 database_name = "begit-minimal-db"
 database_id = "6eb5ab31-c2df-4c5e-84c4-609d7382c784"
-

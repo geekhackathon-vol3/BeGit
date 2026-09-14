@@ -8,6 +8,11 @@ interface Env {
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
   GITHUB_WEBHOOK_SECRET: string;
+  // GitHub App credentials. The private key is Base64-encoded before it is
+  // forwarded because PEM values contain newlines and cannot be sent in a
+  // HTTP header as-is.
+  GITHUB_APP_ID: string;
+  GITHUB_APP_PRIVATE_KEY: string;
   FIREBASE_SERVICE_ACCOUNT_JSON: string;
   DB_ENCRYPTION_KEY: string;
   CF_API_TOKEN: string;
@@ -19,6 +24,8 @@ interface Env {
   D1_DATABASE_ID: string;
   R2_BUCKET: string;
   APP_BASE_URL: string;
+  // GitHub App setup completion callback for the iOS custom URL scheme.
+  GITHUB_APP_IOS_REDIRECT_URI: string;
   // dev 環境でのみ "true"（[env.dev.vars]）。dev 認証バイパスを有効化する。
   DEV_MODE: string;
   // 内部 Cron 起動シークレット。dev は [env.dev.vars] の var、本番は secret 運用。
@@ -29,12 +36,32 @@ interface Env {
 // internalHeaders は Workers Secrets / vars を Go コンテナへ転送する X-Internal-* ヘッダーを構築する。
 // fetch / scheduled の双方で再利用する。
 function internalHeaders(env: Env): Record<string, string> {
+  const encodeHeaderValue = (value: string): string => {
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte);
+    }
+    return btoa(binary);
+  };
+
+  const privateKey = env.GITHUB_APP_PRIVATE_KEY ?? '';
+  const firebaseServiceAccountJSON = env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '';
+
   return {
     'X-Internal-DB-Encryption-Key': env.DB_ENCRYPTION_KEY ?? '',
     'X-Internal-Github-Client-Id': env.GITHUB_CLIENT_ID ?? '',
     'X-Internal-Github-Client-Secret': env.GITHUB_CLIENT_SECRET ?? '',
     'X-Internal-Github-Webhook-Secret': env.GITHUB_WEBHOOK_SECRET ?? '',
-    'X-Internal-Firebase-Service-Account': env.FIREBASE_SERVICE_ACCOUNT_JSON ?? '',
+    'X-Internal-Github-App-Id': env.GITHUB_APP_ID ?? '',
+    'X-Internal-Github-App-Private-Key-B64': privateKey
+      ? encodeHeaderValue(privateKey)
+      : '',
+    // Firebase service account JSON can contain newlines in private_key.
+    // Encode it before putting it in an HTTP header.
+    'X-Internal-Firebase-Service-Account-B64': firebaseServiceAccountJSON
+      ? encodeHeaderValue(firebaseServiceAccountJSON)
+      : '',
     'X-Internal-CF-Account-Id': env.CF_ACCOUNT_ID ?? '',
     'X-Internal-D1-Database-Id': env.D1_DATABASE_ID ?? '',
     'X-Internal-CF-Api-Token': env.CF_API_TOKEN ?? '',
@@ -42,6 +69,8 @@ function internalHeaders(env: Env): Record<string, string> {
     'X-Internal-R2-Secret-Access-Key': env.R2_SECRET_ACCESS_KEY ?? '',
     'X-Internal-R2-Bucket': env.R2_BUCKET ?? '',
     'X-Internal-App-Base-URL': env.APP_BASE_URL ?? '',
+    'X-Internal-Github-App-Ios-Redirect-Uri': env.GITHUB_APP_IOS_REDIRECT_URI ?? '',
+    'X-Internal-Cron-Secret': env.CRON_SECRET ?? '',
     'X-Internal-Dev-Mode': env.DEV_MODE ?? '',
   };
 }

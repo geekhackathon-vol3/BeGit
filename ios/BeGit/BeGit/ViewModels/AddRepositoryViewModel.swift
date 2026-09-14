@@ -8,6 +8,7 @@ import Combine
 final class AddRepositoryViewModel: ObservableObject {
     @Published var repositoryURLText = ""                                      // Repository URL入力値
     @Published var repositorySearchText = ""                                   // Repository検索入力値
+    @Published var publicRepositoryInput = ""                                  // 公開Repository URL / owner/repository
 
     @Published private(set) var availableRepositories: [GitHubRepository] = []  // GitHub Repository候補一覧
     @Published private(set) var selectedRepository: GitHubRepository?           // 選択中Repository
@@ -33,17 +34,20 @@ final class AddRepositoryViewModel: ObservableObject {
     ]
 
     private let accessToken: String?
+    private var installationID: Int64?
     private let existingRepositoryNames: Set<String>
     private let backendRepositoryAPI: any RepositoryAPI                         // BeGit Repository関連API
     private let githubRepositoryAPI: any GitHubRepositoryAPI                    // GitHub Repository一覧API
 
     init(
         accessToken: String? = nil,
+        installationID: Int64? = nil,
         existingRepositories: [Repository] = [],
         backendRepositoryAPI: any RepositoryAPI = BeGitBackendAPI(),
         githubRepositoryAPI: (any GitHubRepositoryAPI)? = nil
     ) {
         self.accessToken = accessToken
+        self.installationID = installationID
         self.existingRepositoryNames = Set(existingRepositories.map { Self.normalizedRepositoryName($0.name) })
         self.backendRepositoryAPI = backendRepositoryAPI
 
@@ -102,6 +106,82 @@ final class AddRepositoryViewModel: ObservableObject {
         isRepositoryAlreadyAdded(repository.fullName)
     }
 
+    /// GitHub Appのインストール完了後にInstallation IDを反映し、候補一覧を更新する。
+    func updateInstallationID(_ installationID: Int64?) {
+        guard self.installationID != installationID else { return }
+        self.installationID = installationID
+        availableRepositories = []
+        selectedRepository = nil
+        repositoryListErrorMessage = nil
+        visibleRepositoryCount = 3
+    }
+
+    /// OAuth一覧とGitHub App許可一覧を再取得する。
+    func reloadRepositories() async {
+        availableRepositories = []
+        selectedRepository = nil
+        repositoryListErrorMessage = nil
+        visibleRepositoryCount = 3
+        await loadRepositories()
+    }
+
+    // GitHub Appの許可なしで公開リポジトリを表示専用候補へ追加する
+    func lookupPublicRepository() async {
+        let value = publicRepositoryInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.isEmpty == false else {
+            repositoryListErrorMessage = "公開リポジトリのURLまたは owner/repository を入力してください。"
+            return
+        }
+        guard let accessToken, accessToken.isEmpty == false else {
+            repositoryListErrorMessage = "GitHubログイン情報を取得できませんでした。再ログインしてください。"
+            return
+        }
+
+        let repoFullName: String
+        if value.contains("github.com/") {
+            guard let url = URL(string: value), url.host?.lowercased() == "github.com" else {
+                repositoryListErrorMessage = "GitHubリポジトリURLを確認してください。"
+                return
+            }
+            let path = url.pathComponents.filter { $0 != "/" }
+            guard path.count >= 2 else {
+                repositoryListErrorMessage = "GitHubリポジトリURLを確認してください。"
+                return
+            }
+            repoFullName = "\(path[0])/\(path[1])"
+        } else {
+            let parts = value.split(separator: "/", maxSplits: 1)
+            guard parts.count == 2 else {
+                repositoryListErrorMessage = "owner/repository の形式で入力してください。"
+                return
+            }
+            repoFullName = parts.map(String.init).joined(separator: "/")
+        }
+
+        isLoadingRepositories = true
+        repositoryListErrorMessage = nil
+        defer { isLoadingRepositories = false }
+
+        do {
+            let repository = try await githubRepositoryAPI.lookupPublicRepository(
+                repoFullName: repoFullName,
+                accessToken: accessToken
+            )
+            if isAlreadyAdded(repository) {
+                reportAlreadyAdded(repository.fullName)
+                return
+            }
+            availableRepositories.removeAll { $0.fullName.caseInsensitiveCompare(repository.fullName) == .orderedSame }
+            availableRepositories.insert(repository, at: 0)
+            visibleRepositoryCount = max(visibleRepositoryCount, 1)
+            await selectRepository(repository)
+            publicRepositoryInput = ""
+        } catch {
+            repositoryListErrorMessage = (error as? LocalizedError)?.errorDescription
+                ?? "公開リポジトリを取得できませんでした。"
+        }
+    }
+
     //  GitHub Repository一覧を取得
     func loadRepositories() async {
         guard availableRepositories.isEmpty, isLoadingRepositories == false else {
@@ -117,7 +197,29 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryListErrorMessage = nil
 
         do {
-            let fetched = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+            var fetched: [GitHubRepository]
+            if let installationID, installationID > 0 {
+                // OAuth一覧に加えて、GitHub Appが許可した組織リポジトリを統合する。
+                let oauthRepositories = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+                fetched = oauthRepositories
+
+                do {
+                    let appRepositories = try await backendRepositoryAPI.listGitHubRepositories(
+                        accessToken: accessToken,
+                        installationID: installationID
+                    )
+                    let existingNames = Set(fetched.map { $0.fullName.lowercased() })
+                    fetched.append(contentsOf: appRepositories.filter {
+                        existingNames.contains($0.fullName.lowercased()) == false
+                    })
+                } catch {
+                    // App側の一時的な失敗で、OAuthで取得できる通常リポジトリまで
+                    // 画面から消さない。組織リポジトリが必要な場合はエラーを表示する。
+                    repositoryListErrorMessage = "組織リポジトリを取得できませんでした。GitHub Appの連携を確認してください。"
+                }
+            } else {
+                fetched = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
+            }
             //  発表用デモリポジトリを先頭に固定
             availableRepositories = [Self.presentationRepo] + fetched
             visibleRepositoryCount = min(3, availableRepositories.count)
@@ -140,7 +242,13 @@ final class AddRepositoryViewModel: ObservableObject {
         errorMessage = nil
         selectedRepository = repository
         repositoryURLText = "https://github.com/\(repository.fullName)"
-        await loadRepositoryMembers(repoFullName: repository.fullName)
+        if repository.isReadOnly {
+            members = []
+            repositoryMemberCandidates = []
+            memberListErrorMessage = nil
+        } else {
+            await loadRepositoryMembers(repoFullName: repository.fullName)
+        }
     }
 
     //  Repository候補を追加表示
@@ -219,6 +327,8 @@ final class AddRepositoryViewModel: ObservableObject {
             let createdRepository = try await backendRepositoryAPI.createRepository(
                 repoFullName: repositoryName,
                 name: repositoryName,
+                installationID: selectedRepository?.isReadOnly == true ? nil : installationID,
+                readOnly: selectedRepository?.isReadOnly == true,
                 accessToken: accessToken
             )
             return repositoryWithSelectedOwnerAvatar(createdRepository)
@@ -235,7 +345,9 @@ final class AddRepositoryViewModel: ObservableObject {
                 return makeLocalRepository(name: repositoryName)
             }
 
-            errorMessage = error.localizedDescription
+            errorMessage = beGitAPIError(from: error)?.errorDescription
+                ?? (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
             return nil
         }
     }
@@ -414,7 +526,8 @@ final class AddRepositoryViewModel: ObservableObject {
             name: name,
             ownerAvatarURL: selectedRepository?.ownerAvatarURL ?? ownerAvatarURL(from: name),
             memberCount: members.count,
-            members: members
+            members: members,
+            isReadOnly: selectedRepository?.isReadOnly == true
         )
     }
 
@@ -438,7 +551,8 @@ final class AddRepositoryViewModel: ObservableObject {
             name: repository.name,
             ownerAvatarURL: ownerAvatarURL,
             memberCount: repository.memberCount,
-            members: repository.members
+            members: repository.members,
+            isReadOnly: repository.isReadOnly
         )
     }
 

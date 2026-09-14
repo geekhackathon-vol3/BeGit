@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,6 +16,10 @@ type Config struct {
 	GitHubClientID      string
 	GitHubClientSecret  string
 	GitHubWebhookSecret string
+
+	// GitHub App credentials. GitHubAppPrivateKey is the decoded PEM value.
+	GitHubAppID         string
+	GitHubAppPrivateKey string
 
 	// Firebase FCM
 	FirebaseServiceAccountJSON string
@@ -31,7 +36,8 @@ type Config struct {
 	R2Bucket          string
 
 	// Application
-	AppBaseURL string
+	AppBaseURL              string
+	GitHubAppIOSRedirectURI string
 
 	// CronSecret は内部 Cron エンドポイント（POST /internal/cron）の起動シークレット。
 	// Workers scheduled() が X-Cron-Secret ヘッダーで付与する。未設定なら Cron 経路は常に 403。
@@ -49,6 +55,8 @@ func loadConfig() (*Config, error) {
 		GitHubClientID:             os.Getenv("GITHUB_CLIENT_ID"),
 		GitHubClientSecret:         os.Getenv("GITHUB_CLIENT_SECRET"),
 		GitHubWebhookSecret:        os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		GitHubAppID:                os.Getenv("GITHUB_APP_ID"),
+		GitHubAppPrivateKey:        os.Getenv("GITHUB_APP_PRIVATE_KEY"),
 		FirebaseServiceAccountJSON: os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"),
 		DBEncryptionKey:            os.Getenv("DB_ENCRYPTION_KEY"),
 		CFAccountID:                os.Getenv("CF_ACCOUNT_ID"),
@@ -58,6 +66,7 @@ func loadConfig() (*Config, error) {
 		R2SecretAccessKey:          os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2Bucket:                   os.Getenv("R2_BUCKET"),
 		AppBaseURL:                 os.Getenv("APP_BASE_URL"),
+		GitHubAppIOSRedirectURI:    os.Getenv("GITHUB_APP_IOS_REDIRECT_URI"),
 		CronSecret:                 os.Getenv("CRON_SECRET"),
 		DevMode:                    os.Getenv("DEV_MODE") == "true",
 	}
@@ -99,7 +108,27 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	if v := r.Header.Get("X-Internal-Github-Webhook-Secret"); v != "" {
 		cfg.GitHubWebhookSecret = v
 	}
-	if v := r.Header.Get("X-Internal-Firebase-Service-Account"); v != "" {
+	if v := r.Header.Get("X-Internal-Github-App-Id"); v != "" {
+		cfg.GitHubAppID = v
+	}
+	if v := r.Header.Get("X-Internal-Github-App-Private-Key-B64"); v != "" {
+		decoded, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			log.Printf("Warning: failed to decode GitHub App private key header: %v", err)
+		} else {
+			cfg.GitHubAppPrivateKey = string(decoded)
+		}
+	}
+	if v := r.Header.Get("X-Internal-Firebase-Service-Account-B64"); v != "" {
+		decoded, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			log.Printf("Warning: failed to decode Firebase service account header: %v", err)
+		} else {
+			cfg.FirebaseServiceAccountJSON = string(decoded)
+		}
+	} else if v := r.Header.Get("X-Internal-Firebase-Service-Account"); v != "" {
+		// Backward compatibility for an older Worker deployment. New deployments
+		// use the Base64 header above because JSON private keys may contain newlines.
 		cfg.FirebaseServiceAccountJSON = v
 	}
 	if v := r.Header.Get("X-Internal-CF-Account-Id"); v != "" {
@@ -122,6 +151,12 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	}
 	if v := r.Header.Get("X-Internal-App-Base-URL"); v != "" {
 		cfg.AppBaseURL = v
+	}
+	if v := r.Header.Get("X-Internal-Github-App-Ios-Redirect-Uri"); v != "" {
+		cfg.GitHubAppIOSRedirectURI = v
+	}
+	if v := r.Header.Get("X-Internal-Cron-Secret"); v != "" {
+		cfg.CronSecret = v
 	}
 	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
 		cfg.DevMode = v == "true"

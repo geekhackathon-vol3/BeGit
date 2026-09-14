@@ -23,6 +23,9 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	// ErrForbidden は GitHub API が 403 を返した場合に返す（admin 権限不足など）
 	ErrForbidden = errors.New("forbidden")
+	// ErrNotFound は GitHub API が 404 を返した場合に返す。非公開リポジトリは
+	// AppのInstallation範囲外でも404になるため、上位層で権限不足として扱う。
+	ErrNotFound = errors.New("not found")
 	// ErrExternalAPI は GitHub API で予期しないエラーが発生した場合に返す
 	ErrExternalAPI = errors.New("external api error")
 )
@@ -39,6 +42,33 @@ type User struct {
 type RepoInfo struct {
 	FullName  string `json:"full_name"`
 	AvatarURL string // owner.avatar_url
+	Private   bool
+}
+
+// AppInstallation は GitHub App のインストール先アカウント情報。
+type AppInstallation struct {
+	ID                  int64 `json:"id"`
+	AccountID           int64
+	AccountLogin        string
+	AccountType         string
+	RepositorySelection string `json:"repository_selection"`
+}
+
+// AppInstallationClient は GitHub App のInstallation APIを呼び出すクライアント。
+// OAuth用のClientインターフェースとは分離し、既存のモック実装を壊さない。
+type AppInstallationClient interface {
+	GetAppInstallation(ctx context.Context, appID, privateKeyPEM string, installationID int64) (*AppInstallation, error)
+}
+
+// AppInstallationTokenClient はGitHub AppのInstallation Tokenを取得するクライアント。
+// App JWTで認証し、特定Installationに限定された短期トークンを発行する。
+type AppInstallationTokenClient interface {
+	CreateInstallationAccessToken(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error)
+}
+
+// InstallationRepositoriesClient はInstallation TokenでAppに許可されたリポジトリ一覧を取得する。
+type InstallationRepositoriesClient interface {
+	ListInstallationRepos(ctx context.Context, accessToken string) ([]Repo, error)
 }
 
 // CommitSummary はコミットサマリー情報
@@ -71,6 +101,7 @@ type CommitListOptions struct {
 
 // Repo は GitHub リポジトリ情報（リポジトリ一覧用）
 type Repo struct {
+	ID         int64  `json:"id"`
 	FullName   string `json:"full_name"`
 	Name       string `json:"name"`
 	Private    bool   `json:"private"`
@@ -130,7 +161,9 @@ func (c *githubClient) doAPIRequest(ctx context.Context, method, path, accessTok
 	if err != nil {
 		return nil, fmt.Errorf("github: failed to create request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {
@@ -143,13 +176,30 @@ func (c *githubClient) doAPIRequest(ctx context.Context, method, path, accessTok
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
+		bodySnippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		resp.Body.Close()
+		if len(bodySnippet) > 0 {
+			return nil, fmt.Errorf("%w: %s", ErrUnauthorized, strings.TrimSpace(string(bodySnippet)))
+		}
 		return nil, ErrUnauthorized
 	}
 
 	if resp.StatusCode == http.StatusForbidden {
+		bodySnippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		resp.Body.Close()
+		if len(bodySnippet) > 0 {
+			return nil, fmt.Errorf("%w: %s", ErrForbidden, strings.TrimSpace(string(bodySnippet)))
+		}
 		return nil, ErrForbidden
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		bodySnippet, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		resp.Body.Close()
+		if len(bodySnippet) > 0 {
+			return nil, fmt.Errorf("%w: %s", ErrNotFound, strings.TrimSpace(string(bodySnippet)))
+		}
+		return nil, ErrNotFound
 	}
 
 	// 2xx 以外のステータスコードをエラーとして扱う
@@ -221,6 +271,84 @@ func (c *githubClient) GetUser(ctx context.Context, accessToken string) (*User, 
 	return &user, nil
 }
 
+// GetAppInstallation はGitHub App JWTでInstallation情報を取得する。
+func (c *githubClient) GetAppInstallation(ctx context.Context, appID, privateKeyPEM string, installationID int64) (*AppInstallation, error) {
+	if installationID <= 0 {
+		return nil, fmt.Errorf("github: installation ID must be positive")
+	}
+
+	appJWT, err := GenerateAppJWT(appID, privateKeyPEM)
+	if err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("/app/installations/%d", installationID)
+	resp, err := c.doAPIRequest(ctx, http.MethodGet, path, appJWT, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var response struct {
+		ID                  int64  `json:"id"`
+		RepositorySelection string `json:"repository_selection"`
+		Account             struct {
+			ID    int64  `json:"id"`
+			Login string `json:"login"`
+			Type  string `json:"type"`
+		} `json:"account"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("github: failed to decode app installation: %w", err)
+	}
+	if response.ID == 0 {
+		return nil, fmt.Errorf("github: app installation response has no id")
+	}
+	if response.Account.ID == 0 || response.Account.Login == "" || response.Account.Type == "" {
+		return nil, fmt.Errorf("github: app installation response has incomplete account")
+	}
+	installation := &AppInstallation{
+		ID:                  response.ID,
+		AccountID:           response.Account.ID,
+		AccountLogin:        response.Account.Login,
+		AccountType:         response.Account.Type,
+		RepositorySelection: response.RepositorySelection,
+	}
+	return installation, nil
+}
+
+// CreateInstallationAccessToken はGitHub App JWTを使ってInstallation Tokenを発行する。
+// 返却されるトークンはInstallationの権限・リポジトリ範囲に限定される。
+func (c *githubClient) CreateInstallationAccessToken(ctx context.Context, appID, privateKeyPEM string, installationID int64) (string, error) {
+	if installationID <= 0 {
+		return "", fmt.Errorf("github: installation ID must be positive")
+	}
+
+	appJWT, err := GenerateAppJWT(appID, privateKeyPEM)
+	if err != nil {
+		return "", err
+	}
+
+	path := fmt.Sprintf("/app/installations/%d/access_tokens", installationID)
+	resp, err := c.doAPIRequest(ctx, http.MethodPost, path, appJWT, nil)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var response struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return "", fmt.Errorf("github: failed to decode installation access token: %w", err)
+	}
+	if response.Token == "" {
+		return "", fmt.Errorf("github: installation access token response has no token")
+	}
+
+	return response.Token, nil
+}
+
 // GetRepoInfo はリポジトリ情報（owner の avatar_url を含む）を取得する
 func (c *githubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToken string) (*RepoInfo, error) {
 	resp, err := c.doAPIRequest(ctx, http.MethodGet, "/repos/"+repoFullName, accessToken, nil)
@@ -239,6 +367,9 @@ func (c *githubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToke
 	}
 	if fullName, ok := raw["full_name"].(string); ok {
 		info.FullName = fullName
+	}
+	if private, ok := raw["private"].(bool); ok {
+		info.Private = private
 	}
 	if owner, ok := raw["owner"].(map[string]interface{}); ok {
 		if avatarURL, ok := owner["avatar_url"].(string); ok {
@@ -377,6 +508,7 @@ func (c *githubClient) ListUserRepos(ctx context.Context, accessToken string) ([
 	defer resp.Body.Close()
 
 	var raw []struct {
+		ID       int64  `json:"id"`
 		FullName string `json:"full_name"`
 		Name     string `json:"name"`
 		Private  bool   `json:"private"`
@@ -396,6 +528,53 @@ func (c *githubClient) ListUserRepos(ctx context.Context, accessToken string) ([
 	repos := make([]Repo, 0, len(raw))
 	for _, r := range raw {
 		repos = append(repos, Repo{
+			ID:         r.ID,
+			FullName:   r.FullName,
+			Name:       r.Name,
+			Private:    r.Private,
+			OwnerLogin: r.Owner.Login,
+			AvatarURL:  r.Owner.AvatarURL,
+			CanPush:    r.Permissions.Push,
+			CanAdmin:   r.Permissions.Admin,
+		})
+	}
+	return repos, nil
+}
+
+// ListInstallationRepos はGitHub App Installationに許可されたリポジトリ一覧を取得する。
+// OAuthの /user/repos と異なり、組織所有のリポジトリもAppのInstallation範囲に基づいて返す。
+func (c *githubClient) ListInstallationRepos(ctx context.Context, accessToken string) ([]Repo, error) {
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		"/installation/repositories?per_page=100", accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list installation repos: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		Repositories []struct {
+			ID       int64  `json:"id"`
+			FullName string `json:"full_name"`
+			Name     string `json:"name"`
+			Private  bool   `json:"private"`
+			Owner    struct {
+				Login     string `json:"login"`
+				AvatarURL string `json:"avatar_url"`
+			} `json:"owner"`
+			Permissions struct {
+				Admin bool `json:"admin"`
+				Push  bool `json:"push"`
+			} `json:"permissions"`
+		} `json:"repositories"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("github: failed to decode installation repos: %w", err)
+	}
+
+	repos := make([]Repo, 0, len(payload.Repositories))
+	for _, r := range payload.Repositories {
+		repos = append(repos, Repo{
+			ID:         r.ID,
 			FullName:   r.FullName,
 			Name:       r.Name,
 			Private:    r.Private,

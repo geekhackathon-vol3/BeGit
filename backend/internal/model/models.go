@@ -19,6 +19,7 @@ type Group struct {
 	RepoFullName       string
 	Name               string
 	AvatarURL          string
+	ReadOnly           bool
 	OwnerUserID        int64
 	SprintDurationDays int
 	CreatedAt          time.Time
@@ -32,6 +33,20 @@ type GroupMember struct {
 	AvatarURL  string
 	Role       string
 	AutoJoined bool
+}
+
+// GitHubAppInstallation は GitHub App のインストール情報。
+// Installation ID はGitHubアカウント（個人または組織）ごとに発行される。
+type GitHubAppInstallation struct {
+	ID                  int64
+	InstallationID      int64
+	AccountID           int64
+	AccountLogin        string
+	AccountType         string
+	RepositorySelection string
+	InstalledByUserID   *int64
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 // Sprint はグループのアクティブな期間

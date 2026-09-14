@@ -13,6 +13,7 @@ import (
 
 // RepoJSON は GitHub リポジトリレスポンス型
 type RepoJSON struct {
+	ID         int64  `json:"id"`
 	FullName   string `json:"full_name"`
 	Name       string `json:"name"`
 	Private    bool   `json:"private"`
@@ -44,6 +45,7 @@ func NewGitHubHandler(githubService service.GitHubService) *GitHubHandler {
 //	@Tags			github
 //	@Produce		json
 //	@Security		BearerAuth
+//	@Param			installation_id	query	int	false	"GitHub App installation ID（指定時はAppの許可範囲を取得）"
 //	@Success		200	{object}	RepoListResponse
 //	@Failure		401	{object}	ErrorResponse
 //	@Failure		502	{object}	ErrorResponse
@@ -55,9 +57,18 @@ func (h *GitHubHandler) ListRepos(c *gin.Context) {
 		return
 	}
 
-	accessToken := accessTokenFromContext(c)
-
-	repos, err := h.githubService.ListRepos(c.Request.Context(), accessToken)
+	var repos []githubpkg.Repo
+	var err error
+	if rawInstallationID := c.Query("installation_id"); rawInstallationID != "" {
+		installationID, parseErr := strconv.ParseInt(rawInstallationID, 10, 64)
+		if parseErr != nil || installationID <= 0 {
+			respondError(c, http.StatusBadRequest, "installation_id: invalid")
+			return
+		}
+		repos, err = h.githubService.ListInstallationRepos(c.Request.Context(), installationID)
+	} else {
+		repos, err = h.githubService.ListRepos(c.Request.Context(), accessTokenFromContext(c))
+	}
 	if err != nil {
 		if errors.Is(err, service.ErrExternalAPI) {
 			respondError(c, http.StatusBadGateway, "external api error")
@@ -70,6 +81,7 @@ func (h *GitHubHandler) ListRepos(c *gin.Context) {
 	result := make([]RepoJSON, 0, len(repos))
 	for _, r := range repos {
 		result = append(result, RepoJSON{
+			ID:         r.ID,
 			FullName:   r.FullName,
 			Name:       r.Name,
 			Private:    r.Private,

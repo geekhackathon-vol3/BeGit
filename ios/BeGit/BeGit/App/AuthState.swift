@@ -11,9 +11,12 @@ final class AuthState: ObservableObject {
     @Published var isLoggedIn = false   // ログイン状態
     @Published var accessToken: String? // GitHubアクセストークン
     @Published var githubUser: GitHubUser?  // ログイン中のGitHubユーザー情報
+    /// GitHub Appのインストール単位。未連携のユーザーはnilのままOAuth方式を使う。
+    @Published private(set) var githubAppInstallationID: Int64?
 
     private let keychainManager: KeychainManaging   // トークン保存用Keychain
     private let savedGitHubUserKey = "savedGitHubUser"
+    private let savedGitHubAppInstallationIDKey = "savedGitHubAppInstallationID"
 
     init(keychainManager: any KeychainManaging) {
         self.keychainManager = keychainManager
@@ -22,24 +25,20 @@ final class AuthState: ObservableObject {
 
     //  前回ログイン情報を復元する
     func restoreSession() {
-        let restoredSavedSession = restoreSavedSession()
-
-#if DEBUG
-        if devSessionEnabled && !restoredSavedSession {
-            applyDevSession()
-        }
-#endif
+        restoreSavedSession()
     }
 
     private func restoreSavedSession() -> Bool {
         do {
             accessToken = try keychainManager.readAccessToken()
             githubUser = restoreSavedGitHubUser()
+            githubAppInstallationID = restoreSavedGitHubAppInstallationID()
             isLoggedIn = accessToken != nil
             return isLoggedIn
         } catch {
             accessToken = nil
             githubUser = nil
+            githubAppInstallationID = nil
             isLoggedIn = false
             return false
         }
@@ -60,6 +59,37 @@ final class AuthState: ObservableObject {
         saveGitHubUser(githubUser)
     }
 
+    /// GitHub AppのSetup URL完了後に得たinstallation_idを保存する。
+    /// 0以下を受け取った場合は連携を解除する。
+    func setGitHubAppInstallationID(_ installationID: Int64?) {
+        guard let installationID, installationID > 0 else {
+            githubAppInstallationID = nil
+            UserDefaults.standard.removeObject(forKey: savedGitHubAppInstallationIDKey)
+            return
+        }
+
+        githubAppInstallationID = installationID
+        UserDefaults.standard.set(installationID, forKey: savedGitHubAppInstallationIDKey)
+    }
+
+    /// GitHub App Setup URLから戻ったカスタムURLを処理する。
+    @discardableResult
+    func handleGitHubAppInstallationURL(_ url: URL) -> Bool {
+        guard url.scheme == "begit", url.host == "github-app-setup" else {
+            return false
+        }
+
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        guard let rawInstallationID = components?.queryItems?.first(where: { $0.name == "installation_id" })?.value,
+              let installationID = Int64(rawInstallationID),
+              installationID > 0 else {
+            return false
+        }
+
+        setGitHubAppInstallationID(installationID)
+        return true
+    }
+
     //  ログアウト処理
     func logout() {
         // バックエンドでGitHub OAuthトークンを失効させる（次回ログイン時にフル認証を求めるため）
@@ -78,27 +108,12 @@ final class AuthState: ObservableObject {
 
         accessToken = nil
         githubUser = nil
+        githubAppInstallationID = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: savedGitHubUserKey)
+        UserDefaults.standard.removeObject(forKey: savedGitHubAppInstallationIDKey)
         //  FCM トークンのキャッシュをクリアして、次のユーザーログイン時に再送信されるようにする
         FCMTokenRegistrar.shared.clearCache()
-    }
-
-    private func applyDevSession() {
-        accessToken = "dev_alice"
-        githubUser = GitHubUser(
-            id: 1,
-            login: "dev_alice",
-            name: "dev_alice (dev)",
-            avatarURL: nil,
-            email: nil
-        )
-        isLoggedIn = true
-    }
-
-    private var devSessionEnabled: Bool {
-        let environmentValue = ProcessInfo.processInfo.environment["BEGIT_DEV_SESSION_ENABLED"]
-        return environmentValue == "1" || UserDefaults.standard.bool(forKey: "devSessionEnabled")
     }
 
     private func restoreSavedGitHubUser() -> GitHubUser? {
@@ -117,6 +132,16 @@ final class AuthState: ObservableObject {
 
         UserDefaults.standard.set(data, forKey: savedGitHubUserKey)
     }
+
+    private func restoreSavedGitHubAppInstallationID() -> Int64? {
+        guard let value = UserDefaults.standard.object(forKey: savedGitHubAppInstallationIDKey) as? NSNumber else {
+            return nil
+        }
+
+        let installationID = value.int64Value
+        return installationID > 0 ? installationID : nil
+    }
+
 }
 
 private struct SavedGitHubUser: Codable {

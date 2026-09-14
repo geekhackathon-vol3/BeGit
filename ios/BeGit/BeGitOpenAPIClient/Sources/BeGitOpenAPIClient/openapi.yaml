@@ -70,9 +70,16 @@ components:
       type: object
     handler.CreateGroupRequest:
       properties:
+        installation_id:
+          description: GitHub App installation ID
+          example: 160548256
+          type: integer
         name:
           example: My Repo
           type: string
+        read_only:
+          example: true
+          type: boolean
         repo_full_name:
           example: owner/repo
           type: string
@@ -117,6 +124,8 @@ components:
           uniqueItems: false
         name:
           type: string
+        read_only:
+          type: boolean
         repo_full_name:
           type: string
       type: object
@@ -128,6 +137,8 @@ components:
           type: integer
         name:
           type: string
+        read_only:
+          type: boolean
         repo_full_name:
           type: string
       type: object
@@ -291,6 +302,8 @@ components:
       type: object
     handler.RepoJSON:
       properties:
+        id:
+          type: integer
         avatar_url:
           type: string
         can_admin:
@@ -455,6 +468,13 @@ paths:
   /github/repos:
     get:
       description: 認証ユーザーが push / admin 権限を持つリポジトリ一覧を返す。グループ作成時のリポジトリ選択に使う。
+      parameters:
+      - description: GitHub App installation ID（指定時はAppの許可範囲を取得）
+        in: query
+        name: installation_id
+        required: false
+        schema:
+          type: integer
       responses:
         "200":
           content:

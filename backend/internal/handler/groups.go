@@ -12,8 +12,10 @@ import (
 
 // CreateGroupRequest は POST /groups のリクエストボディ
 type CreateGroupRequest struct {
-	RepoFullName string `json:"repo_full_name" example:"owner/repo"`
-	Name         string `json:"name" example:"My Repo"`
+	RepoFullName   string `json:"repo_full_name" example:"owner/repo"`
+	Name           string `json:"name" example:"My Repo"`
+	InstallationID int64  `json:"installation_id,omitempty" example:"160548256"`
+	ReadOnly       bool   `json:"read_only,omitempty" example:"true"`
 }
 
 // GroupJSON は GET /groups レスポンスのグループ型
@@ -22,6 +24,7 @@ type GroupJSON struct {
 	Name         string `json:"name"`
 	RepoFullName string `json:"repo_full_name"`
 	AvatarURL    string `json:"avatar_url"`
+	ReadOnly     bool   `json:"read_only"`
 }
 
 // GroupListResponse は GET /groups のレスポンス
@@ -88,6 +91,7 @@ func (h *GroupHandler) List(c *gin.Context) {
 			Name:         g.Name,
 			RepoFullName: g.RepoFullName,
 			AvatarURL:    g.AvatarURL,
+			ReadOnly:     g.ReadOnly,
 		})
 	}
 
@@ -133,15 +137,33 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		respondError(c, http.StatusUnprocessableEntity, "name: required")
 		return
 	}
+	if req.InstallationID < 0 {
+		respondError(c, http.StatusUnprocessableEntity, "installation_id: must be positive")
+		return
+	}
 
 	group, err := h.groupService.CreateGroup(c.Request.Context(), service.CreateGroupRequest{
-		RepoFullName: req.RepoFullName,
-		Name:         req.Name,
-		AccessToken:  accessToken,
+		RepoFullName:   req.RepoFullName,
+		Name:           req.Name,
+		InstallationID: req.InstallationID,
+		ReadOnly:       req.ReadOnly,
+		AccessToken:    accessToken,
 	}, userID)
 	if err != nil {
+		if errors.Is(err, service.ErrUnauthorized) {
+			respondError(c, http.StatusUnauthorized, "GitHub authentication required")
+			return
+		}
+		if errors.Is(err, service.ErrForbidden) {
+			respondError(c, http.StatusForbidden, "GitHub App installation has no access to this repository")
+			return
+		}
 		if errors.Is(err, service.ErrExternalAPI) {
 			respondError(c, http.StatusBadGateway, "external api error")
+			return
+		}
+		if errors.Is(err, service.ErrValidation) {
+			respondError(c, http.StatusUnprocessableEntity, "invalid group request")
 			return
 		}
 		if errors.Is(err, service.ErrConflict) {
@@ -157,6 +179,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Name:         group.Name,
 		RepoFullName: group.RepoFullName,
 		AvatarURL:    group.AvatarURL,
+		ReadOnly:     group.ReadOnly,
 	})
 }
 
@@ -216,6 +239,7 @@ func (h *GroupHandler) Get(c *gin.Context) {
 			Name:         detail.Name,
 			RepoFullName: detail.RepoFullName,
 			AvatarURL:    detail.AvatarURL,
+			ReadOnly:     detail.ReadOnly,
 		},
 		Members: members,
 	})

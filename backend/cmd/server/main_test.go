@@ -1,11 +1,52 @@
 package main
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 )
+
+func TestConfigFromHeaders_DecodesGitHubAppCredentials(t *testing.T) {
+	privateKey := "-----BEGIN PRIVATE KEY-----\nprivate-key\n-----END PRIVATE KEY-----\n"
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-Github-App-Id", "4886659")
+	req.Header.Set(
+		"X-Internal-Github-App-Private-Key-B64",
+		base64.StdEncoding.EncodeToString([]byte(privateKey)),
+	)
+	req.Header.Set("X-Internal-Github-App-Ios-Redirect-Uri", "begit://github-app-setup")
+
+	cfg := &Config{}
+	configFromHeaders(req, cfg)
+
+	if cfg.GitHubAppID != "4886659" {
+		t.Fatalf("expected GitHubAppID=4886659, got %q", cfg.GitHubAppID)
+	}
+	if cfg.GitHubAppPrivateKey != privateKey {
+		t.Fatalf("decoded GitHub App private key does not match original")
+	}
+	if cfg.GitHubAppIOSRedirectURI != "begit://github-app-setup" {
+		t.Fatalf("expected iOS redirect URI to be forwarded, got %q", cfg.GitHubAppIOSRedirectURI)
+	}
+}
+
+func TestConfigFromHeaders_DecodesFirebaseServiceAccount(t *testing.T) {
+	serviceAccount := "{\"type\":\"service_account\",\n\"private_key\":\"line1\\nline2\"}"
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set(
+		"X-Internal-Firebase-Service-Account-B64",
+		base64.StdEncoding.EncodeToString([]byte(serviceAccount)),
+	)
+
+	cfg := &Config{}
+	configFromHeaders(req, cfg)
+
+	if cfg.FirebaseServiceAccountJSON != serviceAccount {
+		t.Fatalf("decoded Firebase service account does not match original: %q", cfg.FirebaseServiceAccountJSON)
+	}
+}
 
 // TestConfigValidation は必須環境変数の検証をテストする
 func TestConfigValidation(t *testing.T) {

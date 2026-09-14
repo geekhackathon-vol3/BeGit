@@ -13,15 +13,16 @@ import (
 
 // mockGitHubClient はテスト用の GitHub クライアントモック
 type mockGitHubClient struct {
-	exchangeCodeFunc     func(ctx context.Context, clientID, clientSecret, code string) (string, error)
-	getUserFunc          func(ctx context.Context, accessToken string) (*githubpkg.User, error)
-	getRepoInfoFunc      func(ctx context.Context, repoFullName, accessToken string) (*githubpkg.RepoInfo, error)
-	getCollaboratorsFunc func(ctx context.Context, repoFullName, accessToken string) ([]githubpkg.User, error)
-	registerWebhookFunc  func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
-	getRecentCommitsFunc func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.CommitSummary, error)
-	listUserReposFunc    func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
-	listCommitsFunc      func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
-	revokeTokenFunc      func(ctx context.Context, clientID, clientSecret, accessToken string) error
+	exchangeCodeFunc          func(ctx context.Context, clientID, clientSecret, code string) (string, error)
+	getUserFunc               func(ctx context.Context, accessToken string) (*githubpkg.User, error)
+	getRepoInfoFunc           func(ctx context.Context, repoFullName, accessToken string) (*githubpkg.RepoInfo, error)
+	getCollaboratorsFunc      func(ctx context.Context, repoFullName, accessToken string) ([]githubpkg.User, error)
+	registerWebhookFunc       func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
+	getRecentCommitsFunc      func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.CommitSummary, error)
+	listUserReposFunc         func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
+	listInstallationReposFunc func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
+	listCommitsFunc           func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
+	revokeTokenFunc           func(ctx context.Context, clientID, clientSecret, accessToken string) error
 }
 
 func (m *mockGitHubClient) ExchangeCode(ctx context.Context, clientID, clientSecret, code string) (string, error) {
@@ -69,6 +70,13 @@ func (m *mockGitHubClient) GetRecentCommits(ctx context.Context, repoFullName, l
 func (m *mockGitHubClient) ListUserRepos(ctx context.Context, accessToken string) ([]githubpkg.Repo, error) {
 	if m.listUserReposFunc != nil {
 		return m.listUserReposFunc(ctx, accessToken)
+	}
+	return []githubpkg.Repo{}, nil
+}
+
+func (m *mockGitHubClient) ListInstallationRepos(ctx context.Context, accessToken string) ([]githubpkg.Repo, error) {
+	if m.listInstallationReposFunc != nil {
+		return m.listInstallationReposFunc(ctx, accessToken)
 	}
 	return []githubpkg.Repo{}, nil
 }
