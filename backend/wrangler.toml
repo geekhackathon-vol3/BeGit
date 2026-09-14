@@ -1,4 +1,4 @@
-name = "begit"
+name = 'begit-minimal'
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
 
