@@ -230,6 +230,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/me", bearerAuth, authHandler.Me)
 	r.GET("/groups", bearerAuth, groupHandler.List)
 	r.POST("/groups", bearerAuth, groupHandler.Create)
+	r.DELETE("/groups/:id", bearerAuth, groupHandler.Delete)
 	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)
 	r.POST("/auth/logout", bearerAuth, fcmTokenHandler.Logout)
 	r.GET("/github/repos", bearerAuth, githubHandler.ListRepos)

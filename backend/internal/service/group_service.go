@@ -38,6 +38,7 @@ type GroupServiceConfig struct {
 type GroupService interface {
 	ListGroups(ctx context.Context, userID int64) ([]GroupDetail, error)
 	CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error)
+	LeaveGroup(ctx context.Context, groupID, userID int64) error
 	GetGroup(ctx context.Context, groupID, userID int64) (*GroupDetail, error)
 	SyncMembers(ctx context.Context, groupID int64, accessToken string) ([]model.GroupMember, error)
 }
@@ -225,6 +226,15 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	return group, nil
+}
+
+// LeaveGroup はログイン中ユーザーをグループから外し、HOMEの一覧から永続的に削除する。
+// GitHub上のリポジトリや、他ユーザーのグループ参加状態は変更しない。
+func (s *groupService) LeaveGroup(ctx context.Context, groupID, userID int64) error {
+	if err := s.groupRepo.RemoveMember(ctx, groupID, userID); err != nil {
+		return fmt.Errorf("group_service: LeaveGroup failed: %w", err)
+	}
+	return nil
 }
 
 // resolveGitHubAccessToken はInstallation IDが指定された場合にApp方式へ切り替える。

@@ -27,6 +27,7 @@ type GroupRepository interface {
 	GetByRepoFullName(ctx context.Context, repoFullName string) (*model.Group, error)
 	AddMember(ctx context.Context, groupID, userID int64, role string) error
 	BatchAddMembers(ctx context.Context, groupID int64, userIDs []int64, role string) error
+	RemoveMember(ctx context.Context, groupID, userID int64) error
 	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
 	GetMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 }
@@ -213,6 +214,19 @@ func (r *groupRepository) BatchAddMembers(ctx context.Context, groupID int64, us
 		if err := r.AddMember(ctx, groupID, userID, role); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// RemoveMember はユーザーをグループから外す。
+// 対象が存在しない場合も成功扱いとし、削除操作を冪等にする。
+func (r *groupRepository) RemoveMember(ctx context.Context, groupID, userID int64) error {
+	_, err := r.db.Exec(ctx,
+		`DELETE FROM group_members WHERE group_id = ? AND user_id = ?`,
+		[]interface{}{groupID, userID},
+	)
+	if err != nil {
+		return fmt.Errorf("group_repository: RemoveMember failed: %w", err)
 	}
 	return nil
 }

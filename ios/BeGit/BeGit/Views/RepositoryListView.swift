@@ -69,7 +69,12 @@ struct RepositoryListView: View {
                                         navigationPath.append(RepositoryNavigationRoute.dashboard(repository))
                                     }
                                 ) {
-                                    viewModel.removeRepository(repository)
+                                    Task {
+                                        await viewModel.removeRepository(
+                                            repository,
+                                            accessToken: authState.accessToken
+                                        )
+                                    }
                                 }
                             }
                         }

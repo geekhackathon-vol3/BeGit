@@ -44,6 +44,29 @@ func TestGroupRepository_ListByUserID_IncludesMemberCount(t *testing.T) {
 	}
 }
 
+func TestGroupRepository_RemoveMember(t *testing.T) {
+	var capturedSQL string
+	var capturedParams []interface{}
+	mock := &mockD1Client{
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			capturedSQL = sql
+			capturedParams = params
+			return 1, nil
+		},
+	}
+
+	repo := NewGroupRepository(mock)
+	if err := repo.RemoveMember(context.Background(), 8, 42); err != nil {
+		t.Fatalf("RemoveMember() failed: %v", err)
+	}
+	if !strings.Contains(capturedSQL, "DELETE FROM group_members") {
+		t.Fatalf("expected group membership DELETE, got: %s", capturedSQL)
+	}
+	if len(capturedParams) != 2 || capturedParams[0] != int64(8) || capturedParams[1] != int64(42) {
+		t.Fatalf("unexpected params: %#v", capturedParams)
+	}
+}
+
 // TestGroupRepository_GetByID_NotFound は存在しない group_id に対して ErrNotFound を返すことを確認する
 func TestGroupRepository_GetByID_NotFound(t *testing.T) {
 	mock := &mockD1Client{

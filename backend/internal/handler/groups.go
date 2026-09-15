@@ -178,6 +178,39 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	})
 }
 
+// Delete はログイン中ユーザーのHOMEからグループを削除する。
+//
+//	@Summary		HOMEからリポジトリを削除
+//	@Description	ログイン中ユーザーをグループから外す。GitHub上のリポジトリと他ユーザーの参加状態は変更しない。
+//	@Tags			groups
+//	@Security		BearerAuth
+//	@Param			id	path	int	true	"グループ ID"
+//	@Success		204
+//	@Failure		400	{object}	ErrorResponse
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id} [delete]
+func (h *GroupHandler) Delete(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	if err := h.groupService.LeaveGroup(c.Request.Context(), groupID, userID); err != nil {
+		respondError(c, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
 // Get はグループ詳細とメンバー一覧を返す。
 //
 //	@Summary		グループ詳細 + メンバー

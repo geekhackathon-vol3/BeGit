@@ -30,6 +30,7 @@ type mockGroupRepository struct {
 	getByRepoFullNameFunc func(ctx context.Context, repoFullName string) (*model.Group, error)
 	addMemberFunc         func(ctx context.Context, groupID, userID int64, role string) error
 	batchAddMembersFunc   func(ctx context.Context, groupID int64, userIDs []int64, role string) error
+	removeMemberFunc      func(ctx context.Context, groupID, userID int64) error
 	isMemberFunc          func(ctx context.Context, groupID, userID int64) (bool, error)
 	getMembersFunc        func(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 }
@@ -72,6 +73,13 @@ func (m *mockGroupRepository) AddMember(ctx context.Context, groupID, userID int
 func (m *mockGroupRepository) BatchAddMembers(ctx context.Context, groupID int64, userIDs []int64, role string) error {
 	if m.batchAddMembersFunc != nil {
 		return m.batchAddMembersFunc(ctx, groupID, userIDs, role)
+	}
+	return nil
+}
+
+func (m *mockGroupRepository) RemoveMember(ctx context.Context, groupID, userID int64) error {
+	if m.removeMemberFunc != nil {
+		return m.removeMemberFunc(ctx, groupID, userID)
 	}
 	return nil
 }
@@ -124,6 +132,26 @@ func TestGroupService_ListGroups_IncludesMembers(t *testing.T) {
 	}
 	if groups[0].Members[0].AvatarURL != "https://example.com/alice.png" {
 		t.Errorf("unexpected first member avatar URL: %s", groups[0].Members[0].AvatarURL)
+	}
+}
+
+func TestGroupService_LeaveGroup_RemovesOnlyCurrentUser(t *testing.T) {
+	var removedGroupID int64
+	var removedUserID int64
+	groupRepo := &mockGroupRepository{
+		removeMemberFunc: func(ctx context.Context, groupID, userID int64) error {
+			removedGroupID = groupID
+			removedUserID = userID
+			return nil
+		},
+	}
+
+	svc := NewGroupService(GroupServiceConfig{}, &mockGitHubClient{}, groupRepo, &mockUserRepository{})
+	if err := svc.LeaveGroup(context.Background(), 8, 42); err != nil {
+		t.Fatalf("LeaveGroup() failed: %v", err)
+	}
+	if removedGroupID != 8 || removedUserID != 42 {
+		t.Fatalf("expected groupID=8 userID=42, got groupID=%d userID=%d", removedGroupID, removedUserID)
 	}
 }
 
