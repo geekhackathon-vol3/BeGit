@@ -90,6 +90,43 @@ func (m *mockGroupRepository) GetMembers(ctx context.Context, groupID int64) ([]
 	return []model.GroupMember{}, nil
 }
 
+func TestGroupService_ListGroups_IncludesMembers(t *testing.T) {
+	groupRepo := &mockGroupRepository{
+		listByUserIDFunc: func(ctx context.Context, userID int64) ([]model.Group, error) {
+			return []model.Group{{
+				ID:           8,
+				RepoFullName: "geekhackathon-vol3/BeGit",
+				Name:         "BeGit",
+				MemberCount:  2,
+			}}, nil
+		},
+		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
+			if groupID != 8 {
+				t.Fatalf("expected groupID=8, got %d", groupID)
+			}
+			return []model.GroupMember{
+				{GroupID: 8, UserID: 1, Login: "alice", AvatarURL: "https://example.com/alice.png", Role: "owner"},
+				{GroupID: 8, UserID: 2, Login: "bob", AvatarURL: "https://example.com/bob.png", Role: "member"},
+			}, nil
+		},
+	}
+
+	svc := NewGroupService(GroupServiceConfig{}, &mockGitHubClient{}, groupRepo, &mockUserRepository{})
+	groups, err := svc.ListGroups(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListGroups() failed: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected one group, got %d", len(groups))
+	}
+	if len(groups[0].Members) != 2 {
+		t.Fatalf("expected two members, got %d", len(groups[0].Members))
+	}
+	if groups[0].Members[0].AvatarURL != "https://example.com/alice.png" {
+		t.Errorf("unexpected first member avatar URL: %s", groups[0].Members[0].AvatarURL)
+	}
+}
+
 // TestGroupService_CreateGroup_WebhookSuccess は Webhook 登録成功後のみグループが作成されることを確認する
 func TestGroupService_CreateGroup_WebhookSuccess(t *testing.T) {
 	webhookRegistered := false

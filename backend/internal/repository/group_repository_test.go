@@ -3,10 +3,46 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/irj0927/begit/pkg/d1"
 )
+
+// TestGroupRepository_ListByUserID_IncludesMemberCount は所属グループ一覧に全メンバー数が含まれることを確認する
+func TestGroupRepository_ListByUserID_IncludesMemberCount(t *testing.T) {
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			if !strings.Contains(sql, "COUNT(*) FROM group_members") {
+				t.Fatalf("expected member count query, got: %s", sql)
+			}
+			return []map[string]interface{}{
+				{
+					"id":                   float64(1),
+					"repo_full_name":       "owner/repo",
+					"name":                 "My Team",
+					"avatar_url":           "https://example.com/avatar.png",
+					"owner_user_id":        float64(1),
+					"member_count":         float64(3),
+					"sprint_duration_days": float64(7),
+					"created_at":           "2026-06-01 00:00:00",
+				},
+			}, nil
+		},
+	}
+
+	repo := NewGroupRepository(mock)
+	groups, err := repo.ListByUserID(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListByUserID() failed: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected one group, got %d", len(groups))
+	}
+	if groups[0].MemberCount != 3 {
+		t.Errorf("expected MemberCount=3, got %d", groups[0].MemberCount)
+	}
+}
 
 // TestGroupRepository_GetByID_NotFound は存在しない group_id に対して ErrNotFound を返すことを確認する
 func TestGroupRepository_GetByID_NotFound(t *testing.T) {
@@ -74,12 +110,12 @@ func TestGroupRepository_Create(t *testing.T) {
 			return []map[string]interface{}{
 				{
 					"id":                   createdID,
-					"repo_full_name":        "owner/repo",
-					"name":                  "My Team",
-					"avatar_url":            "https://example.com/avatar.png",
-					"owner_user_id":         float64(1),
-					"sprint_duration_days":  float64(7),
-					"created_at":            "2026-06-01 00:00:00",
+					"repo_full_name":       "owner/repo",
+					"name":                 "My Team",
+					"avatar_url":           "https://example.com/avatar.png",
+					"owner_user_id":        float64(1),
+					"sprint_duration_days": float64(7),
+					"created_at":           "2026-06-01 00:00:00",
 				},
 			}, nil
 		},

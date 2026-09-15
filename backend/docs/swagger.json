@@ -184,6 +184,9 @@
                     "id": {
                         "type": "integer"
                     },
+                    "member_count": {
+                        "type": "integer"
+                    },
                     "members": {
                         "items": {
                             "$ref": "#/components/schemas/handler.GroupMemberJSON"
@@ -211,6 +214,9 @@
                     "id": {
                         "type": "integer"
                     },
+                    "member_count": {
+                        "type": "integer"
+                    },
                     "name": {
                         "type": "string"
                     },
@@ -227,7 +233,7 @@
                 "properties": {
                     "groups": {
                         "items": {
-                            "$ref": "#/components/schemas/handler.GroupJSON"
+                            "$ref": "#/components/schemas/handler.GroupDetailJSON"
                         },
                         "type": "array",
                         "uniqueItems": false

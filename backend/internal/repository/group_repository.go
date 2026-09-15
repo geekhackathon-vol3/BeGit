@@ -63,6 +63,9 @@ func scanGroup(row map[string]interface{}) (*model.Group, error) {
 	if v, ok := row["owner_user_id"].(float64); ok {
 		group.OwnerUserID = int64(v)
 	}
+	if v, ok := row["member_count"].(float64); ok {
+		group.MemberCount = int(v)
+	}
 	if v, ok := row["sprint_duration_days"].(float64); ok {
 		group.SprintDurationDays = int(v)
 	}
@@ -104,7 +107,9 @@ func scanGroupMember(row map[string]interface{}) model.GroupMember {
 // ListByUserID は userID が所属する全グループを取得する
 func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]model.Group, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT g.id, g.repo_full_name, g.name, g.avatar_url, g.read_only, g.owner_user_id, g.sprint_duration_days, g.created_at
+		`SELECT g.id, g.repo_full_name, g.name, g.avatar_url, g.read_only, g.owner_user_id,
+		        (SELECT COUNT(*) FROM group_members all_gm WHERE all_gm.group_id = g.id) AS member_count,
+		        g.sprint_duration_days, g.created_at
 		 FROM groups g
 		 INNER JOIN group_members gm ON g.id = gm.group_id
 		 WHERE gm.user_id = ?`,

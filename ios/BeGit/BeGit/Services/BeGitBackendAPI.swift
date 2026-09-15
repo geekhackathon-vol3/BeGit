@@ -119,7 +119,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     func listRepositories(accessToken: String) async throws -> [Repository] {
         let output = try await makeClient(accessToken: accessToken).getGroups()
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
-        return (try ok.body.json.groups ?? []).map { $0.toRepository(members: []) }
+        return (try ok.body.json.groups ?? []).map { $0.toRepository() }
     }
 
     /// GitHub AppのInstallation範囲を含む候補リポジトリをバックエンドから取得する。

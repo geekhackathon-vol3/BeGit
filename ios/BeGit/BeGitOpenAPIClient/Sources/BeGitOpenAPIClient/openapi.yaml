@@ -117,6 +117,8 @@ components:
           type: string
         id:
           type: integer
+        member_count:
+          type: integer
         members:
           items:
             $ref: '#/components/schemas/handler.GroupMemberJSON'
@@ -135,6 +137,8 @@ components:
           type: string
         id:
           type: integer
+        member_count:
+          type: integer
         name:
           type: string
         read_only:
@@ -146,7 +150,7 @@ components:
       properties:
         groups:
           items:
-            $ref: '#/components/schemas/handler.GroupJSON'
+            $ref: '#/components/schemas/handler.GroupDetailJSON'
           type: array
           uniqueItems: false
       type: object
