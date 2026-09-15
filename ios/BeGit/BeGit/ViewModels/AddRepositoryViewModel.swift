@@ -8,7 +8,6 @@ import Combine
 final class AddRepositoryViewModel: ObservableObject {
     @Published var repositoryURLText = ""                                      // Repository URL入力値
     @Published var repositorySearchText = ""                                   // Repository検索入力値
-    @Published var publicRepositoryInput = ""                                  // 公開Repository URL / owner/repository
 
     @Published private(set) var availableRepositories: [GitHubRepository] = []  // GitHub Repository候補一覧
     @Published private(set) var selectedRepository: GitHubRepository?           // 選択中Repository
@@ -125,63 +124,6 @@ final class AddRepositoryViewModel: ObservableObject {
         await loadRepositories()
     }
 
-    // GitHub Appの許可なしで公開リポジトリを表示専用候補へ追加する
-    func lookupPublicRepository() async {
-        let value = publicRepositoryInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard value.isEmpty == false else {
-            repositoryListErrorMessage = "公開リポジトリのURLまたは owner/repository を入力してください。"
-            return
-        }
-        guard let accessToken, accessToken.isEmpty == false else {
-            repositoryListErrorMessage = "GitHubログイン情報を取得できませんでした。再ログインしてください。"
-            return
-        }
-
-        let repoFullName: String
-        if value.contains("github.com/") {
-            guard let url = URL(string: value), url.host?.lowercased() == "github.com" else {
-                repositoryListErrorMessage = "GitHubリポジトリURLを確認してください。"
-                return
-            }
-            let path = url.pathComponents.filter { $0 != "/" }
-            guard path.count >= 2 else {
-                repositoryListErrorMessage = "GitHubリポジトリURLを確認してください。"
-                return
-            }
-            repoFullName = "\(path[0])/\(path[1])"
-        } else {
-            let parts = value.split(separator: "/", maxSplits: 1)
-            guard parts.count == 2 else {
-                repositoryListErrorMessage = "owner/repository の形式で入力してください。"
-                return
-            }
-            repoFullName = parts.map(String.init).joined(separator: "/")
-        }
-
-        isLoadingRepositories = true
-        repositoryListErrorMessage = nil
-        defer { isLoadingRepositories = false }
-
-        do {
-            let repository = try await githubRepositoryAPI.lookupPublicRepository(
-                repoFullName: repoFullName,
-                accessToken: accessToken
-            )
-            if isAlreadyAdded(repository) {
-                reportAlreadyAdded(repository.fullName)
-                return
-            }
-            availableRepositories.removeAll { $0.fullName.caseInsensitiveCompare(repository.fullName) == .orderedSame }
-            availableRepositories.insert(repository, at: 0)
-            visibleRepositoryCount = max(visibleRepositoryCount, 1)
-            await selectRepository(repository)
-            publicRepositoryInput = ""
-        } catch {
-            repositoryListErrorMessage = (error as? LocalizedError)?.errorDescription
-                ?? "公開リポジトリを取得できませんでした。"
-        }
-    }
-
     //  GitHub Repository一覧を取得
     func loadRepositories() async {
         guard availableRepositories.isEmpty, isLoadingRepositories == false else {
@@ -199,7 +141,9 @@ final class AddRepositoryViewModel: ObservableObject {
         do {
             var fetched: [GitHubRepository]
             if let installationID, installationID > 0 {
-                // OAuth一覧に加えて、GitHub Appが許可した組織リポジトリを統合する。
+                // GitHub Appが許可した組織リポジトリを先頭にし、OAuth一覧を統合する。
+                // 候補は3件ずつ表示されるため、末尾へ追加すると組織リポジトリが
+                // 多数の個人リポジトリに埋もれて選択しづらくなる。
                 let oauthRepositories = try await githubRepositoryAPI.listRepositories(accessToken: accessToken)
                 fetched = oauthRepositories
 
@@ -208,10 +152,10 @@ final class AddRepositoryViewModel: ObservableObject {
                         accessToken: accessToken,
                         installationID: installationID
                     )
-                    let existingNames = Set(fetched.map { $0.fullName.lowercased() })
-                    fetched.append(contentsOf: appRepositories.filter {
-                        existingNames.contains($0.fullName.lowercased()) == false
-                    })
+                    let appRepositoryNames = Set(appRepositories.map { $0.fullName.lowercased() })
+                    fetched = appRepositories + oauthRepositories.filter {
+                        appRepositoryNames.contains($0.fullName.lowercased()) == false
+                    }
                 } catch {
                     // App側の一時的な失敗で、OAuthで取得できる通常リポジトリまで
                     // 画面から消さない。組織リポジトリが必要な場合はエラーを表示する。
