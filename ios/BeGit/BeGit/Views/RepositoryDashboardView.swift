@@ -135,20 +135,10 @@ struct RepositoryDashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    //  activityに登録されているユニークメンバー（モック含む、アバターURL確実）
-    private var uniqueActivityMembers: [RepositoryMember] {
-        var seen = Set<String>()
-        return viewModel.activities.compactMap { activity in
-            guard !seen.contains(activity.author.login) else { return nil }
-            seen.insert(activity.author.login)
-            return activity.author
-        }
-    }
-
     //  達成状況サマリー（Result画面と同一スタイル）
     private var progressSummary: some View {
         VStack(alignment: .leading, spacing: 14) {
-            MemberAvatarRowView(members: uniqueActivityMembers, avatarSize: 42)
+            MemberAvatarRowView(members: viewModel.repository.members, avatarSize: 42)
 
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
