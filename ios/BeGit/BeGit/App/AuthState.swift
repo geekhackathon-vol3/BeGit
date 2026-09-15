@@ -25,6 +25,9 @@ final class AuthState: ObservableObject {
 
     //  前回ログイン情報を復元する
     func restoreSession() {
+        // GitHub AppのInstallationはOAuthセッションとは独立しているため、
+        // Keychainのトークン有無にかかわらず先に復元する。
+        githubAppInstallationID = restoreSavedGitHubAppInstallationID()
         restoreSavedSession()
     }
 
@@ -32,13 +35,11 @@ final class AuthState: ObservableObject {
         do {
             accessToken = try keychainManager.readAccessToken()
             githubUser = restoreSavedGitHubUser()
-            githubAppInstallationID = restoreSavedGitHubAppInstallationID()
             isLoggedIn = accessToken != nil
             return isLoggedIn
         } catch {
             accessToken = nil
             githubUser = nil
-            githubAppInstallationID = nil
             isLoggedIn = false
             return false
         }
@@ -48,6 +49,7 @@ final class AuthState: ObservableObject {
     func completeLogin(response: AuthResponse) {
         accessToken = response.accessToken
         githubUser = response.githubUser
+        githubAppInstallationID = restoreSavedGitHubAppInstallationID()
         isLoggedIn = true
         saveGitHubUser(response.githubUser)
         //  ログイン直後に FCM トークンを DB へ登録する（PUT /me/fcm-token）
@@ -108,10 +110,8 @@ final class AuthState: ObservableObject {
 
         accessToken = nil
         githubUser = nil
-        githubAppInstallationID = nil
         isLoggedIn = false
         UserDefaults.standard.removeObject(forKey: savedGitHubUserKey)
-        UserDefaults.standard.removeObject(forKey: savedGitHubAppInstallationIDKey)
         //  FCM トークンのキャッシュをクリアして、次のユーザーログイン時に再送信されるようにする
         FCMTokenRegistrar.shared.clearCache()
     }
