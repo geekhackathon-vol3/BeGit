@@ -73,8 +73,28 @@ final class RepositoryListViewModel: ObservableObject {
         repositories.insert(repository, at: 0)
     }
 
-    //  Repositoryを一覧から削除
-    func removeRepository(_ repository: Repository) {
-        repositories.removeAll { $0.id == repository.id }
+    //  Repositoryをバックエンドの所属一覧から削除する
+    func removeRepository(_ repository: Repository, accessToken: String?) async {
+        // Preview / mock のRepositoryはバックエンドIDを持たないため、ローカル表示だけを更新する。
+        guard let backendID = repository.backendID else {
+            repositories.removeAll { $0.id == repository.id }
+            return
+        }
+        guard let accessToken else {
+            errorMessage = "リポジトリを削除できませんでした。再度ログインしてください。"
+            return
+        }
+
+        errorMessage = nil
+        do {
+            try await repositoryAPI.deleteRepository(id: backendID, accessToken: accessToken)
+            repositories.removeAll { $0.id == repository.id }
+        } catch {
+            if let apiError = beGitAPIError(from: error),
+               case .authenticationRequired = apiError {
+                isAuthExpired = true
+            }
+            errorMessage = "リポジトリの削除に失敗しました。もう一度お試しください。"
+        }
     }
 }

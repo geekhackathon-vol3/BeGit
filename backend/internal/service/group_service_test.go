@@ -30,6 +30,7 @@ type mockGroupRepository struct {
 	getByRepoFullNameFunc func(ctx context.Context, repoFullName string) (*model.Group, error)
 	addMemberFunc         func(ctx context.Context, groupID, userID int64, role string) error
 	batchAddMembersFunc   func(ctx context.Context, groupID int64, userIDs []int64, role string) error
+	removeMemberFunc      func(ctx context.Context, groupID, userID int64) error
 	isMemberFunc          func(ctx context.Context, groupID, userID int64) (bool, error)
 	getMembersFunc        func(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 }
@@ -76,6 +77,13 @@ func (m *mockGroupRepository) BatchAddMembers(ctx context.Context, groupID int64
 	return nil
 }
 
+func (m *mockGroupRepository) RemoveMember(ctx context.Context, groupID, userID int64) error {
+	if m.removeMemberFunc != nil {
+		return m.removeMemberFunc(ctx, groupID, userID)
+	}
+	return nil
+}
+
 func (m *mockGroupRepository) IsMember(ctx context.Context, groupID, userID int64) (bool, error) {
 	if m.isMemberFunc != nil {
 		return m.isMemberFunc(ctx, groupID, userID)
@@ -88,6 +96,63 @@ func (m *mockGroupRepository) GetMembers(ctx context.Context, groupID int64) ([]
 		return m.getMembersFunc(ctx, groupID)
 	}
 	return []model.GroupMember{}, nil
+}
+
+func TestGroupService_ListGroups_IncludesMembers(t *testing.T) {
+	groupRepo := &mockGroupRepository{
+		listByUserIDFunc: func(ctx context.Context, userID int64) ([]model.Group, error) {
+			return []model.Group{{
+				ID:           8,
+				RepoFullName: "geekhackathon-vol3/BeGit",
+				Name:         "BeGit",
+				MemberCount:  2,
+			}}, nil
+		},
+		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
+			if groupID != 8 {
+				t.Fatalf("expected groupID=8, got %d", groupID)
+			}
+			return []model.GroupMember{
+				{GroupID: 8, UserID: 1, Login: "alice", AvatarURL: "https://example.com/alice.png", Role: "owner"},
+				{GroupID: 8, UserID: 2, Login: "bob", AvatarURL: "https://example.com/bob.png", Role: "member"},
+			}, nil
+		},
+	}
+
+	svc := NewGroupService(GroupServiceConfig{}, &mockGitHubClient{}, groupRepo, &mockUserRepository{})
+	groups, err := svc.ListGroups(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("ListGroups() failed: %v", err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("expected one group, got %d", len(groups))
+	}
+	if len(groups[0].Members) != 2 {
+		t.Fatalf("expected two members, got %d", len(groups[0].Members))
+	}
+	if groups[0].Members[0].AvatarURL != "https://example.com/alice.png" {
+		t.Errorf("unexpected first member avatar URL: %s", groups[0].Members[0].AvatarURL)
+	}
+}
+
+func TestGroupService_LeaveGroup_RemovesOnlyCurrentUser(t *testing.T) {
+	var removedGroupID int64
+	var removedUserID int64
+	groupRepo := &mockGroupRepository{
+		removeMemberFunc: func(ctx context.Context, groupID, userID int64) error {
+			removedGroupID = groupID
+			removedUserID = userID
+			return nil
+		},
+	}
+
+	svc := NewGroupService(GroupServiceConfig{}, &mockGitHubClient{}, groupRepo, &mockUserRepository{})
+	if err := svc.LeaveGroup(context.Background(), 8, 42); err != nil {
+		t.Fatalf("LeaveGroup() failed: %v", err)
+	}
+	if removedGroupID != 8 || removedUserID != 42 {
+		t.Fatalf("expected groupID=8 userID=42, got groupID=%d userID=%d", removedGroupID, removedUserID)
+	}
 }
 
 // TestGroupService_CreateGroup_WebhookSuccess は Webhook 登録成功後のみグループが作成されることを確認する

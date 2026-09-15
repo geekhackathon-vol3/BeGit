@@ -99,6 +99,7 @@ protocol RepositoryAPI: Sendable {
         accessToken: String
     ) async throws -> Repository
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
+    func deleteRepository(id: Int64, accessToken: String) async throws
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
     func sendNotification(repositoryID: Int64, accessToken: String) async throws
     func uploadPhotos(

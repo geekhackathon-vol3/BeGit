@@ -23,25 +23,26 @@ final class RepositoryDashboardViewModel: ObservableObject {
         self.repositoryAPI = repositoryAPI
     }
 
-    //  activityを投稿したmember数（達成済み）
+    //  Timelineの達成サマリーは実際のRepository memberを表示する。
+    //  投稿カードはデモ用モックを維持するため、activityのauthor数とは分離する。
     var completedCount: Int {
-        Set(activities.map(\.author.login)).count
+        totalCount
     }
 
-    //  リポジトリ総member数（members未取得時はactivity数にフォールバック）
+    //  リポジトリ総member数
     var totalCount: Int {
-        let memberCount = repository.members.count
-        return memberCount > 0 ? memberCount : max(completedCount, 1)
+        max(repository.memberCount, repository.members.count)
     }
 
     //  達成率
     var progress: Double {
-        Double(min(completedCount, totalCount)) / Double(totalCount)
+        guard totalCount > 0 else { return 0 }
+        return Double(completedCount) / Double(totalCount)
     }
 
     //  達成状況テキスト
     var progressText: String {
-        "\(min(completedCount, totalCount))/\(totalCount)人が達成しました"
+        "\(completedCount)/\(totalCount)人が達成しました"
     }
 
     func loadActivities(accessToken: String?) async {

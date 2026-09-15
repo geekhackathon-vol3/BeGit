@@ -36,8 +36,9 @@ type GroupServiceConfig struct {
 
 // GroupService はグループ管理サービスインターフェース
 type GroupService interface {
-	ListGroups(ctx context.Context, userID int64) ([]model.Group, error)
+	ListGroups(ctx context.Context, userID int64) ([]GroupDetail, error)
 	CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error)
+	LeaveGroup(ctx context.Context, groupID, userID int64) error
 	GetGroup(ctx context.Context, groupID, userID int64) (*GroupDetail, error)
 	SyncMembers(ctx context.Context, groupID int64, accessToken string) ([]model.GroupMember, error)
 }
@@ -113,12 +114,25 @@ func indexString(s, substr string) int {
 }
 
 // ListGroups はユーザーが所属するグループ一覧を返す
-func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]model.Group, error) {
+func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]GroupDetail, error) {
 	groups, err := s.groupRepo.ListByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("group_service: ListGroups failed: %w", err)
 	}
-	return groups, nil
+
+	details := make([]GroupDetail, 0, len(groups))
+	for _, group := range groups {
+		members, err := s.groupRepo.GetMembers(ctx, group.ID)
+		if err != nil {
+			return nil, fmt.Errorf("group_service: ListGroups GetMembers failed: %w", err)
+		}
+		details = append(details, GroupDetail{
+			Group:   group,
+			Members: members,
+		})
+	}
+
+	return details, nil
 }
 
 // CreateGroup はリポジトリ情報取得 → Webhook 登録 → グループ作成 → オーナー追加 → コラボレーター自動追加の順に処理する。
@@ -212,6 +226,15 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	return group, nil
+}
+
+// LeaveGroup はログイン中ユーザーをグループから外し、HOMEの一覧から永続的に削除する。
+// GitHub上のリポジトリや、他ユーザーのグループ参加状態は変更しない。
+func (s *groupService) LeaveGroup(ctx context.Context, groupID, userID int64) error {
+	if err := s.groupRepo.RemoveMember(ctx, groupID, userID); err != nil {
+		return fmt.Errorf("group_service: LeaveGroup failed: %w", err)
+	}
+	return nil
 }
 
 // resolveGitHubAccessToken はInstallation IDが指定された場合にApp方式へ切り替える。

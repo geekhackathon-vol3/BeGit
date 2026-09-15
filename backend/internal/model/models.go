@@ -21,6 +21,7 @@ type Group struct {
 	AvatarURL          string
 	ReadOnly           bool
 	OwnerUserID        int64
+	MemberCount        int
 	SprintDurationDays int
 	CreatedAt          time.Time
 }

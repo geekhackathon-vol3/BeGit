@@ -119,7 +119,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     func listRepositories(accessToken: String) async throws -> [Repository] {
         let output = try await makeClient(accessToken: accessToken).getGroups()
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
-        return (try ok.body.json.groups ?? []).map { $0.toRepository(members: []) }
+        return (try ok.body.json.groups ?? []).map { $0.toRepository() }
     }
 
     /// GitHub AppのInstallation範囲を含む候補リポジトリをバックエンドから取得する。
@@ -193,6 +193,27 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         )
         guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
         return try ok.body.json.toRepository()
+    }
+
+    /// DELETE /groups/:id : ログイン中ユーザーのHOMEからリポジトリを削除する。
+    func deleteRepository(id: Int64, accessToken: String) async throws {
+        let url = baseURL.appending(path: "groups/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 {
+                throw BeGitAPIError.authenticationRequired
+            }
+            let message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
+            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
+        }
     }
     
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity] {
