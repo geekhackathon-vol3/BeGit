@@ -18,6 +18,8 @@ final class CreatePostViewModel: ObservableObject {
     let repoFullName: String
     let githubLogin: String
     let accessToken: String
+    //  ② Nice Work! の下書き投稿ID。指定時は新規投稿を作らず、この下書きに写真を付けて確定する
+    let draftPostID: Int64?
 
     init(
         mainImage: UIImage?,
@@ -25,7 +27,8 @@ final class CreatePostViewModel: ObservableObject {
         repositoryID: Int64,
         repoFullName: String,
         githubLogin: String,
-        accessToken: String
+        accessToken: String,
+        draftPostID: Int64? = nil
     ) {
         self.mainImage = mainImage
         self.frontImage = frontImage
@@ -34,12 +37,14 @@ final class CreatePostViewModel: ObservableObject {
         self.repoFullName = repoFullName
         self.githubLogin = githubLogin
         self.accessToken = accessToken
+        self.draftPostID = draftPostID
     }
     // CreatePostViewModel.swift に追加
 
     @Published var isPosting = false
     @Published var postError: Error?
     @Published private(set) var postedActivity: RepositoryActivity?
+    private var draftPhotosUploaded = false
 
     func submitPost() async throws {
         guard !isPosting else { return }
@@ -60,6 +65,28 @@ final class CreatePostViewModel: ObservableObject {
 
         let frontData = frontImage?.jpegData(compressionQuality: 0.8)
 
+        //  ② Nice Work!：下書きに写真を付けてから確定する。写真が付かなければ確定しない（下書きが残り再試行できる）
+        if let draftPostID {
+            //  確定だけ失敗して Post を押し直した場合に、写真が二重に付かないようにする
+            if draftPhotosUploaded == false {
+                try await uploadPhotosWithRetry(
+                    api: api,
+                    postID: draftPostID,
+                    mainData: mainData,
+                    frontData: frontData
+                )
+                draftPhotosUploaded = true
+            }
+            let trimmedBody = bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
+            try await api.confirmPost(
+                repositoryID: repositoryID,
+                postID: draftPostID,
+                body: trimmedBody.isEmpty ? nil : trimmedBody,
+                accessToken: accessToken
+            )
+            return
+        }
+
         let postID = try await api.createPost(
             repositoryID: repositoryID,
             body: bodyText,
@@ -68,8 +95,18 @@ final class CreatePostViewModel: ObservableObject {
             accessToken: accessToken
         )
 
-        // Retry photo upload once if it fails. If both attempts fail, the post will remain without photos.
+        // If both attempts fail, the post will remain without photos.
         // TODO: Implement deletePost API and call it here to clean up orphaned posts.
+        try await uploadPhotosWithRetry(api: api, postID: postID, mainData: mainData, frontData: frontData)
+    }
+
+    //  写真アップロードを失敗時に1回だけ再試行する
+    private func uploadPhotosWithRetry(
+        api: BeGitBackendAPI,
+        postID: Int64,
+        mainData: Data,
+        frontData: Data?
+    ) async throws {
         do {
             try await api.uploadPhotos(
                 repositoryID: repositoryID,
