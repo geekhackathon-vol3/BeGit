@@ -19,3 +19,5 @@ filter:
     - /groups/{id}/posts
     - /groups/{id}/notifications
     - /groups/{id}/posts/{postId}/photos
+    - /groups/{id}/posts/{postId}/draft
+    - /groups/{id}/posts/{postId}/confirm
