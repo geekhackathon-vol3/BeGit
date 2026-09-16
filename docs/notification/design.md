@@ -100,7 +100,7 @@ BeGit; の通知を体系的に整理し、`begit-notifications` spec（バッ�
 
 ### 3.1 既存仕様（begit-backend-api Req3・前提）
 - `POST /groups/:id/notifications` で発行。当日スプリントを取得/作成し `notifications` に INSERT
-- `UNIQUE(sprint_id, sent_by)` で **1スプリント1人1回**を保証（違反は 409 Conflict）。← **この制約は維持**
+- 既定で **1スプリント1人1回**（違反は 409 Conflict）。← 当初は DB の `UNIQUE(sprint_id, sent_by)` で保証していたが、dev で何度でも発行できるよう**サービス層の判定に移し、設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true` で解除可能**にした（制約はマイグレーション 0006 で撤去。本番は未設定＝従来どおり）
 - 発行成功 → FCM でグループ全員へ Push
 - ステータス算出：`On Time`(1h以内) / `Late`(1h超) / `Missed`(投稿なし)
 
@@ -108,7 +108,7 @@ BeGit; の通知を体系的に整理し、`begit-notifications` spec（バッ�
 - **同一スプリント内で、アクティブな（発行から1h以内の）チャレンジが存在する間は、新たな BeGit Time! を発行できない。**
 - 判定は**サービス層**で行う（時間条件は DB の `UNIQUE` で表現できないため）。`POST /groups/:id/notifications` 時に「同スプリントに `sent_at + 1h > now()` の通知が存在するか」を確認し、存在すれば **409 Conflict**（例:「別のチャレンジが進行中です」）を返す。
 - 効果：**任意の瞬間にアクティブなチャレンジは最大1つ** → ② の anchor が一意に定まる（§4.4）。
-- 「1人1回」は維持されるため、各メンバーは1スプリント中に（重ならない範囲で）順番に発行できる。製品の「いつ打つか」の戦略性も保たれる。
+- 既定では「1人1回」なので、各メンバーは1スプリント中に（重ならない範囲で）順番に発行できる。製品の「いつ打つか」の戦略性も保たれる。設定で「1人1回」を解除しても、この時間的非共存は常に適用する。
 
 ### 3.3 iOS 側の導線（→ ios-guide.md）
 - BeGit Time! 通知をチャレンジ中にタップ → **memo（message）タイプの投稿作成 UI** へ遷移し、「進捗共有だけ」投稿できる経路。実装は iOS 側（契約は ios-guide）。

@@ -55,7 +55,7 @@ BeGit; は「BeReal × GitHub」コンセプトの開発者向けチーム SNS �
 
 1. When 認証済みグループメンバーが `POST /groups/:id/notifications` を呼んだ, the BeGit API サーバー shall `sprints` テーブルの当日スプリントを取得または作成し、`notifications` テーブルに通知レコードを挿入する
 2. When 通知レコードの挿入に成功した, the BeGit API サーバー shall FCM HTTP API を経由してグループの全メンバーの `fcm_tokens` に対して Push 通知を送信する
-3. The BeGit API サーバー shall 1スプリントあたり1ユーザー1通知のみ許可し、`UNIQUE(sprint_id, sent_by)` 制約に違反する場合は 409 Conflict を返す
+3. The BeGit API サーバー shall 1スプリントあたり1ユーザー1通知のみ許可し、`UNIQUE(sprint_id, sent_by)` 制約に違反する場合は 409 Conflict を返す（※ begit-notifications で変更：1スプリント1人1回はサービス層判定＋設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT` で解除可能、DB の UNIQUE は 0006 で撤去）
 4. When 認証済みグループメンバーが `GET /groups/:id/notifications/:nid` を呼んだ, the BeGit API サーバー shall 通知発行後の各メンバーの投稿ステータス（`On Time` / `Late` / `Missed`）を算出して返す
 5. When 通知発行時刻から1時間以内に投稿が存在する場合, the BeGit API サーバー shall そのメンバーのステータスを `On Time` と判定する
 6. When 通知発行時刻から1時間超に投稿が存在する場合, the BeGit API サーバー shall そのメンバーのステータスを `Late` と判定する

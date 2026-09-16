@@ -379,7 +379,7 @@ ios-guide §2 準拠（全値文字列）:
 
 ### Error Strategy
 - **FCM 送信失敗**: ベストエフォート（6.4）。トークン単位失敗は継続、全滅時のみログ。発火元（API/Cron）は成功扱い。
-- **時間非共存（①）**: アクティブ通知存在で 409 Conflict（1.3）。`UNIQUE(sprint_id,sent_by)` 違反も 409（1.2）。
+- **時間非共存（①）**: アクティブ通知存在で 409 Conflict（1.3）。既定では同一スプリント・同一ユーザーの発行済みも 409（1.2、`BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true` で解除）。どちらも `CreateIfNoActive` の INSERT 条件で原子的に判定する。
 - **Webhook**: 署名不一致 403（8.2）、重複 delivery は 200 skip（8.3）、対応グループ無し 200 無視（8.5）。
 - **② 冪等衝突**: draft INSERT の UNIQUE 違反は正常系 skip（エラーにしない）。
 - **Cron**: kind 不正 400、secret 不一致 403。delivery UNIQUE 違反は正常系 skip。

@@ -1014,7 +1014,7 @@ ALTER TABLE groups ADD COLUMN avatar_url TEXT;
 - **Group**: GitHub リポジトリに紐づくチーム単位。`owner_user_id` が作成者。`sprint_duration_days` でスプリント長を管理
 - **GroupMember**: Group と User の多対多。`role: owner | member`
 - **Sprint**: グループのアクティブな期間。`GetOrCreate` で「今日のスプリント」を取得/生成
-- **Notification**: BeGit Time 通知。1スプリント1ユーザー1回制約（UNIQUE(sprint_id, sent_by)）
+- **Notification**: BeGit Time 通知。1スプリント1ユーザー1回制約（UNIQUE(sprint_id, sent_by)）（※ begit-notifications で変更：1スプリント1人1回はサービス層判定＋設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT` で解除可能、DB の UNIQUE は 0006 で撤去）
 - **Post**: 投稿。`notification_id` でどの通知に応答したかを記録。`status: on_time | late | missed`
 
 ### Data Contracts（API レスポンス形式）

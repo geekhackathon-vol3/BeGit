@@ -78,7 +78,7 @@
 
 - [x] 3.4 (P) NotificationRepository と WebhookRepository を実装する
   - `NotificationRepository` に `Create` / `GetByID` を実装する
-  - `Create` は `UNIQUE(sprint_id, sent_by)` 違反時に `ErrConstraintViolation` を返す
+  - `Create` は `UNIQUE(sprint_id, sent_by)` 違反時に `ErrConstraintViolation` を返す（※ begit-notifications で変更：1スプリント1人1回はサービス層判定＋設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT` で解除可能、DB の UNIQUE は 0006 で撤去）
   - `WebhookRepository.InsertDelivery` は `INSERT INTO github_webhook_deliveries` を試みて UNIQUE 違反なら `isDuplicate=true, err=nil` を返す
   - 同じ delivery_id で `InsertDelivery` を2回呼んだとき `isDuplicate=true` が返ることを確認できる
   - _Requirements: 3.3, 3.8, 5.3_

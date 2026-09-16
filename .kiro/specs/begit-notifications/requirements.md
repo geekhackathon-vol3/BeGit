@@ -9,7 +9,7 @@ BeGit; の通知機能の**バックエンド実装**を仕様化する。全体
 ### 対象（バックエンドのスコープ）
 
 【A. チャレンジ系】
-- ① BeGit Time! 発行 API（既存 begit-backend-api Req3、`POST /groups/:id/notifications`、グループ全員へ FCM 送信、1スプリント1人1回 `UNIQUE(sprint_id,sent_by)` 維持）。**追加ルール**: 同一スプリント内でアクティブな(発行+1h以内)チャレンジが存在する間は新規発行不可をサービス層で担保し 409 を返す（時間的非共存 → ② の anchor が一意になる）。
+- ① BeGit Time! 発行 API（既存 begit-backend-api Req3、`POST /groups/:id/notifications`、グループ全員へ FCM 送信、1スプリント1人1回はサービス層で判定し、設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true` で解除可能。DB の `UNIQUE(sprint_id,sent_by)` は 0006 で撤去）。**追加ルール**: 同一スプリント内でアクティブな(発行+1h以内)チャレンジが存在する間は新規発行不可をサービス層で担保し 409 を返す（時間的非共存 → ② の anchor が一意になる）。
 - ② Nice Work!（GitHub Webhook 検知 → 行動した本人へ FCM 送信）。トリガーは commit(push) / issue(issues opened) / review(pull_request_review) の3種。検知窓は発行後〜スプリント終了まで、Late でも発火。1チャレンジ1人1回（`posts.UNIQUE(notification_id,user_id)` で冪等）。anchor = 検知時刻以前で最新の BeGit Time 通知。検知データ(commit数/additions/deletions/repo/branch/最新コミットメッセージ)を `posts` の draft 状態として保存（写真有無では判定せず明示 `status='draft'`/`is_draft`）。`sent_at + 1h` と比較し on_time/late を確定。
 - ③ チャレンジ終了通知（Cron、発行+1h、グループ全員へ結果サマリ On Time/Late/Missed 集計）。
 
@@ -64,10 +64,10 @@ BeGit; の通知機能の**バックエンド実装**を仕様化する。全体
 #### Acceptance Criteria
 
 1. When 認証済みグループメンバーが `POST /groups/:id/notifications` を呼んだ, the BeGit 通知バックエンドは当日スプリントを取得または作成し `notifications` レコードを INSERT し、グループ全メンバーの `fcm_tokens` へ `type=begit_time` の FCM data メッセージを送信する shall。
-2. The BeGit 通知バックエンドは1スプリントあたり1ユーザー1通知のみ許可し、`UNIQUE(sprint_id, sent_by)` 制約に違反する場合は 409 Conflict を返す shall。
+2. The BeGit 通知バックエンドは既定で1スプリントあたり1ユーザー1通知のみ許可し、同一スプリントで同一ユーザーが発行済みの場合は 409 Conflict を返す shall。Where 設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT` が `true`（dev 環境）, the BeGit 通知バックエンドはこの制限を適用しない shall（3 の時間的非共存は常に適用する）。
 3. If 同一スプリント内に `sent_at + 1h > now()` を満たすアクティブな BeGit Time! 通知が存在する, then the BeGit 通知バックエンドは新規発行を拒否し 409 Conflict（例:「別のチャレンジが進行中です」）を返す shall。
-4. While アクティブなチャレンジが存在しない（直近通知の `sent_at + 1h <= now()`）, the BeGit 通知バックエンドは同一ユーザー以外の新規発行を許可する shall。
-5. The BeGit 通知バックエンドは時間的非共存の判定をサービス層で行い、DB の `UNIQUE` 制約とは独立に評価する shall（時間条件は `UNIQUE` で表現できないため）。
+4. While アクティブなチャレンジが存在しない（直近通知の `sent_at + 1h <= now()`）, the BeGit 通知バックエンドは 2 の制限を満たす新規発行を許可する shall。
+5. The BeGit 通知バックエンドは時間的非共存（3）と1スプリント1人1回（2）の判定をサービス層で行い、DB 制約には依存しない shall（時間条件は `UNIQUE` で表現できず、2 は設定で切り替えるため）。
 
 ---
 
