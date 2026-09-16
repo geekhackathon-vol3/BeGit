@@ -333,7 +333,25 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             throw BeGitAPIError.invalidResponse
         }
     }
-    
+
+    // GET /groups/{id}/posts/{postId}/draft : ② Nice Work! の下書きを取得（確定済みなら 404）
+    func getDraftPost(repositoryID: Int64, postID: Int64, accessToken: String) async throws -> DraftPost {
+        let output = try await makeClient(accessToken: accessToken).getGroupsIdPostsPostIdDraft(
+            path: .init(id: Int(repositoryID), postId: Int(postID))
+        )
+        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
+        return try ok.body.json.toDraftPost(fallbackID: postID)
+    }
+
+    // POST /groups/{id}/posts/{postId}/confirm : 下書きを確定してフィードに出す（べき等）
+    // body が nil のときは下書きの本文を上書きしない。
+    func confirmPost(repositoryID: Int64, postID: Int64, body: String?, accessToken: String) async throws {
+        let output = try await makeClient(accessToken: accessToken).postGroupsIdPostsPostIdConfirm(
+            path: .init(id: Int(repositoryID), postId: Int(postID)),
+            body: .json(.Handler_ConfirmPostRequest(.init(body: body)))
+        )
+        guard case .ok = output else { throw BeGitAPIError.invalidResponse }
+    }
 
     // PUT /me/fcm-token : FCM デバイストークンを登録/更新（Push 送信先の登録）
     func updateFCMToken(_ token: String, accessToken: String) async throws {

@@ -157,6 +157,15 @@ struct RepositoryListView: View {
         }
     }
 
+    //  ② Nice Work! の投稿確定後、対象リポジトリの Dashboard を表示して投稿を確認できるようにする。
+    //  一覧に無いリポジトリなら root に戻す。
+    private func showDashboardAfterNiceWorkPost(groupId: Int) {
+        navigationPath.removeLast(navigationPath.count)
+        if let repository = viewModel.repositories.first(where: { $0.backendID == Int64(groupId) }) {
+            navigationPath.append(RepositoryNavigationRoute.dashboard(repository))
+        }
+    }
+
     //  共有 Router に積まれた通知 route を push し、消費済みにする
     private func applyPendingNotificationRoute() {
         guard let route = notificationRouter.pendingRoute else { return }
@@ -390,8 +399,10 @@ struct RepositoryListView: View {
         // MARK: - FCM 通知タップからの遷移（#55・中身は #56/#57 が実装）
         case let .notificationPostCreation(groupId, notificationId):
             NotificationPostCreationStubView(groupId: groupId, notificationId: notificationId)
-        case let .notificationNiceWorkDraft(groupId, draftPostId, status):
-            NotificationNiceWorkDraftStubView(groupId: groupId, draftPostId: draftPostId, status: status)
+        case let .notificationNiceWorkDraft(groupId, draftPostId, _):
+            NiceWorkDraftCaptureView(groupId: groupId, draftPostId: draftPostId) {
+                showDashboardAfterNiceWorkPost(groupId: groupId)
+            }
         case let .notificationChallengeResult(groupId, notificationId):
             NotificationChallengeResultStubView(groupId: groupId, notificationId: notificationId)
         case let .notificationSprintOverview(groupId, sprintId):

@@ -96,9 +96,38 @@ struct RepositoryActivityCardView: View {
             authorHeader
                 .padding(.bottom, 6)
 
-            //  card本体 + リアクションピッカー
+            //  card本体（写真 + 投稿テキスト）
+            cardContent
+        }
+    }
+
+    //  コメントがあればコメントを表示（commit名は出さない）。無ければcommit名。
+    private var postText: some View {
+        Group {
+            if let comment = activity.comment, comment.isEmpty == false {
+                Text(comment)
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.92))
+            } else {
+                Text(activity.title)
+                    .font(.system(size: 17, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Card
+
+    //  枠線の中に「写真」と「その下の投稿テキスト」を縦に並べる。
+    //  テキストは写真に重ねず、写真の明るさに左右されず読めるようにする。
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
             ZStack(alignment: .bottomTrailing) {
-                cardContent
+                photoArea
 
                 if showReactionPicker {
                     reactionPicker
@@ -108,12 +137,20 @@ struct RepositoryActivityCardView: View {
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
+
+            postText
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
         }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.10), lineWidth: 1)
+        )
     }
 
-    // MARK: - Card
-
-    private var cardContent: some View {
+    private var photoArea: some View {
         ZStack(alignment: .topLeading) {
             //  背景画像
             activityBackground
@@ -123,25 +160,6 @@ struct RepositoryActivityCardView: View {
                         showReactionPicker = false
                     }
                 }
-
-            //  投稿テキスト：背景画像全体の中央に絶対配置。
-            //  コメントがあればコメントを表示（commit名は出さない）。無ければcommit名。
-            Group {
-                if let comment = activity.comment, comment.isEmpty == false {
-                    Text(comment)
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.92))
-                } else {
-                    Text(activity.title)
-                        .font(.system(size: 17, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
-                }
-            }
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .zIndex(1)
 
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
@@ -189,11 +207,7 @@ struct RepositoryActivityCardView: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(3/4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .clipped()
     }
 
     // MARK: - Author header（カード外・上部）
@@ -372,18 +386,6 @@ struct RepositoryActivityCardView: View {
                         .font(.system(size: 86, weight: .black))
                         .foregroundStyle(activity.type.tint.opacity(0.30))
                 }
-
-                LinearGradient(
-                    colors: [.black.opacity(0.24), .black.opacity(0.30), .black.opacity(0.82)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                LinearGradient(
-                    colors: [.black.opacity(0.24), .black.opacity(0.02)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
