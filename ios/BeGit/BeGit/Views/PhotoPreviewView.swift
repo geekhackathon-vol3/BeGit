@@ -76,18 +76,15 @@ struct PhotoPreviewView: View {
                         Image(uiImage: frontImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 110, height: 150)
+                            .frame(width: 72, height: 96)
                             .clipped()
-                            .cornerRadius(18)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 18)
-                                    .stroke(
-                                        AppTheme.Text.primary.opacity(0.9),
-                                        lineWidth: 2
-                                    )
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Color.black, lineWidth: 2)
                             )
-                            .shadow(radius: 10)
-                            .padding(18)
+                            .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
+                            .padding(16)
                     }
                 }
                 .padding(.horizontal, 14)

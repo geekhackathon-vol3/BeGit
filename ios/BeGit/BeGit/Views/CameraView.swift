@@ -75,7 +75,7 @@ struct CameraView: View {
                             .foregroundStyle(AppTheme.Text.primary)
                             .appFont(.subheadline)
                     }
-                    .tint(AppTheme.Text.primary)
+                    .tint(AppTheme.accent)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -110,12 +110,9 @@ struct CameraView: View {
 
         // MARK: - Show Preview
 
-        .onReceive(camera.$capturedImage) { image in
-            if image != nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    showPreview = true
-                }
-            }
+        .onReceive(camera.$captureCompleted) { completed in
+            guard completed else { return }
+            showPreview = true
         }
 
         // MARK: - Preview Screen
@@ -141,6 +138,7 @@ struct CameraView: View {
             }
         }
     }
+
 }
 
 #Preview {

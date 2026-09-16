@@ -21,12 +21,15 @@ class CameraManager: NSObject, ObservableObject {
 
     @Published var capturedImage: UIImage?
     @Published var frontCapturedImage: UIImage?
+    @Published private(set) var captureCompleted = false
 
     @Published var useFrontCamera = true
 
     private var currentPosition: AVCaptureDevice.Position = .back
     private var capturePositions:
         [Int64: AVCaptureDevice.Position] = [:]
+    private var expectedCaptureCount = 1
+    private var completedCaptureCount = 0
     // MARK: - Init
 
     override init() {
@@ -167,6 +170,12 @@ class CameraManager: NSObject, ObservableObject {
         // 前回画像をリセット
         capturedImage = nil
         frontCapturedImage = nil
+        captureCompleted = false
+        completedCaptureCount = 0
+
+        // 前面カメラが利用できる場合だけ、2枚目の撮影を待つ。
+        let shouldCaptureFront = useFrontCamera && frontCameraAvailable
+        expectedCaptureCount = shouldCaptureFront ? 2 : 1
 
         // 背面カメラへ
         switchCamera(position: .back)
@@ -177,7 +186,7 @@ class CameraManager: NSObject, ObservableObject {
             self.takePhoto()
 
             // 前面カメラも使う場合
-            if self.useFrontCamera {
+            if shouldCaptureFront {
 
                 // 少しズラして前面へ
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
@@ -198,6 +207,14 @@ class CameraManager: NSObject, ObservableObject {
                 }
             }
         }
+    }
+
+    private var frontCameraAvailable: Bool {
+        AVCaptureDevice.default(
+            .builtInWideAngleCamera,
+            for: .video,
+            position: .front
+        ) != nil
     }
 }
 
@@ -243,6 +260,11 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             } else {
 
                 self.frontCapturedImage = image
+            }
+
+            self.completedCaptureCount += 1
+            if self.completedCaptureCount >= self.expectedCaptureCount {
+                self.captureCompleted = true
             }
         }
     }
