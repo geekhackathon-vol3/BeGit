@@ -802,7 +802,8 @@ paths:
       - github
   /groups/{id}/notifications:
     post:
-      description: 1 スプリント 1 人 1 回まで
+      description: アクティブなチャレンジ（発行から 1 時間）中は発行不可。既定では 1 スプリント 1 人 1 回まで（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true
+        で解除）
       parameters:
       - description: グループ ID
         in: path

@@ -62,6 +62,9 @@ name = "begit-dev"
 
 [env.dev.vars]
 DEV_MODE = "true"
+# dev のみ BeGit Time! の「1スプリント1人1回」を解除（動作確認で何度でも発行できるように）。
+# 1時間のチャレンジ中は発行不可のルールは維持される。本番には置かない。
+BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT = "true"
 CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 R2_BUCKET = "begit-photos"
