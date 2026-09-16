@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -163,11 +165,62 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	}
 }
 
+// internalConfigHeaders は configFromHeaders が読む X-Internal-* ヘッダー名の一覧。
+// ハンドラー再構築の要否判定（fingerprint）はこの一覧だけを対象にし、
+// 任意の X-Internal-* を付けたリクエストで再構築を連発させられないようにする。
+var internalConfigHeaders = []string{
+	"X-Internal-DB-Encryption-Key",
+	"X-Internal-Github-Client-Id",
+	"X-Internal-Github-Client-Secret",
+	"X-Internal-Github-Webhook-Secret",
+	"X-Internal-Github-App-Id",
+	"X-Internal-Github-App-Private-Key-B64",
+	"X-Internal-Firebase-Service-Account-B64",
+	"X-Internal-Firebase-Service-Account",
+	"X-Internal-CF-Account-Id",
+	"X-Internal-D1-Database-Id",
+	"X-Internal-CF-Api-Token",
+	"X-Internal-R2-Access-Key-Id",
+	"X-Internal-R2-Secret-Access-Key",
+	"X-Internal-R2-Bucket",
+	"X-Internal-App-Base-URL",
+	"X-Internal-Github-App-Ios-Redirect-Uri",
+	"X-Internal-Cron-Secret",
+	"X-Internal-Dev-Mode",
+}
+
+// configFingerprint は X-Internal-* ヘッダーの内容から設定の同一性を表すハッシュを返す。
+// 該当ヘッダーが1つも無い（Worker を経由しないローカル起動など）場合は空文字を返す。
+func configFingerprint(r *http.Request) string {
+	h := sha256.New()
+	found := false
+	for _, name := range internalConfigHeaders {
+		v := r.Header.Get(name)
+		if v != "" {
+			found = true
+		}
+		h.Write([]byte(name))
+		h.Write([]byte{0})
+		h.Write([]byte(v))
+		h.Write([]byte{0})
+	}
+	if !found {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // server はすべての依存関係を保持するサーバー構造体
 type server struct {
+	// baseCfg は起動時に環境変数から読んだ設定。再構築のたびにここからヘッダーを重ねる。
+	baseCfg Config
 	cfg     *Config
 	handler http.Handler
-	mu      sync.RWMutex
+	// fingerprint は現在の handler を構築したときの configFingerprint。
+	fingerprint string
+	// newHandler はテスト用の差し替え口。nil なら buildHandler を使う。
+	newHandler func() (http.Handler, error)
+	mu         sync.RWMutex
 }
 
 // @title						BeGit API
@@ -193,7 +246,7 @@ func main() {
 		port = "8080"
 	}
 
-	srv := &server{cfg: cfg}
+	srv := &server{baseCfg: *cfg, cfg: cfg}
 
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -210,32 +263,64 @@ func main() {
 	}
 }
 
-// ServeHTTP はリクエストを処理する（初回は X-Internal-* ヘッダーから設定を補完してからハンドラーを初期化）
+// ServeHTTP はリクエストを処理する。
+// X-Internal-* ヘッダーから設定を補完してハンドラーを初期化し、以降はヘッダーの内容
+// （Workers Secrets / vars）が変わったときだけ再構築する。コンテナは Cron で常時起動し続けるため、
+// 再構築しないと `wrangler secret put` した値が再起動まで反映されない（FCM が送られない等）。
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fp := configFingerprint(r)
+
 	s.mu.RLock()
 	h := s.handler
+	upToDate := h != nil && (fp == "" || fp == s.fingerprint)
 	s.mu.RUnlock()
 
-	if h == nil {
-		// 初回リクエスト時にハンドラーを初期化
+	if !upToDate {
 		s.mu.Lock()
 		// ダブルチェック
-		if s.handler == nil {
-			configFromHeaders(r, s.cfg)
-
-			handler, err := s.buildHandler()
-			if err != nil {
+		if s.handler == nil || (fp != "" && fp != s.fingerprint) {
+			if err := s.rebuildLocked(r, fp); err != nil && s.handler == nil {
 				s.mu.Unlock()
 				log.Printf("Failed to build handler: %v", err)
 				http.Error(w, `{"error":"server not initialized"}`, http.StatusInternalServerError)
 				return
 			}
-			s.handler = handler
-			log.Printf("Handler initialized successfully")
 		}
 		h = s.handler
 		s.mu.Unlock()
 	}
 
 	h.ServeHTTP(w, r)
+}
+
+// rebuildLocked は起動時設定にヘッダーを重ねた Config でハンドラーを構築し直す（s.mu を保持して呼ぶ）。
+// 既存ハンドラーがある状態で構築に失敗した場合は既存を使い続け、同じ設定での再試行を毎リクエスト繰り返さない。
+func (s *server) rebuildLocked(r *http.Request, fp string) error {
+	cfg := s.baseCfg
+	configFromHeaders(r, &cfg)
+
+	prevCfg := s.cfg
+	s.cfg = &cfg
+	build := s.newHandler
+	if build == nil {
+		build = s.buildHandler
+	}
+	handler, err := build()
+	if err != nil {
+		s.cfg = prevCfg
+		if s.handler != nil {
+			s.fingerprint = fp
+			log.Printf("Warning: failed to rebuild handler with updated config, keeping previous one: %v", err)
+		}
+		return err
+	}
+
+	if s.handler == nil {
+		log.Printf("Handler initialized successfully")
+	} else {
+		log.Printf("Handler rebuilt: internal config changed")
+	}
+	s.handler = handler
+	s.fingerprint = fp
+	return nil
 }
