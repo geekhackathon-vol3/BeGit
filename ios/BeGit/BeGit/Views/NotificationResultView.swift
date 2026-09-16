@@ -64,6 +64,20 @@ struct NotificationResultView: View {
             ToolbarItem(placement: .principal) {
                 BeGitToolbarLogoView()
             }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    RepositoryPhotoGridView(
+                        repository: viewModel.notification.repository,
+                        activities: viewModel.activities
+                    )
+                } label: {
+                    Image(systemName: "square.grid.3x3.fill")
+                        .foregroundStyle(AppTheme.softPink)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("投稿写真一覧")
+            }
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
