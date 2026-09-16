@@ -83,10 +83,10 @@ struct RepositoryActivityCardView: View {
         isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
     }
 
-    private static let dateFormatter: DateFormatter = {
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M月d日 HH:mm"
+        f.dateFormat = "HH:mm"
         return f
     }()
 
@@ -94,7 +94,7 @@ struct RepositoryActivityCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             //  著者・日時（カード背景の外側・上部）
             authorHeader
-                .padding(.bottom, 6)
+                .padding(.bottom, 12)
 
             //  card本体（写真 + 投稿テキスト）
             cardContent
@@ -215,7 +215,7 @@ struct RepositoryActivityCardView: View {
                 Text(activity.author.login)
                     .font(.system(size: 13, weight: .black, design: .monospaced))
                     .foregroundStyle(.white)
-                Text(Self.dateFormatter.string(from: activity.date))
+                Text(Self.timeFormatter.string(from: activity.date))
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.64))
             }
