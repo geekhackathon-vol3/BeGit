@@ -71,6 +71,16 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryName
     }
 
+    //  Repository preview用のowner avatar URL
+    var repositoryPreviewAvatarURL: URL? {
+        if let selectedRepository {
+            return selectedRepository.ownerAvatarURL ?? ownerAvatarURL(from: selectedRepository.fullName)
+        }
+
+        guard let repositoryName else { return nil }
+        return ownerAvatarURL(from: repositoryName)
+    }
+
     //  画面に表示するRepository候補
     var displayedRepositories: [GitHubRepository] {
         Array(filteredRepositories.prefix(visibleRepositoryCount))

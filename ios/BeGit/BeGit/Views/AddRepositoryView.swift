@@ -124,10 +124,25 @@ struct AddRepositoryView: View {
     //  Repository入力状態preview
     private var repositoryPreview: some View {
         HStack(spacing: 12) {
-                if viewModel.repositoryPreviewName == nil {
+            if viewModel.repositoryPreviewName == nil {
                 Image(systemName: "shippingbox")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.low)
+            } else if let avatarURL = viewModel.repositoryPreviewAvatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        Image("github_default_icon")
+                            .resizable()
+                            .scaledToFill()
+                    }
+                }
+                .frame(width: 18, height: 18)
+                .clipShape(Circle())
             } else {
                 Image("github_default_icon")
                     .resizable()
@@ -394,7 +409,8 @@ struct AddRepositoryView: View {
     private var alreadyAddedBadge: some View {
         Image(systemName: "checkmark.circle.fill")
             .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(AppTheme.accent)
+            // 追加済み（選択不可）はアクセント色を使わず、控えめな色で表示する。
+            .foregroundStyle(AppTheme.Text.muted)
             .frame(width: 20, height: 20)
             .accessibilityLabel("追加済み")
     }
