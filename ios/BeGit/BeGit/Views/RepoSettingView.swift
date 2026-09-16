@@ -16,12 +16,18 @@ struct RepoSettingView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         // MARK: リポジトリ情報
-                        settingSection(title: "REPOSITORY") {
+                        settingSection(
+                            title: "■ GitHub Repository",
+                            color: AppTheme.sectionYellow
+                        ) {
                             repoInfoRow
                         }
 
                         // MARK: メンバー一覧
-                        settingSection(title: "MEMBERS") {
+                        settingSection(
+                            title: "■ Team Members",
+                            color: AppTheme.sectionPink
+                        ) {
                             VStack(spacing: 0) {
                                 ForEach(Array(repository.members.enumerated()), id: \.element.id) { index, member in
                                     memberRow(member)
@@ -117,11 +123,15 @@ struct RepoSettingView: View {
     }
 
     @ViewBuilder
-    private func settingSection(title: String, @ViewBuilder content: () -> some View) -> some View {
+    private func settingSection(
+        title: String,
+        color: Color,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.softPink)
+                .font(.system(size: 20, weight: .regular, design: .monospaced))
+                .foregroundStyle(color)
             content()
         }
     }
