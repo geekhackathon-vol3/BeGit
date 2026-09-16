@@ -233,3 +233,36 @@ func TestServeHTTP_KeepsPreviousHandlerWhenRebuildFails(t *testing.T) {
 		t.Fatalf("cfg should be restored after failed rebuild")
 	}
 }
+
+func TestConfigFromHeaders_BeGitTimeAllowMultiplePerSprint(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-Begit-Time-Allow-Multiple-Per-Sprint", "true")
+
+	cfg := &Config{}
+	configFromHeaders(req, cfg)
+
+	if !cfg.BeGitTimeAllowMultiplePerSprint {
+		t.Fatal("expected BeGitTimeAllowMultiplePerSprint=true from header")
+	}
+}
+
+// この設定の変更もハンドラー再構築の対象になる（dev の vars 変更を再起動なしで反映する）
+func TestServeHTTP_RebuildsWhenAllowMultiplePerSprintChanges(t *testing.T) {
+	srv, builds, _ := countingServer(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+	req.Header.Set("X-Internal-Begit-Time-Allow-Multiple-Per-Sprint", "true")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	if *builds != 2 {
+		t.Fatalf("expected 2 builds, got %d", *builds)
+	}
+	if !srv.cfg.BeGitTimeAllowMultiplePerSprint {
+		t.Fatal("rebuilt config should enable BeGitTimeAllowMultiplePerSprint")
+	}
+}

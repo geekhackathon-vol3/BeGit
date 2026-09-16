@@ -108,6 +108,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 		fcmClient,
 		groupRepo,
 		postRepo,
+		cfg.BeGitTimeAllowMultiplePerSprint,
 	)
 
 	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client)

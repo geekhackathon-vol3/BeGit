@@ -45,6 +45,10 @@ type Config struct {
 	// Workers scheduled() が X-Cron-Secret ヘッダーで付与する。未設定なら Cron 経路は常に 403。
 	CronSecret string
 
+	// BeGitTimeAllowMultiplePerSprint が true のとき BeGit Time! の「1スプリント1人1回」を適用しない。
+	// 未設定は従来どおり制限あり（wrangler.toml の vars で本番・dev とも true）。1時間の時間的非共存ルールは常に適用する。
+	BeGitTimeAllowMultiplePerSprint bool
+
 	// DevMode が true のとき dev 認証バイパス（POST /auth/dev）と
 	// スタブ GitHub クライアントを有効化する。本番では未設定＝false。
 	DevMode bool
@@ -54,23 +58,24 @@ type Config struct {
 // 必須環境変数が欠けている場合はエラーを返す
 func loadConfig() (*Config, error) {
 	cfg := &Config{
-		GitHubClientID:             os.Getenv("GITHUB_CLIENT_ID"),
-		GitHubClientSecret:         os.Getenv("GITHUB_CLIENT_SECRET"),
-		GitHubWebhookSecret:        os.Getenv("GITHUB_WEBHOOK_SECRET"),
-		GitHubAppID:                os.Getenv("GITHUB_APP_ID"),
-		GitHubAppPrivateKey:        os.Getenv("GITHUB_APP_PRIVATE_KEY"),
-		FirebaseServiceAccountJSON: os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"),
-		DBEncryptionKey:            os.Getenv("DB_ENCRYPTION_KEY"),
-		CFAccountID:                os.Getenv("CF_ACCOUNT_ID"),
-		D1DatabaseID:               os.Getenv("D1_DATABASE_ID"),
-		CFAPIToken:                 os.Getenv("CF_API_TOKEN"),
-		R2AccessKeyID:              os.Getenv("R2_ACCESS_KEY_ID"),
-		R2SecretAccessKey:          os.Getenv("R2_SECRET_ACCESS_KEY"),
-		R2Bucket:                   os.Getenv("R2_BUCKET"),
-		AppBaseURL:                 os.Getenv("APP_BASE_URL"),
-		GitHubAppIOSRedirectURI:    os.Getenv("GITHUB_APP_IOS_REDIRECT_URI"),
-		CronSecret:                 os.Getenv("CRON_SECRET"),
-		DevMode:                    os.Getenv("DEV_MODE") == "true",
+		GitHubClientID:                  os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret:              os.Getenv("GITHUB_CLIENT_SECRET"),
+		GitHubWebhookSecret:             os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		GitHubAppID:                     os.Getenv("GITHUB_APP_ID"),
+		GitHubAppPrivateKey:             os.Getenv("GITHUB_APP_PRIVATE_KEY"),
+		FirebaseServiceAccountJSON:      os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON"),
+		DBEncryptionKey:                 os.Getenv("DB_ENCRYPTION_KEY"),
+		CFAccountID:                     os.Getenv("CF_ACCOUNT_ID"),
+		D1DatabaseID:                    os.Getenv("D1_DATABASE_ID"),
+		CFAPIToken:                      os.Getenv("CF_API_TOKEN"),
+		R2AccessKeyID:                   os.Getenv("R2_ACCESS_KEY_ID"),
+		R2SecretAccessKey:               os.Getenv("R2_SECRET_ACCESS_KEY"),
+		R2Bucket:                        os.Getenv("R2_BUCKET"),
+		AppBaseURL:                      os.Getenv("APP_BASE_URL"),
+		GitHubAppIOSRedirectURI:         os.Getenv("GITHUB_APP_IOS_REDIRECT_URI"),
+		CronSecret:                      os.Getenv("CRON_SECRET"),
+		DevMode:                         os.Getenv("DEV_MODE") == "true",
+		BeGitTimeAllowMultiplePerSprint: os.Getenv("BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT") == "true",
 	}
 
 	// 必須環境変数の検証
@@ -163,6 +168,9 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
 		cfg.DevMode = v == "true"
 	}
+	if v := r.Header.Get("X-Internal-Begit-Time-Allow-Multiple-Per-Sprint"); v != "" {
+		cfg.BeGitTimeAllowMultiplePerSprint = v == "true"
+	}
 }
 
 // internalConfigHeaders は configFromHeaders が読む X-Internal-* ヘッダー名の一覧。
@@ -187,6 +195,7 @@ var internalConfigHeaders = []string{
 	"X-Internal-Github-App-Ios-Redirect-Uri",
 	"X-Internal-Cron-Secret",
 	"X-Internal-Dev-Mode",
+	"X-Internal-Begit-Time-Allow-Multiple-Per-Sprint",
 }
 
 // configFingerprint は X-Internal-* ヘッダーの内容から設定の同一性を表すハッシュを返す。

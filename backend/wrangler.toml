@@ -14,6 +14,9 @@ D1_DATABASE_ID = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 R2_BUCKET = "begit-photos"
 APP_BASE_URL = "https://begit.118029-ichikama.workers.dev"
 GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
+# BeGit Time! の「1スプリント1人1回」を解除（当面は本番も何度でも発行可）。
+# 1時間のチャレンジ中は発行不可のルールは維持される。制限を戻すときは "false" にする。
+BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT = "true"
 
 # Cron トリガー（③④⑤⑥ の時刻起点通知）。
 #   "* * * * *" → scheduled() で kind=minutely（③ challenge_end: 発行+1h）
@@ -62,6 +65,9 @@ name = "begit-dev"
 
 [env.dev.vars]
 DEV_MODE = "true"
+# BeGit Time! の「1スプリント1人1回」を解除（動作確認で何度でも発行できるように）。
+# 1時間のチャレンジ中は発行不可のルールは維持される。
+BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT = "true"
 CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 R2_BUCKET = "begit-photos"

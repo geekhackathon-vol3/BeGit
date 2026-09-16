@@ -21,8 +21,9 @@ type NotificationRepository interface {
 	// ① BeGit Time! の時間的非共存判定に使用する。
 	HasActiveInSprint(ctx context.Context, sprintID int64) (bool, error)
 	// CreateIfNoActive は同一スプリント内にアクティブ通知が無い場合のみ INSERT する（原子的）。
-	// アクティブ通知が既に存在する場合は ErrConstraintViolation を返す（時間的非共存保証）。
-	CreateIfNoActive(ctx context.Context, notif *model.Notification) (*model.Notification, error)
+	// allowMultiplePerSprint が false のときは、同一スプリントで同一ユーザーが発行済みの場合も拒否する（1スプリント1人1回）。
+	// いずれかの条件で拒否した場合は ErrConstraintViolation を返す。
+	CreateIfNoActive(ctx context.Context, notif *model.Notification, allowMultiplePerSprint bool) (*model.Notification, error)
 	// ListChallengeEndDue は sent_at + 1h <= now() に到達した通知を返す（③ challenge_end の対象抽出）。
 	ListChallengeEndDue(ctx context.Context) ([]model.Notification, error)
 	// ListBySprintID は指定スプリントの全通知を返す（⑤ サマリ算出用）。
@@ -67,8 +68,8 @@ func scanNotification(row map[string]interface{}) (*model.Notification, error) {
 	return n, nil
 }
 
-// Create は notifications テーブルにレコードを挿入する
-// UNIQUE(sprint_id, sent_by) 違反時は ErrConstraintViolation を返す
+// Create は notifications テーブルにレコードを挿入する（発行ルールの判定はしない）。
+// D1 の制約違反時は ErrConstraintViolation を返す
 func (r *notificationRepository) Create(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
 	message := notif.Message
 	if message == "" {
@@ -145,27 +146,33 @@ func (r *notificationRepository) HasActiveInSprint(ctx context.Context, sprintID
 
 // CreateIfNoActive は同一スプリント内にアクティブ通知が無い場合のみ INSERT する（原子的）。
 // INSERT ... WHERE NOT EXISTS で時間的非共存を原子的に保証する。
-// アクティブ通知が既に存在する場合は INSERT が 0 行となり ErrConstraintViolation を返す。
-func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+// allowMultiplePerSprint が false のときは「1スプリント1人1回」も同じ INSERT の条件で保証する
+// （DB に UNIQUE(sprint_id, sent_by) は持たない。0006 で撤去）。
+// 条件に合わず INSERT が 0 行となった場合は ErrConstraintViolation を返す。
+func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *model.Notification, allowMultiplePerSprint bool) (*model.Notification, error) {
 	message := notif.Message
 	if message == "" {
 		message = "今、なに作ってる？"
 	}
 
-	// INSERT with conditional WHERE NOT EXISTS to ensure atomicity
-	rowsAffected, err := r.db.Exec(ctx,
-		`INSERT INTO notifications (sprint_id, sent_by, message)
+	query := `INSERT INTO notifications (sprint_id, sent_by, message)
 		 SELECT ?, ?, ?
 		 WHERE NOT EXISTS (
 		   SELECT 1 FROM notifications
 		   WHERE sprint_id = ? AND datetime(sent_at, '+1 hour') > datetime('now')
-		 )
+		 )`
+	params := []interface{}{notif.SprintID, notif.SentBy, message, notif.SprintID}
+	if !allowMultiplePerSprint {
+		query += `
 		 AND NOT EXISTS (
 		   SELECT 1 FROM notifications
 		   WHERE sprint_id = ? AND sent_by = ?
-		 )`,
-		[]interface{}{notif.SprintID, notif.SentBy, message, notif.SprintID, notif.SprintID, notif.SentBy},
-	)
+		 )`
+		params = append(params, notif.SprintID, notif.SentBy)
+	}
+
+	// INSERT with conditional WHERE NOT EXISTS to ensure atomicity
+	rowsAffected, err := r.db.Exec(ctx, query, params)
 	if err != nil {
 		if errors.Is(err, d1.ErrConstraintViolation) {
 			return nil, ErrConstraintViolation
@@ -175,7 +182,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 
 	// Check if the INSERT succeeded (affected rows should be 1)
 	if rowsAffected == 0 {
-		// INSERT was blocked by WHERE NOT EXISTS (active notification exists or UNIQUE violation)
+		// INSERT was blocked by WHERE NOT EXISTS (active notification exists, or already sent in this sprint)
 		return nil, ErrConstraintViolation
 	}
 

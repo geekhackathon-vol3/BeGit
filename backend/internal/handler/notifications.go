@@ -45,7 +45,7 @@ func NewNotificationHandler(notificationService service.NotificationService) *No
 // Send は BeGit Time 通知を発行する。
 //
 //	@Summary		BeGit Time 通知発行
-//	@Description	1 スプリント 1 人 1 回まで
+//	@Description	アクティブなチャレンジ（発行から 1 時間）中は発行不可。既定では 1 スプリント 1 人 1 回まで（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true で解除）
 //	@Tags			notifications
 //	@Produce		json
 //	@Security		BearerAuth
@@ -71,7 +71,7 @@ func (h *NotificationHandler) Send(c *gin.Context) {
 	notif, err := h.notificationService.SendNotification(c.Request.Context(), groupID, userID)
 	if err != nil {
 		if errors.Is(err, service.ErrConflict) {
-			respondError(c, http.StatusConflict, "conflict: already sent notification in this sprint")
+			respondError(c, http.StatusConflict, "conflict: a challenge is in progress or already sent in this sprint")
 			return
 		}
 		respondError(c, http.StatusInternalServerError, "internal server error")

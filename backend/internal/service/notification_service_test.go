@@ -70,6 +70,8 @@ type mockNotificationRepository struct {
 	getLatestInSprintBeforeFunc func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
 	hasActiveInSprintFunc       func(ctx context.Context, sprintID int64) (bool, error)
 	createIfNoActiveFunc        func(ctx context.Context, notif *model.Notification) (*model.Notification, error)
+	// createIfNoActiveAllowMultiple は CreateIfNoActive に渡された allowMultiplePerSprint の記録
+	createIfNoActiveAllowMultiple []bool
 	listChallengeEndDueFunc     func(ctx context.Context) ([]model.Notification, error)
 	listBySprintIDFunc          func(ctx context.Context, sprintID int64) ([]model.Notification, error)
 }
@@ -118,7 +120,8 @@ func (m *mockNotificationRepository) HasActiveInSprint(ctx context.Context, spri
 	return false, nil
 }
 
-func (m *mockNotificationRepository) CreateIfNoActive(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+func (m *mockNotificationRepository) CreateIfNoActive(ctx context.Context, notif *model.Notification, allowMultiplePerSprint bool) (*model.Notification, error) {
+	m.createIfNoActiveAllowMultiple = append(m.createIfNoActiveAllowMultiple, allowMultiplePerSprint)
 	if m.createIfNoActiveFunc != nil {
 		return m.createIfNoActiveFunc(ctx, notif)
 	}
@@ -289,6 +292,38 @@ func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	_, err := svc.SendNotification(context.Background(), 1, 2)
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict, got %v", err)
+	}
+}
+
+// TestNotificationService_SendNotification_OncePerSprintByDefault は既定（設定なし）で
+// 1スプリント1人1回の判定を有効にしてリポジトリへ渡すことを確認する
+func TestNotificationService_SendNotification_OncePerSprintByDefault(t *testing.T) {
+	notifRepo := &mockNotificationRepository{}
+	svc := NewNotificationService(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil)
+
+	if _, err := svc.SendNotification(context.Background(), 1, 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(notifRepo.createIfNoActiveAllowMultiple) != 1 || notifRepo.createIfNoActiveAllowMultiple[0] {
+		t.Fatalf("expected allowMultiplePerSprint=false, got %v", notifRepo.createIfNoActiveAllowMultiple)
+	}
+}
+
+// TestNotificationService_SendNotification_AllowMultiplePerSprint は設定で許可した場合、
+// 同一ユーザーの2回目の発行も（アクティブなチャレンジが無ければ）成功することを確認する
+func TestNotificationService_SendNotification_AllowMultiplePerSprint(t *testing.T) {
+	notifRepo := &mockNotificationRepository{}
+	svc := NewNotificationServiceFull(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil, nil, nil, true)
+
+	for i := 0; i < 2; i++ {
+		if _, err := svc.SendNotification(context.Background(), 1, 2); err != nil {
+			t.Fatalf("send #%d: unexpected error: %v", i+1, err)
+		}
+	}
+	for i, allow := range notifRepo.createIfNoActiveAllowMultiple {
+		if !allow {
+			t.Fatalf("send #%d: expected allowMultiplePerSprint=true", i+1)
+		}
 	}
 }
 

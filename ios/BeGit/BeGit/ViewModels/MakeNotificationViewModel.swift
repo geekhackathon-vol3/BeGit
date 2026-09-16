@@ -129,9 +129,11 @@ final class MakeNotificationViewModel: ObservableObject {
                 try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
                 return notification
             } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
-                // 既に通知済み → 既に作成済みの notification オブジェクトを返す
-                return notification
-            }catch {
+                // チャレンジ進行中（発行から1時間以内）、または設定によりこのスプリントは送信済み。
+                // 送信できていないので結果画面へは進めない
+                errorMessage = "今は送信できません。チャレンジが進行中か、このスプリントは送信済みです。"
+                return nil
+            } catch {
                 errorMessage = "通知の送信に失敗しました。"
                 return nil
             }
