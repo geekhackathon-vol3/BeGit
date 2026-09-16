@@ -100,7 +100,7 @@ BeGit; の通知を体系的に整理し、`begit-notifications` spec（バッ�
 
 ### 3.1 既存仕様（begit-backend-api Req3・前提）
 - `POST /groups/:id/notifications` で発行。当日スプリントを取得/作成し `notifications` に INSERT
-- 既定で **1スプリント1人1回**（違反は 409 Conflict）。← 当初は DB の `UNIQUE(sprint_id, sent_by)` で保証していたが、dev で何度でも発行できるよう**サービス層の判定に移し、設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true` で解除可能**にした（制約はマイグレーション 0006 で撤去。本番は未設定＝従来どおり）
+- 既定で **1スプリント1人1回**（違反は 409 Conflict）。← 当初は DB の `UNIQUE(sprint_id, sent_by)` で保証していたが、dev で何度でも発行できるよう**サービス層の判定に移し、設定 `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true` で解除可能**にした（制約はマイグレーション 0006 で撤去。当面は本番・dev とも `true`＝何度でも発行可）
 - 発行成功 → FCM でグループ全員へ Push
 - ステータス算出：`On Time`(1h以内) / `Late`(1h超) / `Missed`(投稿なし)
 
