@@ -34,15 +34,17 @@ struct RepositoryCardView: View {
                     }
                 }
 
-                HStack(spacing: 12) {
-                     //  member avatar一覧
+                HStack(spacing: 8) {
+                    //  member avatar一覧
                     avatarStack
 
                     //  member数表示
                     Text("\(repository.memberCount) members")
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.58))
                         .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .layoutPriority(1)
                 }
             }
 
@@ -114,10 +116,10 @@ struct RepositoryCardView: View {
 
     //  重なり表示するavatar一覧
     private var avatarStack: some View {
-        HStack(spacing: -8) {
+        HStack(spacing: -10) {
             //  表示上限数までavatar表示
             ForEach(Array(repository.members.prefix(visibleAvatarLimit))) { member in
-                AvatarView(member: member, size: 30)
+                AvatarView(member: member, size: 24)
                     //  avatar境界線
                     .overlay(
                         Circle()
