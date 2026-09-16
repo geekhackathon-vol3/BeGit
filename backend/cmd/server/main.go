@@ -46,7 +46,7 @@ type Config struct {
 	CronSecret string
 
 	// BeGitTimeAllowMultiplePerSprint が true のとき BeGit Time! の「1スプリント1人1回」を適用しない。
-	// dev での動作確認用。未設定（本番）は従来どおり制限あり。1時間の時間的非共存ルールは常に適用する。
+	// 未設定は従来どおり制限あり（wrangler.toml の vars で本番・dev とも true）。1時間の時間的非共存ルールは常に適用する。
 	BeGitTimeAllowMultiplePerSprint bool
 
 	// DevMode が true のとき dev 認証バイパス（POST /auth/dev）と

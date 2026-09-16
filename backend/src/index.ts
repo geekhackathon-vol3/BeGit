@@ -28,7 +28,7 @@ interface Env {
   GITHUB_APP_IOS_REDIRECT_URI: string;
   // dev 環境でのみ "true"（[env.dev.vars]）。dev 認証バイパスを有効化する。
   DEV_MODE: string;
-  // dev 環境でのみ "true"（[env.dev.vars]）。BeGit Time! の「1スプリント1人1回」を解除する。
+  // "true" で BeGit Time! の「1スプリント1人1回」を解除する（[vars] / [env.dev.vars]）。未設定は制限あり。
   BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT: string;
   // 内部 Cron 起動シークレット。dev は [env.dev.vars] の var、本番は secret 運用。
   // scheduled() が X-Cron-Secret ヘッダーで Go コンテナへ転送し、cron_handler が定数時間比較する。
