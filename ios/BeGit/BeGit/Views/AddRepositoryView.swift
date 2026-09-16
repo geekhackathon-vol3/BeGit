@@ -392,13 +392,11 @@ struct AddRepositoryView: View {
     }
 
     private var alreadyAddedBadge: some View {
-        Text("追加済み")
-            .font(.system(size: 10, weight: .black, design: .monospaced))
-            .foregroundStyle(.black.opacity(0.78))
-            .padding(.horizontal, 7)
-            .frame(height: 20)
-            .background(AppTheme.Text.regular)
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(AppTheme.accent)
+            .frame(width: 20, height: 20)
+            .accessibilityLabel("追加済み")
     }
 
     //  Repository owner avatar
