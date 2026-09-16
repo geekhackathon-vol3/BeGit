@@ -116,7 +116,7 @@ struct PhotoPreviewView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 12)
                 .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
 
