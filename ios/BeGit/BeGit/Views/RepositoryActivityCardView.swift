@@ -69,9 +69,12 @@ struct RepositoryActivityCardView: View {
         _reactionCounts = State(initialValue: counts)
     }
 
-    //  背面/前面の両方の写真がある時だけ入れ替え可能
+    //  実写真（URL）とモック画像（アセット名）のどちらでも、
+    //  背面/前面の両方がある時だけ入れ替え可能。
     private var canSwap: Bool {
-        activity.mainPhotoURL != nil && activity.frontPhotoURL != nil
+        let hasMainPhoto = activity.mainPhotoURL != nil || activity.imageName != nil
+        let hasFrontPhoto = activity.frontPhotoURL != nil || activity.frontImageName != nil
+        return hasMainPhoto && hasFrontPhoto
     }
 
     //  入れ替え状態を反映した表示用URL
@@ -81,6 +84,15 @@ struct RepositoryActivityCardView: View {
 
     private var displayedFrontURL: URL? {
         isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
+    }
+
+    //  モック画像用の表示名も、入れ替え状態に合わせて反転する。
+    private var displayedMainImageName: String? {
+        isSwapped ? activity.frontImageName : activity.imageName
+    }
+
+    private var displayedFrontImageName: String? {
+        isSwapped ? activity.imageName : activity.frontImageName
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -373,7 +385,7 @@ struct RepositoryActivityCardView: View {
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
-                } else if let imageName = activity.imageName, UIImage(named: imageName) != nil {
+                } else if let imageName = displayedMainImageName, UIImage(named: imageName) != nil {
                     Image(imageName)
                         .resizable()
                         .scaledToFill()
@@ -423,10 +435,10 @@ struct RepositoryActivityCardView: View {
         .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
     }
 
-    //  前面写真が無い場合の小窓フォールバック（モック時はfrontImageName画像を使用）
+    //  前面写真が無い場合の小窓フォールバック（モック時は表示中のアセットを使用）
     private var thumbnailFallback: some View {
         ZStack {
-            if let name = activity.frontImageName, UIImage(named: name) != nil {
+            if let name = displayedFrontImageName, UIImage(named: name) != nil {
                 Image(name)
                     .resizable()
                     .scaledToFill()
