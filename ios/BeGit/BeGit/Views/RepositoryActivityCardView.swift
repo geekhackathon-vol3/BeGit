@@ -106,11 +106,11 @@ struct RepositoryActivityCardView: View {
         Group {
             if let comment = activity.comment, comment.isEmpty == false {
                 Text(comment)
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.92))
             } else {
                 Text(activity.title)
-                    .font(.system(size: 17, weight: .black, design: .monospaced))
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
                     .foregroundStyle(.white)
             }
         }
@@ -121,7 +121,7 @@ struct RepositoryActivityCardView: View {
 
     // MARK: - Card
 
-    //  枠線の中に「写真」と「その下の投稿テキスト」を縦に並べる。
+    //  「写真」と「その下の投稿テキスト」を縦に並べる。
     //  テキストは写真に重ねず、写真の明るさに左右されず読めるようにする。
     private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -134,6 +134,7 @@ struct RepositoryActivityCardView: View {
                         .padding(.trailing, 16)
                         .padding(.bottom, reactionPickerBottomOffset)
                         .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+                        .zIndex(10)
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
@@ -144,22 +145,13 @@ struct RepositoryActivityCardView: View {
                 .padding(.bottom, 20)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
     }
 
     private var photoArea: some View {
         ZStack(alignment: .topLeading) {
             //  背景画像
             activityBackground
-                .onTapGesture {
-                    guard showReactionPicker else { return }
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                        showReactionPicker = false
-                    }
-                }
+                .allowsHitTesting(false)
 
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
@@ -252,6 +244,7 @@ struct RepositoryActivityCardView: View {
                         .animation(.spring(response: 0.22, dampingFraction: 0.6), value: myReaction)
                 }
                 .buttonStyle(.plain)
+                .contentShape(Circle())
             }
         }
         .padding(.horizontal, 8)
@@ -266,7 +259,7 @@ struct RepositoryActivityCardView: View {
 
     //  ピッカーがreactionButtonの上に来るよう下端からのオフセットを計算
     private var reactionPickerBottomOffset: CGFloat {
-        58   // 16 padding + 34 button + 8 gap
+        68   // 16 padding + 44 button + 8 gap
     }
 
     private var reactionButton: some View {
@@ -285,9 +278,14 @@ struct RepositoryActivityCardView: View {
                         .foregroundStyle(.white.opacity(0.72))
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 44, height: 44)
+            .background(Circle().fill(Color.black.opacity(0.42)))
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .contentShape(Circle())
+        .zIndex(4)
+        .accessibilityLabel(showReactionPicker ? "スタンプを閉じる" : "スタンプを選ぶ")
     }
 
 
@@ -416,7 +414,7 @@ struct RepositoryActivityCardView: View {
                 thumbnailFallback
             }
         }
-        .frame(width: 60, height: 80)
+        .frame(width: 72, height: 96)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
