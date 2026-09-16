@@ -60,7 +60,7 @@ terraform-apply:
 deploy:
 	docker build --platform linux/amd64 -t begit-api ./backend && \
 	cd backend && npx wrangler deploy && \
-	npx wrangler d1 migrations apply begit-db
+	npx wrangler d1 migrations apply begit-db --remote
 
 # ── dev 環境（フロント共有用）─────────────────────────────────────────
 # dev D1 を作成（初回のみ）。出力された database_id を

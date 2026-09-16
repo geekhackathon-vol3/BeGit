@@ -111,9 +111,11 @@ export default {
     });
 
     ctx.waitUntil(
-      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then((response) => {
+      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then(async (response) => {
         if (!response.ok) {
-          throw new Error(`Cron fetch failed: ${response.status} ${response.statusText} (url: ${url})`);
+          // 失敗理由（コンテナの応答本文）をログに残す。コンテナの標準出力は Workers Logs に出ないため。
+          const body = (await response.text().catch(() => "")).slice(0, 500);
+          throw new Error(`Cron fetch failed: ${response.status} ${response.statusText} (url: ${url}) body: ${body}`);
         }
       })
     );
