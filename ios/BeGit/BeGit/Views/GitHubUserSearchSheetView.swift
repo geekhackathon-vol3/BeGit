@@ -56,11 +56,7 @@ struct GitHubUserSearchSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") {
-                        dismiss()
-                    }
-                    .appFont(.body)
-                    .foregroundStyle(AppTheme.accent)
+                    BeGitBackButton(color: AppTheme.accent)
                 }
 
                 ToolbarItem(placement: .principal) {
