@@ -24,15 +24,31 @@ struct RepositoryPhotoGridView: View {
                 .ignoresSafeArea()
 
             GeometryReader { proxy in
-                RepositoryPhotoGridContentView(
-                    activities: photoActivities,
-                    availableWidth: proxy.size.width
-                )
+                VStack(spacing: 0) {
+                    // Timeline / Result と同じ、タイトル＋リポジトリ名のヘッダー。
+                    photoHeader
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        .padding(.bottom, 18)
+
+                    RepositoryPhotoGridContentView(
+                        activities: photoActivities,
+                        availableWidth: proxy.size.width
+                    )
+                }
             }
         }
-        .navigationTitle("Photos")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                BeGitBackButton()
+            }
+
+            ToolbarItem(placement: .principal) {
+                BeGitToolbarLogoView()
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showRepoSetting = true
@@ -48,6 +64,20 @@ struct RepositoryPhotoGridView: View {
             RepoSettingView(repository: repository)
         }
         .tint(AppTheme.accent)
+    }
+
+    private var photoHeader: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Photos")
+                .appFont(.title)
+                .foregroundStyle(AppTheme.Text.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(repository.name)
+                .appFont(.sectionHeader)
+                .foregroundStyle(AppTheme.Text.low)
+                .lineLimit(1)
+        }
     }
 }
 
@@ -159,7 +189,7 @@ private struct RepositoryPhotoGridTile: View {
             }
 
             Text("\(rank)")
-                .font(.system(size: max(14, min(20, width * 0.20)), weight: .regular, design: .rounded))
+                .font(.system(size: max(13, min(18, width * 0.18)), weight: .regular, design: .rounded))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.65), radius: 3, x: 0, y: 1)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)

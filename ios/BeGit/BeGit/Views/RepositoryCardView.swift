@@ -89,10 +89,6 @@ struct RepositoryCardView: View {
             .frame(width: 76, height: 76)
             .background(Color.black.opacity(0.24))
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
-            )
     }
 
     private var repositoryImageURL: URL? {
