@@ -68,7 +68,7 @@ struct PhotoPreviewView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 620)
                         .clipped()
-                        .cornerRadius(30)
+                        .cornerRadius(12)
 
                     // Front Camera Photo
                     if let frontImage = viewModel.frontImage {
