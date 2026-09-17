@@ -6,9 +6,8 @@ import Foundation
 //  Repository Timeline activity
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
-let id: UUID                        //  activity識別子
-
-//    let backendPostID: Int64
+    let id: UUID                        //  activity識別子
+    let backendPostID: Int64?           //  リアクションAPIで使用する投稿ID
     
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
@@ -19,10 +18,11 @@ let id: UUID                        //  activity識別子
     let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
     let frontPhotoURL: URL?             //  前面写真の presigned URL（BeReal 小窓表示用）
     let author: RepositoryMember        //  activity実行ユーザー
-    let reactions: [ActivityReaction]   //  リアクション一覧
+    var reactions: [ActivityReaction]   //  リアクション一覧
 
     init(
         id: UUID = UUID(),
+        backendPostID: Int64? = nil,
         type: RepositoryActivityType,
         title: String,
         comment: String? = nil,
@@ -35,6 +35,7 @@ let id: UUID                        //  activity識別子
         reactions: [ActivityReaction] = []
     ) {
         self.id = id
+        self.backendPostID = backendPostID
         self.type = type
         self.title = title
         self.comment = comment

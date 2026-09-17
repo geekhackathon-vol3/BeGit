@@ -44,7 +44,17 @@ struct RepositoryDashboardView: View {
                         progressSummary
 
                         //  activity card一覧（横幅フル）
-                        RepositoryActivityTimelineView(activities: viewModel.activities)
+                        RepositoryActivityTimelineView(
+                            activities: viewModel.activities,
+                            onReactionTapped: { activityID, type in
+                                try await viewModel.toggleReaction(
+                                    activityID: activityID,
+                                    type: type,
+                                    accessToken: authState.accessToken,
+                                    currentUserID: authState.githubUser.map { Int64($0.id) }
+                                )
+                            }
+                        )
                             .padding(.horizontal, -20)
                     }
                     .padding(.horizontal, 20)
@@ -93,7 +103,10 @@ struct RepositoryDashboardView: View {
         .tint(AppTheme.accent)
         //  accessToken変更時に前のタスクを自動キャンセルしてリロード
         .task(id: authState.accessToken) {
-            await viewModel.loadActivities(accessToken: authState.accessToken)
+            await viewModel.loadActivities(
+                accessToken: authState.accessToken,
+                currentUserID: authState.githubUser.map { Int64($0.id) }
+            )
         }
         .sheet(isPresented: $showRepoSetting) {
             RepoSettingView(repository: viewModel.repository)

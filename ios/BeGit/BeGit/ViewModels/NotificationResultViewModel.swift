@@ -28,7 +28,7 @@ final class NotificationResultViewModel: ObservableObject {
         self.completedCount = justPostedActivity != nil ? 3 : mock.count
     }
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
-    func loadActivities(accessToken: String?) async {
+    func loadActivities(accessToken: String?, currentUserID: Int64? = nil) async {
         guard let accessToken, accessToken.isEmpty == false,
               notification.repository.backendID != nil else {
             return
@@ -38,10 +38,23 @@ final class NotificationResultViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let fetched = try await repositoryAPI.listActivities(
+            var fetched = try await repositoryAPI.listActivities(
                 repository: notification.repository,
                 accessToken: accessToken
             )
+            if let repositoryID = notification.repository.backendID {
+                for index in fetched.indices {
+                    guard let postID = fetched[index].backendPostID else { continue }
+                    if let reactions = try? await repositoryAPI.listReactions(
+                        repositoryID: repositoryID,
+                        postID: postID,
+                        currentUserID: currentUserID,
+                        accessToken: accessToken
+                    ) {
+                        fetched[index].reactions = reactions
+                    }
+                }
+            }
             if !fetched.isEmpty {
                 //  実投稿（新しい順）をモックの上に積み重ねる
                 let mock = RepositoryActivity.mockActivities(for: notification.repository)
@@ -50,6 +63,73 @@ final class NotificationResultViewModel: ObservableObject {
             }
         } catch {
             //  取得失敗時は初期 Mock のまま表示を維持する
+        }
+    }
+
+    func toggleReaction(
+        activityID: UUID,
+        type: ActivityReactionType,
+        accessToken: String?,
+        currentUserID: Int64?
+    ) async throws -> [ActivityReaction]? {
+        guard let accessToken,
+              let repositoryID = notification.repository.backendID,
+              let index = activities.firstIndex(where: { $0.id == activityID }),
+              let postID = activities[index].backendPostID else {
+            return nil
+        }
+
+        let myReactionTypes = activities[index].reactions
+            .filter(\.reactedByMe)
+            .map(\.type)
+
+        do {
+            let updated: [ActivityReaction]
+            if myReactionTypes.contains(type) {
+                updated = try await repositoryAPI.deleteReaction(
+                    type,
+                    repositoryID: repositoryID,
+                    postID: postID,
+                    currentUserID: currentUserID,
+                    accessToken: accessToken
+                )
+            } else {
+                for previousType in myReactionTypes {
+                    _ = try await repositoryAPI.deleteReaction(
+                        previousType,
+                        repositoryID: repositoryID,
+                        postID: postID,
+                        currentUserID: currentUserID,
+                        accessToken: accessToken
+                    )
+                }
+                updated = try await repositoryAPI.addReaction(
+                    type,
+                    repositoryID: repositoryID,
+                    postID: postID,
+                    currentUserID: currentUserID,
+                    accessToken: accessToken
+                )
+            }
+
+            updateReactions(updated, for: activityID)
+            return updated
+        } catch {
+            if let current = try? await repositoryAPI.listReactions(
+                repositoryID: repositoryID,
+                postID: postID,
+                currentUserID: currentUserID,
+                accessToken: accessToken
+            ) {
+                updateReactions(current, for: activityID)
+            }
+            throw error
+        }
+    }
+
+    private func updateReactions(_ reactions: [ActivityReaction], for activityID: UUID) {
+        if let index = activities.firstIndex(where: { $0.id == activityID }) {
+            activities[index].reactions = reactions
         }
     }
 
@@ -70,4 +150,3 @@ final class NotificationResultViewModel: ObservableObject {
         "\(completedCount)/\(totalCount)人が達成しました"
     }
 }
-
