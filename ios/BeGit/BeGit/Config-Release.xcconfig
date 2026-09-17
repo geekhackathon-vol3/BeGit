@@ -1,2 +1,4 @@
 SLASH = /
-API_BASE_URL = https:$(SLASH)/begit.118029-ichikama.workers.dev
+// TestFlight 配布も当面は dev サーバーに接続する（GitHub App の設定が dev にそろっているため）。
+// App Store 公開時は本番 https://begit.118029-ichikama.workers.dev に戻すこと。
+API_BASE_URL = https:$(SLASH)/begit-dev.118029-ichikama.workers.dev

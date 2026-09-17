@@ -25,7 +25,7 @@ func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-// TestNotificationRepository_Create_Conflict は UNIQUE 制約違反が ErrConstraintViolation を返すことを確認する
+// TestNotificationRepository_Create_Conflict は D1 の制約違反が ErrConstraintViolation に変換されることを確認する
 func TestNotificationRepository_Create_Conflict(t *testing.T) {
 	mock := &mockD1Client{
 		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
@@ -39,6 +39,65 @@ func TestNotificationRepository_Create_Conflict(t *testing.T) {
 		SentBy:   2,
 		Message:  "test",
 	})
+	if !errors.Is(err, ErrConstraintViolation) {
+		t.Errorf("expected ErrConstraintViolation, got %v", err)
+	}
+}
+
+// TestNotificationRepository_CreateIfNoActive_OncePerSprintCondition は allowMultiplePerSprint に応じて
+// 「1スプリント1人1回」の条件（sent_by の NOT EXISTS）を付け外しすることを確認する
+func TestNotificationRepository_CreateIfNoActive_OncePerSprintCondition(t *testing.T) {
+	cases := []struct {
+		name          string
+		allowMultiple bool
+		wantSenderSQL bool
+		wantParams    int
+	}{
+		{name: "既定は1人1回を判定する", allowMultiple: false, wantSenderSQL: true, wantParams: 6},
+		{name: "許可時は1人1回を判定しない", allowMultiple: true, wantSenderSQL: false, wantParams: 4},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotSQL string
+			var gotParams []interface{}
+			mock := &mockD1Client{
+				execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+					gotSQL, gotParams = sql, params
+					return 1, nil
+				},
+				queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+					return []map[string]interface{}{{"id": float64(1), "sprint_id": float64(7), "sent_by": float64(2), "message": "m", "sent_at": "2026-09-16 09:00:00"}}, nil
+				},
+			}
+
+			repo := NewNotificationRepository(mock)
+			if _, err := repo.CreateIfNoActive(context.Background(), &model.Notification{SprintID: 7, SentBy: 2}, tc.allowMultiple); err != nil {
+				t.Fatalf("CreateIfNoActive() failed: %v", err)
+			}
+			if !strings.Contains(gotSQL, "+1 hour") {
+				t.Errorf("active-challenge condition must always be present, sql=%s", gotSQL)
+			}
+			if got := strings.Contains(gotSQL, "sent_by = ?"); got != tc.wantSenderSQL {
+				t.Errorf("sender condition present=%v, want %v", got, tc.wantSenderSQL)
+			}
+			if len(gotParams) != tc.wantParams {
+				t.Errorf("params len=%d, want %d", len(gotParams), tc.wantParams)
+			}
+		})
+	}
+}
+
+// TestNotificationRepository_CreateIfNoActive_Blocked は条件に合わず 0 行のとき ErrConstraintViolation を返すことを確認する
+func TestNotificationRepository_CreateIfNoActive_Blocked(t *testing.T) {
+	mock := &mockD1Client{
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			return 0, nil
+		},
+	}
+
+	repo := NewNotificationRepository(mock)
+	_, err := repo.CreateIfNoActive(context.Background(), &model.Notification{SprintID: 7, SentBy: 2}, true)
 	if !errors.Is(err, ErrConstraintViolation) {
 		t.Errorf("expected ErrConstraintViolation, got %v", err)
 	}

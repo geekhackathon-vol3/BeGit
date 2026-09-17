@@ -8,7 +8,6 @@ struct AddRepositoryView: View {
     @Environment(\.dismiss) private var dismiss                 //  Sheetを閉じるためのdismiss action
     @EnvironmentObject private var authState: AuthState         //  API認証トークン
     @StateObject private var viewModel: AddRepositoryViewModel  //  画面状態を管理するViewModel
-    @ObservedObject private var oauthManager = GitHubOAuthManager.shared
     @State private var isMemberSearchPresented = false          //  GitHub member検索Sheet表示状態
 
     let onAdd: (Repository) -> Void                             //  Repository追加完了時のcallback
@@ -76,29 +75,9 @@ struct AddRepositoryView: View {
                     BeGitBackButton()
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        oauthManager.startLogin()
-                    } label: {
-                        Image(systemName: "person.badge.key.fill")
-                            .foregroundStyle(AppTheme.softPink)
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .accessibilityLabel("GitHubで認証")
-                }
             }
         }
         .tint(AppTheme.accent)
-        .alert(item: Binding(
-            get: { oauthManager.activeAlert },
-            set: { _ in oauthManager.clearAlert() }
-        )) { alertContext in
-            Alert(
-                title: Text(alertContext.title),
-                message: Text(alertContext.message),
-                dismissButton: .default(Text("OK"))
-            )
-        }
         .task {
             await viewModel.loadRepositories()
         }
@@ -124,10 +103,25 @@ struct AddRepositoryView: View {
     //  Repository入力状態preview
     private var repositoryPreview: some View {
         HStack(spacing: 12) {
-                if viewModel.repositoryPreviewName == nil {
+            if viewModel.repositoryPreviewName == nil {
                 Image(systemName: "shippingbox")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(AppTheme.Text.low)
+            } else if let avatarURL = viewModel.repositoryPreviewAvatarURL {
+                AsyncImage(url: avatarURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        Image("github_default_icon")
+                            .resizable()
+                            .scaledToFill()
+                    }
+                }
+                .frame(width: 18, height: 18)
+                .clipShape(Circle())
             } else {
                 Image("github_default_icon")
                     .resizable()
@@ -392,13 +386,12 @@ struct AddRepositoryView: View {
     }
 
     private var alreadyAddedBadge: some View {
-        Text("追加済み")
-            .font(.system(size: 10, weight: .black, design: .monospaced))
-            .foregroundStyle(.black.opacity(0.78))
-            .padding(.horizontal, 7)
-            .frame(height: 20)
-            .background(AppTheme.Text.regular)
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 17, weight: .semibold))
+            // 追加済み（選択不可）はアクセント色を使わず、控えめな色で表示する。
+            .foregroundStyle(AppTheme.Text.muted)
+            .frame(width: 20, height: 20)
+            .accessibilityLabel("追加済み")
     }
 
     //  Repository owner avatar

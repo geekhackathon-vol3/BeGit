@@ -68,7 +68,7 @@ struct PhotoPreviewView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 620)
                         .clipped()
-                        .cornerRadius(30)
+                        .cornerRadius(12)
 
                     // Front Camera Photo
                     if let frontImage = viewModel.frontImage {
@@ -76,18 +76,15 @@ struct PhotoPreviewView: View {
                         Image(uiImage: frontImage)
                             .resizable()
                             .scaledToFill()
-                            .frame(width: 110, height: 150)
+                            .frame(width: 72, height: 96)
                             .clipped()
-                            .cornerRadius(18)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 18)
-                                    .stroke(
-                                        AppTheme.Text.primary.opacity(0.9),
-                                        lineWidth: 2
-                                    )
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .stroke(Color.black, lineWidth: 2)
                             )
-                            .shadow(radius: 10)
-                            .padding(18)
+                            .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
+                            .padding(16)
                     }
                 }
                 .padding(.horizontal, 14)
@@ -119,7 +116,7 @@ struct PhotoPreviewView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 12)
                 .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
 

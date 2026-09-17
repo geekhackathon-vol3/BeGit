@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 )
 
@@ -134,5 +136,133 @@ func TestBuildHandler_AllowsMissingR2Credentials(t *testing.T) {
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected healthz status 200, got %d", rr.Code)
+	}
+}
+
+// countingServer は構築回数と、構築時に見えていた FirebaseServiceAccountJSON を記録するテスト用 server を返す
+func countingServer(buildErr *error) (*server, *int, *[]string) {
+	builds := 0
+	seen := []string{}
+	srv := &server{cfg: &Config{}}
+	srv.newHandler = func() (http.Handler, error) {
+		if buildErr != nil && *buildErr != nil {
+			return nil, *buildErr
+		}
+		builds++
+		seen = append(seen, srv.cfg.FirebaseServiceAccountJSON)
+		n := builds
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("X-Build", strconv.Itoa(n))
+		}), nil
+	}
+	return srv, &builds, &seen
+}
+
+func serveWithFirebase(srv *server, firebaseJSON string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+	if firebaseJSON != "" {
+		req.Header.Set("X-Internal-Firebase-Service-Account-B64", base64.StdEncoding.EncodeToString([]byte(firebaseJSON)))
+	}
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+	return rr
+}
+
+// 同じ内部設定のリクエストではハンドラーを再構築しない
+func TestServeHTTP_DoesNotRebuildWhenConfigUnchanged(t *testing.T) {
+	srv, builds, _ := countingServer(nil)
+
+	serveWithFirebase(srv, "")
+	serveWithFirebase(srv, "")
+	serveWithFirebase(srv, "")
+
+	if *builds != 1 {
+		t.Fatalf("expected 1 build, got %d", *builds)
+	}
+}
+
+// secret 追加などで内部設定が変わったら、再起動を待たずに新しい設定で再構築する
+func TestServeHTTP_RebuildsWhenSecretAdded(t *testing.T) {
+	srv, builds, seen := countingServer(nil)
+
+	serveWithFirebase(srv, "")
+	rr := serveWithFirebase(srv, `{"project_id":"begit"}`)
+
+	if *builds != 2 {
+		t.Fatalf("expected 2 builds, got %d", *builds)
+	}
+	if got := (*seen)[1]; got != `{"project_id":"begit"}` {
+		t.Fatalf("rebuilt handler should see new firebase config, got %q", got)
+	}
+	if rr.Header().Get("X-Build") != "2" {
+		t.Fatalf("request should be served by rebuilt handler, got build %q", rr.Header().Get("X-Build"))
+	}
+}
+
+// 内部ヘッダーが無いリクエスト（Worker 非経由）では既存ハンドラーをそのまま使う
+func TestServeHTTP_KeepsHandlerForRequestsWithoutInternalHeaders(t *testing.T) {
+	srv, builds, _ := countingServer(nil)
+
+	serveWithFirebase(srv, `{"project_id":"begit"}`)
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+
+	if *builds != 1 {
+		t.Fatalf("expected 1 build, got %d", *builds)
+	}
+}
+
+// 再構築に失敗したら既存ハンドラーで応答し続け、同じ設定での再試行を繰り返さない
+func TestServeHTTP_KeepsPreviousHandlerWhenRebuildFails(t *testing.T) {
+	var buildErr error
+	srv, builds, _ := countingServer(&buildErr)
+
+	serveWithFirebase(srv, "")
+	buildErr = errors.New("boom")
+	rr := serveWithFirebase(srv, `{"project_id":"begit"}`)
+	serveWithFirebase(srv, `{"project_id":"begit"}`)
+
+	if rr.Code != http.StatusOK || rr.Header().Get("X-Build") != "1" {
+		t.Fatalf("expected previous handler to serve, got code=%d build=%q", rr.Code, rr.Header().Get("X-Build"))
+	}
+	if *builds != 1 {
+		t.Fatalf("expected no successful rebuild, got %d builds", *builds)
+	}
+	if srv.cfg.FirebaseServiceAccountJSON != "" {
+		t.Fatalf("cfg should be restored after failed rebuild")
+	}
+}
+
+func TestConfigFromHeaders_BeGitTimeAllowMultiplePerSprint(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-Begit-Time-Allow-Multiple-Per-Sprint", "true")
+
+	cfg := &Config{}
+	configFromHeaders(req, cfg)
+
+	if !cfg.BeGitTimeAllowMultiplePerSprint {
+		t.Fatal("expected BeGitTimeAllowMultiplePerSprint=true from header")
+	}
+}
+
+// この設定の変更もハンドラー再構築の対象になる（dev の vars 変更を再起動なしで反映する）
+func TestServeHTTP_RebuildsWhenAllowMultiplePerSprintChanges(t *testing.T) {
+	srv, builds, _ := countingServer(nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+	req.Header.Set("X-Internal-Begit-Time-Allow-Multiple-Per-Sprint", "true")
+	srv.ServeHTTP(httptest.NewRecorder(), req)
+
+	if *builds != 2 {
+		t.Fatalf("expected 2 builds, got %d", *builds)
+	}
+	if !srv.cfg.BeGitTimeAllowMultiplePerSprint {
+		t.Fatal("rebuilt config should enable BeGitTimeAllowMultiplePerSprint")
 	}
 }

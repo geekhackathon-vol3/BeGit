@@ -1,12 +1,11 @@
 //  RepoSettingView.swift
-//  リポジトリ設定シート（リポジトリ情報・メンバー一覧・GitHub認証）
+//  リポジトリ設定シート（リポジトリ情報・メンバー一覧）
 
 import SwiftUI
 
 @MainActor
 struct RepoSettingView: View {
     let repository: Repository
-    @ObservedObject private var oauthManager = GitHubOAuthManager.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -16,16 +15,19 @@ struct RepoSettingView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        // MARK: GitHub認証ヘッダーボタン
-                        githubAuthButton
-
                         // MARK: リポジトリ情報
-                        settingSection(title: "REPOSITORY") {
+                        settingSection(
+                            title: "■ GitHub Repository",
+                            color: AppTheme.sectionYellow
+                        ) {
                             repoInfoRow
                         }
 
                         // MARK: メンバー一覧
-                        settingSection(title: "MEMBERS") {
+                        settingSection(
+                            title: "■ Team Members",
+                            color: AppTheme.sectionPink
+                        ) {
                             VStack(spacing: 0) {
                                 ForEach(Array(repository.members.enumerated()), id: \.element.id) { index, member in
                                     memberRow(member)
@@ -48,16 +50,6 @@ struct RepoSettingView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        oauthManager.startLogin()
-                    } label: {
-                        Image(systemName: "person.badge.key.fill")
-                            .foregroundStyle(AppTheme.softPink)
-                            .frame(minWidth: 44, minHeight: 44)
-                    }
-                    .accessibilityLabel("GitHubで認証")
-                }
                 ToolbarItem(placement: .principal) {
                     Text("設定")
                         .font(.system(size: 14, weight: .bold, design: .monospaced))
@@ -75,49 +67,10 @@ struct RepoSettingView: View {
             }
             .toolbarBackground(AppTheme.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
-            .alert(item: Binding(
-                get: { oauthManager.activeAlert },
-                set: { _ in oauthManager.clearAlert() }
-            )) { alertContext in
-                Alert(
-                    title: Text(alertContext.title),
-                    message: Text(alertContext.message),
-                    dismissButton: .default(Text("OK"))
-                )
-            }
         }
     }
 
     // MARK: - Components
-
-    private var githubAuthButton: some View {
-        Button {
-            oauthManager.startLogin()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "person.badge.key.fill")
-                    .font(.system(size: 16, weight: .bold))
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 13, weight: .bold))
-                Text("GitHubで再認証")
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                Spacer()
-            }
-            .foregroundStyle(AppTheme.softPink)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.white.opacity(0.06))
-            .overlay(alignment: .leading) {
-                Rectangle()
-                    .frame(width: 3)
-                    .foregroundStyle(AppTheme.softPink)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("GitHubで認証")
-    }
 
     private var repoInfoRow: some View {
         HStack(spacing: 12) {
@@ -170,11 +123,15 @@ struct RepoSettingView: View {
     }
 
     @ViewBuilder
-    private func settingSection(title: String, @ViewBuilder content: () -> some View) -> some View {
+    private func settingSection(
+        title: String,
+        color: Color,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.softPink)
+                .font(.system(size: 20, weight: .regular, design: .monospaced))
+                .foregroundStyle(color)
             content()
         }
     }

@@ -28,6 +28,8 @@ interface Env {
   GITHUB_APP_IOS_REDIRECT_URI: string;
   // dev 環境でのみ "true"（[env.dev.vars]）。dev 認証バイパスを有効化する。
   DEV_MODE: string;
+  // "true" で BeGit Time! の「1スプリント1人1回」を解除する（[vars] / [env.dev.vars]）。未設定は制限あり。
+  BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT: string;
   // 内部 Cron 起動シークレット。dev は [env.dev.vars] の var、本番は secret 運用。
   // scheduled() が X-Cron-Secret ヘッダーで Go コンテナへ転送し、cron_handler が定数時間比較する。
   CRON_SECRET: string;
@@ -72,6 +74,7 @@ function internalHeaders(env: Env): Record<string, string> {
     'X-Internal-Github-App-Ios-Redirect-Uri': env.GITHUB_APP_IOS_REDIRECT_URI ?? '',
     'X-Internal-Cron-Secret': env.CRON_SECRET ?? '',
     'X-Internal-Dev-Mode': env.DEV_MODE ?? '',
+    'X-Internal-Begit-Time-Allow-Multiple-Per-Sprint': env.BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT ?? '',
   };
 }
 
@@ -111,9 +114,11 @@ export default {
     });
 
     ctx.waitUntil(
-      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then((response) => {
+      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then(async (response) => {
         if (!response.ok) {
-          throw new Error(`Cron fetch failed: ${response.status} ${response.statusText} (url: ${url})`);
+          // 失敗理由（コンテナの応答本文）をログに残す。コンテナの標準出力は Workers Logs に出ないため。
+          const body = (await response.text().catch(() => "")).slice(0, 500);
+          throw new Error(`Cron fetch failed: ${response.status} ${response.statusText} (url: ${url}) body: ${body}`);
         }
       })
     );

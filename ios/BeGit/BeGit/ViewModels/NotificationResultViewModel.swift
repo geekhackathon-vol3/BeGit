@@ -8,7 +8,6 @@ import Combine
 final class NotificationResultViewModel: ObservableObject {
     let notification: RepositoryNotification                        //  通知結果情報
     @Published private(set) var activities: [RepositoryActivity]    //  Timeline表示用activity一覧
-    @Published private(set) var completedCount: Int                 //  達成済みmember数
     @Published private(set) var isLoading = false                   //  フィード取得中
 
     private let repositoryAPI: any RepositoryAPI
@@ -24,8 +23,6 @@ final class NotificationResultViewModel: ObservableObject {
         //  デモ投稿がある場合は先頭に追加して即時表示
         let initial = justPostedActivity.map { [$0] + mock } ?? mock
         self.activities = initial
-        //  デモ時は達成人数を 3/4 に固定
-        self.completedCount = justPostedActivity != nil ? 3 : mock.count
     }
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
     func loadActivities(accessToken: String?, currentUserID: Int64? = nil) async {
@@ -59,7 +56,6 @@ final class NotificationResultViewModel: ObservableObject {
                 //  実投稿（新しい順）をモックの上に積み重ねる
                 let mock = RepositoryActivity.mockActivities(for: notification.repository)
                 activities = fetched + mock
-                completedCount = Set(activities.map(\.author.login)).count
             }
         } catch {
             //  取得失敗時は初期 Mock のまま表示を維持する
@@ -133,16 +129,40 @@ final class NotificationResultViewModel: ObservableObject {
         }
     }
 
-    //  通知対象member総数（デモ投稿分は除いてモック4件固定）
-    var totalCount: Int {
-        mockCount
+    //  Resultには実際に通知対象として選択されたmemberを表示する。
+    //  avatar URLが欠けた旧データはGitHubのユーザー画像URLで補完する。
+    var members: [RepositoryMember] {
+        let selectedMembers = notification.selectedMembers.isEmpty
+            ? notification.repository.members
+            : notification.selectedMembers
+
+        return selectedMembers.map { member in
+            guard member.avatarURL == nil, member.login.isEmpty == false else {
+                return member
+            }
+
+            return RepositoryMember(
+                id: member.id,
+                backendUserID: member.backendUserID,
+                login: member.login,
+                avatarURL: URL(string: "https://github.com/\(member.login).png")
+            )
+        }
     }
 
-    private let mockCount = 4
+    //  投稿モックのauthor数ではなく、実際の通知対象member数を使う。
+    var totalCount: Int {
+        members.count
+    }
+
+    var completedCount: Int {
+        totalCount
+    }
 
     //  達成率
     var progress: Double {
-        Double(completedCount) / Double(totalCount)
+        guard totalCount > 0 else { return 0 }
+        return Double(completedCount) / Double(totalCount)
     }
 
     //  達成状況表示テキスト

@@ -66,7 +66,7 @@
 
 - [x] 3.2 ① BeGit Time! 発行への時間的非共存ルール追加
   - 発行時にアクティブな（`sent_at + 1h > now()`）チャレンジが存在すれば 409 Conflict を返す（サービス層判定）
-  - `UNIQUE(sprint_id, sent_by)` 違反も従来どおり 409。発行成功時は `type=begit_time` の data 付き FCM をグループ全員へ送る
+  - 同一スプリント・同一ユーザーの発行済みも 409（既定。`BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true` で解除、DB の `UNIQUE(sprint_id, sent_by)` は 0006 で撤去）。発行成功時は `type=begit_time` の data 付き FCM をグループ全員へ送る
   - テスト: アクティブ通知ありで 409、無しで発行成功＋begit_time data 送信、同一ユーザー再発行の扱いを検証
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
   - _範囲: notification_service_

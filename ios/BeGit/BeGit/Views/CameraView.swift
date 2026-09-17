@@ -11,6 +11,8 @@ struct CameraView: View {
     let repoFullName: String
     let githubLogin: String
     let accessToken: String
+    //  ② Nice Work! の下書き投稿ID。指定時は撮影した写真をこの下書きに付けて確定する
+    var draftPostID: Int64? = nil
     let onPostCompleted: (RepositoryActivity?) -> Void
 
     @StateObject private var camera = CameraManager()
@@ -73,7 +75,7 @@ struct CameraView: View {
                             .foregroundStyle(AppTheme.Text.primary)
                             .appFont(.subheadline)
                     }
-                    .tint(AppTheme.Text.primary)
+                    .tint(AppTheme.accent)
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
@@ -108,12 +110,9 @@ struct CameraView: View {
 
         // MARK: - Show Preview
 
-        .onReceive(camera.$capturedImage) { image in
-            if image != nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    showPreview = true
-                }
-            }
+        .onReceive(camera.$captureCompleted) { completed in
+            guard completed else { return }
+            showPreview = true
         }
 
         // MARK: - Preview Screen
@@ -126,7 +125,8 @@ struct CameraView: View {
                     repositoryID: repositoryID,
                     repoFullName: repoFullName,
                     githubLogin: githubLogin,
-                    accessToken: accessToken
+                    accessToken: accessToken,
+                    draftPostID: draftPostID
                 )
 
                 PhotoPreviewView(
@@ -138,6 +138,7 @@ struct CameraView: View {
             }
         }
     }
+
 }
 
 #Preview {

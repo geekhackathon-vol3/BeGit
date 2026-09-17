@@ -17,7 +17,14 @@ enum NotificationDeliveryMode: String {
             return .remotePush
         }
 
+        //  既定：Xcode から Run する Debug ビルドはローカルモック、
+        //  TestFlight / App Store 向けの Release ビルドはサーバー経由の Push。
+        //  （Scheme の環境変数は Run 時しか効かないため、配布ビルドはここで決める）
+        #if DEBUG
         return .localMock
+        #else
+        return .remotePush
+        #endif
     }
 
     var usesLocalNotificationMock: Bool {

@@ -82,9 +82,12 @@ struct RepositoryActivityCardView: View {
         _reactionCounts = State(initialValue: counts)
     }
 
-    //  背面/前面の両方の写真がある時だけ入れ替え可能
+    //  実写真（URL）とモック画像（アセット名）のどちらでも、
+    //  背面/前面の両方がある時だけ入れ替え可能。
     private var canSwap: Bool {
-        activity.mainPhotoURL != nil && activity.frontPhotoURL != nil
+        let hasMainPhoto = activity.mainPhotoURL != nil || activity.imageName != nil
+        let hasFrontPhoto = activity.frontPhotoURL != nil || activity.frontImageName != nil
+        return hasMainPhoto && hasFrontPhoto
     }
 
     //  入れ替え状態を反映した表示用URL
@@ -96,10 +99,19 @@ struct RepositoryActivityCardView: View {
         isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
     }
 
-    private static let dateFormatter: DateFormatter = {
+    //  モック画像用の表示名も、入れ替え状態に合わせて反転する。
+    private var displayedMainImageName: String? {
+        isSwapped ? activity.frontImageName : activity.imageName
+    }
+
+    private var displayedFrontImageName: String? {
+        isSwapped ? activity.imageName : activity.frontImageName
+    }
+
+    private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
-        f.dateFormat = "M月d日 HH:mm"
+        f.dateFormat = "HH:mm"
         return f
     }()
 
@@ -107,20 +119,55 @@ struct RepositoryActivityCardView: View {
         VStack(alignment: .leading, spacing: 0) {
             //  著者・日時（カード背景の外側・上部）
             authorHeader
-                .padding(.bottom, 6)
+                .padding(.bottom, 12)
 
-            //  card本体 + リアクションピッカー
+            //  card本体（写真 + 投稿テキスト）
+            cardContent
+        }
+    }
+
+    //  コメントがあればコメントを表示（commit名は出さない）。無ければcommit名。
+    private var postText: some View {
+        Group {
+            if let comment = activity.comment, comment.isEmpty == false {
+                Text(comment)
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.92))
+            } else {
+                Text(activity.title)
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Card
+
+    //  「写真」と「その下の投稿テキスト」を縦に並べる。
+    //  テキストは写真に重ねず、写真の明るさに左右されず読めるようにする。
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
             ZStack(alignment: .bottomTrailing) {
-                cardContent
+                photoArea
 
                 if showReactionPicker {
                     reactionPicker
                         .padding(.trailing, 16)
                         .padding(.bottom, reactionPickerBottomOffset)
                         .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+                        .zIndex(10)
                 }
             }
             .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
+
+            postText
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
         }
         .onChange(of: activity.reactions) { _, reactions in
             applyReactions(reactions)
@@ -128,39 +175,14 @@ struct RepositoryActivityCardView: View {
         .alert("リアクションの更新に失敗しました", isPresented: $showReactionError) {
             Button("OK", role: .cancel) {}
         }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    // MARK: - Card
-
-    private var cardContent: some View {
+    private var photoArea: some View {
         ZStack(alignment: .topLeading) {
             //  背景画像
             activityBackground
-                .onTapGesture {
-                    guard showReactionPicker else { return }
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
-                        showReactionPicker = false
-                    }
-                }
-
-            //  投稿テキスト：背景画像全体の中央に絶対配置。
-            //  コメントがあればコメントを表示（commit名は出さない）。無ければcommit名。
-            Group {
-                if let comment = activity.comment, comment.isEmpty == false {
-                    Text(comment)
-                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.92))
-                } else {
-                    Text(activity.title)
-                        .font(.system(size: 17, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
-                }
-            }
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .zIndex(1)
+                .allowsHitTesting(false)
 
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
@@ -208,11 +230,7 @@ struct RepositoryActivityCardView: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(3/4, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.white.opacity(0.10), lineWidth: 1)
-        )
+        .clipped()
     }
 
     // MARK: - Author header（カード外・上部）
@@ -228,7 +246,7 @@ struct RepositoryActivityCardView: View {
                 Text(activity.author.login)
                     .font(.system(size: 13, weight: .black, design: .monospaced))
                     .foregroundStyle(.white)
-                Text(Self.dateFormatter.string(from: activity.date))
+                Text(Self.timeFormatter.string(from: activity.date))
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.64))
             }
@@ -258,6 +276,7 @@ struct RepositoryActivityCardView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isUpdatingReaction)
+                .contentShape(Circle())
             }
         }
         .padding(.horizontal, 8)
@@ -272,7 +291,7 @@ struct RepositoryActivityCardView: View {
 
     //  ピッカーがreactionButtonの上に来るよう下端からのオフセットを計算
     private var reactionPickerBottomOffset: CGFloat {
-        58   // 16 padding + 34 button + 8 gap
+        68   // 16 padding + 44 button + 8 gap
     }
 
     private var reactionButton: some View {
@@ -291,10 +310,15 @@ struct RepositoryActivityCardView: View {
                         .foregroundStyle(.white.opacity(0.72))
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 44, height: 44)
+            .background(Circle().fill(Color.black.opacity(0.42)))
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .disabled(isUpdatingReaction)
+        .contentShape(Circle())
+        .zIndex(4)
+        .accessibilityLabel(showReactionPicker ? "スタンプを閉じる" : "スタンプを選ぶ")
     }
 
 
@@ -419,7 +443,7 @@ struct RepositoryActivityCardView: View {
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
-                } else if let imageName = activity.imageName, UIImage(named: imageName) != nil {
+                } else if let imageName = displayedMainImageName, UIImage(named: imageName) != nil {
                     Image(imageName)
                         .resizable()
                         .scaledToFill()
@@ -430,18 +454,6 @@ struct RepositoryActivityCardView: View {
                         .font(.system(size: 86, weight: .black))
                         .foregroundStyle(activity.type.tint.opacity(0.30))
                 }
-
-                LinearGradient(
-                    colors: [.black.opacity(0.24), .black.opacity(0.30), .black.opacity(0.82)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                LinearGradient(
-                    colors: [.black.opacity(0.24), .black.opacity(0.02)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
@@ -472,7 +484,7 @@ struct RepositoryActivityCardView: View {
                 thumbnailFallback
             }
         }
-        .frame(width: 60, height: 80)
+        .frame(width: 72, height: 96)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -481,10 +493,10 @@ struct RepositoryActivityCardView: View {
         .shadow(color: .black.opacity(0.32), radius: 10, x: 0, y: 5)
     }
 
-    //  前面写真が無い場合の小窓フォールバック（モック時はfrontImageName画像を使用）
+    //  前面写真が無い場合の小窓フォールバック（モック時は表示中のアセットを使用）
     private var thumbnailFallback: some View {
         ZStack {
-            if let name = activity.frontImageName, UIImage(named: name) != nil {
+            if let name = displayedFrontImageName, UIImage(named: name) != nil {
                 Image(name)
                     .resizable()
                     .scaledToFill()

@@ -59,7 +59,7 @@ type Sprint struct {
 	EndsAt    time.Time
 }
 
-// Notification は BeGit Time 通知。1スプリント1ユーザー1回制約 UNIQUE(sprint_id, sent_by)
+// Notification は BeGit Time 通知。1スプリント1ユーザー1回（設定で解除可）はサービス層で判定する
 type Notification struct {
 	ID       int64
 	SprintID int64

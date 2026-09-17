@@ -1,7 +1,7 @@
 //  NotificationStubViews.swift
 //  #55（通知ルーティング基盤）の遷移先スタブ。type 別に正しい画面へ着地することの確認用。
 //  中身は後続 issue が実装する:
-//    - ① memo 投稿 / ② Nice Work 確定フロー → #56
+//    - ① memo 投稿 → #56（② Nice Work 確定フローは NiceWorkDraftCaptureView で実装済み）
 //    - ⑦ リアクション・コメント → 投稿詳細 → #57
 
 import SwiftUI
@@ -53,25 +53,6 @@ struct NotificationPostCreationStubView: View {
             fields: [
                 ("group_id", "\(groupId)"),
                 ("notification_id", notificationId.map(String.init) ?? "-")
-            ]
-        )
-    }
-}
-
-//  ② nice_work → 下書きプレフィル → 撮影 → 確定
-struct NotificationNiceWorkDraftStubView: View {
-    let groupId: Int
-    let draftPostId: Int
-    let status: String?
-
-    var body: some View {
-        NotificationStubScaffold(
-            title: "Nice Work! 下書き確定",
-            todo: "TODO: #56 で下書き取得→撮影→確定フローを実装",
-            fields: [
-                ("group_id", "\(groupId)"),
-                ("draft_post_id", "\(draftPostId)"),
-                ("status", status ?? "-")
             ]
         )
     }

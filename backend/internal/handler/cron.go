@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/subtle"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -50,7 +51,10 @@ func (h *CronHandler) Run(c *gin.Context) {
 			respondError(c, http.StatusBadRequest, "invalid kind")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, "internal server error")
+		// コンテナの標準出力は Workers Logs に出ないため、原因をレスポンス本文に載せて
+		// scheduled() 側のログで見えるようにする（X-Cron-Secret 一致後にのみ到達する内部経路）。
+		log.Printf("cron: RunCron kind=%s failed: %v", kind, err)
+		respondError(c, http.StatusInternalServerError, "internal server error: "+err.Error())
 		return
 	}
 

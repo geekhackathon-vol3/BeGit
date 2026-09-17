@@ -38,6 +38,9 @@ type notificationService struct {
 	fcmClient    fcm.Client
 	groupRepo    repository.GroupRepository
 	postRepo     repository.PostRepository
+	// allowMultiplePerSprint が true なら「1スプリント1人1回」を適用しない（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT）。
+	// ゼロ値 false = 制限あり。1時間の時間的非共存ルールは常に適用する。
+	allowMultiplePerSprint bool
 }
 
 // NewNotificationService は NotificationService を作成する（SendNotification 用）
@@ -78,14 +81,16 @@ func NewNotificationServiceFull(
 	fcmClient fcm.Client,
 	groupRepo repository.GroupRepository,
 	postRepo repository.PostRepository,
+	allowMultiplePerSprint bool,
 ) NotificationService {
 	return &notificationService{
-		sprintRepo:   sprintRepo,
-		notifRepo:    notifRepo,
-		fcmTokenRepo: fcmTokenRepo,
-		fcmClient:    fcmClient,
-		groupRepo:    groupRepo,
-		postRepo:     postRepo,
+		sprintRepo:             sprintRepo,
+		notifRepo:              notifRepo,
+		fcmTokenRepo:           fcmTokenRepo,
+		fcmClient:              fcmClient,
+		groupRepo:              groupRepo,
+		postRepo:               postRepo,
+		allowMultiplePerSprint: allowMultiplePerSprint,
 	}
 }
 
@@ -97,14 +102,14 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		return nil, fmt.Errorf("notification_service: get/create sprint failed: %w", err)
 	}
 
-	// Step 2 & 3: 時間的非共存 + UNIQUE 制約を原子的に保証する CREATE。
-	// CreateIfNoActive は同一スプリント内にアクティブ通知が無く、かつ UNIQUE(sprint_id,sent_by) を
-	// 満たす場合のみ INSERT する（WHERE NOT EXISTS で原子的）。
+	// Step 2 & 3: 時間的非共存（+ 設定次第で1スプリント1人1回）を原子的に保証する CREATE。
+	// CreateIfNoActive は同一スプリント内にアクティブ通知が無く、allowMultiplePerSprint が false なら
+	// 同一ユーザーの発行済み通知も無い場合のみ INSERT する（WHERE NOT EXISTS で原子的）。
 	notif, err := s.notifRepo.CreateIfNoActive(ctx, &model.Notification{
 		SprintID: sprint.ID,
 		SentBy:   userID,
 		Message:  "今、なに作ってる？",
-	})
+	}, s.allowMultiplePerSprint)
 	if err != nil {
 		if errors.Is(err, repository.ErrConstraintViolation) {
 			return nil, ErrConflict

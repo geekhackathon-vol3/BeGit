@@ -74,6 +74,20 @@ struct NotificationResultView: View {
             ToolbarItem(placement: .principal) {
                 BeGitToolbarLogoView()
             }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    RepositoryPhotoGridView(
+                        repository: viewModel.notification.repository,
+                        activities: viewModel.activities
+                    )
+                } label: {
+                    Image(systemName: "square.grid.3x3.fill")
+                        .foregroundStyle(AppTheme.softPink)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("投稿写真一覧")
+            }
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
@@ -107,7 +121,7 @@ struct NotificationResultView: View {
     private var resultSummary: some View {
         VStack(alignment: .leading, spacing: 14) {
             //  通知対象member avatar一覧
-            MemberAvatarRowView(members: viewModel.notification.selectedMembers, avatarSize: 42)
+            MemberAvatarRowView(members: viewModel.members, avatarSize: 42)
 
             //  通知コメント表示
             if viewModel.notification.comment.isEmpty == false {
@@ -139,7 +153,7 @@ struct NotificationResultView: View {
                 //  達成状況テキスト
                 Text(viewModel.progressText)
                     .appFont(.body)
-                    .foregroundStyle(AppTheme.Text.primary)
+                    .foregroundStyle(Color.black.opacity(0.76))
                     .lineLimit(1)
                     .minimumScaleFactor(0.78)
                     .frame(maxWidth: .infinity, alignment: .center)

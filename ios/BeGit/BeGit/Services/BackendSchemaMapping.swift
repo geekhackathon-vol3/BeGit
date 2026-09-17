@@ -149,3 +149,13 @@ extension Components.Schemas.Handler_PostFeedJSON {
         return status ?? "No activity yet"
     }
 }
+
+extension Components.Schemas.Handler_PostJSON {
+    func toDraftPost(fallbackID: Int64) -> DraftPost {
+        DraftPost(
+            id: id.map(Int64.init) ?? fallbackID,
+            repoFullName: repoFullName ?? "",
+            status: status
+        )
+    }
+}
