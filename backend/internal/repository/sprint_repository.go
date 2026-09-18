@@ -183,14 +183,16 @@ func (r *sprintRepository) GetOrCreateCurrentSprint(ctx context.Context, groupID
 		return nil, err
 	}
 
-	// スプリントが存在しない場合は新規作成
+	// スプリントが存在しない場合は新規作成。
+	// index_num は UNIQUE(group_id, index_num) の一部なので、そのグループの最大値 + 1 を採番する
+	// （省略すると常に 0 になり、最初のスプリントが期限切れになったグループで2本目が作れず失敗する）。
 	now := time.Now().UTC()
 	endsAt := now.AddDate(0, 0, durationDays)
 
 	_, err = r.db.Exec(ctx,
-		`INSERT INTO sprints (group_id, started_at, ends_at)
-		 VALUES (?, datetime(?), datetime(?))`,
-		[]interface{}{groupID, now.Format("2006-01-02 15:04:05"), endsAt.Format("2006-01-02 15:04:05")},
+		`INSERT INTO sprints (group_id, index_num, started_at, ends_at)
+		 VALUES (?, (SELECT COALESCE(MAX(index_num), -1) + 1 FROM sprints WHERE group_id = ?), datetime(?), datetime(?))`,
+		[]interface{}{groupID, groupID, now.Format("2006-01-02 15:04:05"), endsAt.Format("2006-01-02 15:04:05")},
 	)
 	if err != nil {
 		// UNIQUE 制約違反（並行作成）の場合は既存を取得
