@@ -97,27 +97,6 @@
                 },
                 "type": "object"
             },
-            "handler.PullRequestJSON": {
-                "properties": {
-                    "author_login": { "type": "string" },
-                    "merged": { "type": "boolean" },
-                    "number": { "type": "integer" },
-                    "state": { "type": "string" },
-                    "title": { "type": "string" },
-                    "updated_at": { "type": "string" }
-                },
-                "type": "object"
-            },
-            "handler.PullRequestListResponse": {
-                "properties": {
-                    "pull_requests": {
-                        "items": { "$ref": "#/components/schemas/handler.PullRequestJSON" },
-                        "type": "array",
-                        "uniqueItems": false
-                    }
-                },
-                "type": "object"
-            },
             "handler.ConfirmPostRequest": {
                 "properties": {
                     "body": {
@@ -477,6 +456,41 @@
                 },
                 "type": "object"
             },
+            "handler.PullRequestJSON": {
+                "properties": {
+                    "author_login": {
+                        "type": "string"
+                    },
+                    "merged": {
+                        "type": "boolean"
+                    },
+                    "number": {
+                        "type": "integer"
+                    },
+                    "state": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "handler.PullRequestListResponse": {
+                "properties": {
+                    "pull_requests": {
+                        "items": {
+                            "$ref": "#/components/schemas/handler.PullRequestJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
             "handler.ReactionJSON": {
                 "properties": {
                     "avatar_url": {
@@ -618,16 +632,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.DevLoginRequest",
-                                        "summary": "request",
-                                        "description": "ログイン名（省略時 alice）"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.DevLoginRequest",
+                                "summary": "request",
+                                "description": "ログイン名（省略時 alice）"
                             }
                         }
                     },
@@ -668,16 +675,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.AuthRequest",
-                                        "summary": "request",
-                                        "description": "GitHub 認可コード"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.AuthRequest",
+                                "summary": "request",
+                                "description": "GitHub 認可コード"
                             }
                         }
                     },
@@ -969,16 +969,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.CreateGroupRequest",
-                                        "summary": "request",
-                                        "description": "作成するリポジトリ"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.CreateGroupRequest",
+                                "summary": "request",
+                                "description": "作成するリポジトリ"
                             }
                         }
                     },
@@ -1321,43 +1314,6 @@
                 ]
             }
         },
-        "/groups/{id}/pull-requests": {
-            "get": {
-                "description": "グループに紐づく GitHub リポジトリの Pull Request を更新日時順で返す。",
-                "parameters": [
-                    {
-                        "description": "グループ ID",
-                        "in": "path",
-                        "name": "id",
-                        "required": true,
-                        "schema": { "type": "integer" }
-                    },
-                    {
-                        "description": "作成者 GitHub login",
-                        "in": "query",
-                        "name": "author",
-                        "schema": { "type": "string" }
-                    },
-                    {
-                        "description": "取得件数（1〜50、既定 20）",
-                        "in": "query",
-                        "name": "per_page",
-                        "schema": { "type": "integer" }
-                    }
-                ],
-                "responses": {
-                    "200": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/handler.PullRequestListResponse" } } }, "description": "OK" },
-                    "400": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/handler.ErrorResponse" } } }, "description": "Bad Request" },
-                    "401": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/handler.ErrorResponse" } } }, "description": "Unauthorized" },
-                    "404": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/handler.ErrorResponse" } } }, "description": "Not Found" },
-                    "500": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/handler.ErrorResponse" } } }, "description": "Internal Server Error" },
-                    "502": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/handler.ErrorResponse" } } }, "description": "Bad Gateway" }
-                },
-                "security": [ { "BearerAuth": [] } ],
-                "summary": "Pull Request 一覧",
-                "tags": [ "github" ]
-            }
-        },
         "/groups/{id}/notifications": {
             "post": {
                 "description": "アクティブなチャレンジ（発行から 1 時間）中は発行不可。既定では 1 スプリント 1 人 1 回まで（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true で解除）",
@@ -1581,16 +1537,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.CreatePostRequest",
-                                        "summary": "request",
-                                        "description": "投稿内容"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.CreatePostRequest",
+                                "summary": "request",
+                                "description": "投稿内容"
                             }
                         }
                     },
@@ -1789,16 +1738,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.CreateCommentRequest",
-                                        "summary": "request",
-                                        "description": "コメント本文"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.CreateCommentRequest",
+                                "summary": "request",
+                                "description": "コメント本文"
                             }
                         }
                     },
@@ -2002,16 +1944,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.ConfirmPostRequest",
-                                        "summary": "request",
-                                        "description": "確定内容（本文の上書き等）"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.ConfirmPostRequest",
+                                "summary": "request",
+                                "description": "確定内容（本文の上書き等）"
                             }
                         }
                     },
@@ -2181,27 +2116,28 @@
                 ],
                 "requestBody": {
                     "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "oneOf": [
-                                    {
-                                        "title": "main",
-                                        "type": "file"
-                                    },
-                                    {
-                                        "title": "front",
-                                        "type": "file"
-                                    }
-                                ]
-                            }
-                        },
                         "multipart/form-data": {
                             "schema": {
+                                "properties": {
+                                    "front": {
+                                        "description": "前面写真（任意）",
+                                        "format": "binary",
+                                        "type": "string"
+                                    },
+                                    "main": {
+                                        "description": "背面写真（image/jpeg, image/png, image/heic）",
+                                        "format": "binary",
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "main"
+                                ],
                                 "type": "object"
                             }
                         }
                     },
-                    "description": "背面写真（image/jpeg, image/png, image/heic） | 前面写真（任意）"
+                    "description": "背面写真（image/jpeg, image/png, image/heic）"
                 },
                 "responses": {
                     "201": {
@@ -2425,16 +2361,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.CreateReactionRequest",
-                                        "summary": "request",
-                                        "description": "リアクション種別"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.CreateReactionRequest",
+                                "summary": "request",
+                                "description": "リアクション種別"
                             }
                         }
                     },
@@ -2615,6 +2544,109 @@
                 "summary": "リアクション削除",
                 "tags": [
                     "reactions"
+                ]
+            }
+        },
+        "/groups/{id}/pull-requests": {
+            "get": {
+                "description": "グループに紐づく GitHub リポジトリの Pull Request を更新日時順で返す。",
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "作成者 GitHub login",
+                        "in": "query",
+                        "name": "author",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "取得件数（1〜50、既定 20）",
+                        "in": "query",
+                        "name": "per_page",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.PullRequestListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Gateway"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Pull Request 一覧",
+                "tags": [
+                    "github"
                 ]
             }
         },
@@ -2841,16 +2873,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.UpdateFCMTokenRequest",
-                                        "summary": "request",
-                                        "description": "FCM トークン"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.UpdateFCMTokenRequest",
+                                "summary": "request",
+                                "description": "FCM トークン"
                             }
                         }
                     },
