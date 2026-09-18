@@ -29,8 +29,6 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      # make openapi が go install する swag は $GOPATH/bin に入るため PATH へ通す
-      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: make openapi
       - name: Fail if committed spec drifted from Gin annotations
         run: |
