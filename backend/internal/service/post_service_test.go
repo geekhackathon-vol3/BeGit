@@ -283,3 +283,146 @@ func TestPostService_CreatePost_GitHubAPIFailed(t *testing.T) {
 		t.Errorf("expected ErrExternalAPI when GitHub API fails, got %v", err)
 	}
 }
+
+func TestPostService_CreatePost_PullRequest(t *testing.T) {
+	var created *model.Post
+	githubClient := &mockGitHubClient{
+		getLatestPullRequestFunc: func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.PullRequestSummary, error) {
+			return &githubpkg.PullRequestSummary{Number: 42, Title: "Add activity selector", RepoFullName: repoFullName}, nil
+		},
+	}
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		created = post
+		post.ID = 1
+		return post, nil
+	}}
+	svc := NewPostService(githubClient, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		PostType:     "pull_request",
+		AccessToken:  "valid_token",
+		GitHubLogin:  "testuser",
+		RepoFullName: "owner/repo",
+	}, 1, 1)
+	if err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if created.PostType != "pull_request" || created.LatestCommitMessage == nil || *created.LatestCommitMessage != "PR #42: Add activity selector" {
+		t.Errorf("unexpected post: %+v", created)
+	}
+}
+
+func TestPostService_CreatePost_MemoSkipsGitHub(t *testing.T) {
+	body := "今日は設計を整理します"
+	var created *model.Post
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		created = post
+		post.ID = 1
+		return post, nil
+	}}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		Body:         &body,
+		PostType:     "memo",
+		RepoFullName: "owner/repo",
+	}, 1, 1)
+	if err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if created.PostType != "memo" || created.Body == nil || *created.Body != body {
+		t.Errorf("unexpected post: %+v", created)
+	}
+}
+
+func TestPostService_CreatePost_RejectsInvalidTypeAndEmptyMemo(t *testing.T) {
+	svc := NewPostService(nil, nil, &mockPostRepository{}, nil, nil, nil)
+	for _, req := range []CreatePostRequest{
+		{PostType: "issue", RepoFullName: "owner/repo"},
+		{PostType: "memo", RepoFullName: "owner/repo"},
+	} {
+		if _, err := svc.CreatePost(context.Background(), req, 1, 1); !errors.Is(err, ErrValidation) {
+			t.Errorf("expected ErrValidation for %+v, got %v", req, err)
+		}
+	}
+}
+
+func TestPostService_CreatePost_SelectedCommit(t *testing.T) {
+	sha := "abc123"
+	var created *model.Post
+	githubClient := &mockGitHubClient{
+		getCommitFunc: func(ctx context.Context, repoFullName, gotSHA, accessToken string) (*githubpkg.Commit, error) {
+			if gotSHA != sha {
+				t.Fatalf("expected SHA %q, got %q", sha, gotSHA)
+			}
+			return &githubpkg.Commit{
+				SHA: sha, Message: "feat: selected commit", AuthorLogin: "TestUser", Additions: 12, Deletions: 3,
+			}, nil
+		},
+	}
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		created = post
+		post.ID = 1
+		return post, nil
+	}}
+	svc := NewPostService(githubClient, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		PostType: "commit", ContentSource: "github", CommitSHA: &sha,
+		AccessToken: "token", GitHubLogin: "testuser", RepoFullName: "owner/repo",
+	}, 1, 1)
+	if err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if created.LatestCommitMessage == nil || *created.LatestCommitMessage != "feat: selected commit" || created.CommitCount != 1 {
+		t.Fatalf("unexpected post: %+v", created)
+	}
+}
+
+func TestPostService_CreatePost_SelectedPullRequest(t *testing.T) {
+	number := 87
+	var created *model.Post
+	githubClient := &mockGitHubClient{
+		getPullRequestFunc: func(ctx context.Context, repoFullName string, gotNumber int, accessToken string) (*githubpkg.PullRequest, error) {
+			return &githubpkg.PullRequest{Number: gotNumber, Title: "Add GitHub picker", AuthorLogin: "testuser"}, nil
+		},
+	}
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		created = post
+		post.ID = 1
+		return post, nil
+	}}
+	svc := NewPostService(githubClient, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		PostType: "pull_request", ContentSource: "github", PullRequestNumber: &number,
+		AccessToken: "token", GitHubLogin: "testuser", RepoFullName: "owner/repo",
+	}, 1, 1)
+	if err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if created.LatestCommitMessage == nil || *created.LatestCommitMessage != "PR #87: Add GitHub picker" {
+		t.Fatalf("unexpected post: %+v", created)
+	}
+}
+
+func TestPostService_CreatePost_ManualSkipsGitHub(t *testing.T) {
+	body := "今日はここまで進めました"
+	var created *model.Post
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		created = post
+		post.ID = 1
+		return post, nil
+	}}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		Body: &body, PostType: "commit", ContentSource: "manual", RepoFullName: "owner/repo",
+	}, 1, 1)
+	if err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if created.Body == nil || *created.Body != body || created.LatestCommitMessage != nil {
+		t.Fatalf("unexpected post: %+v", created)
+	}
+}

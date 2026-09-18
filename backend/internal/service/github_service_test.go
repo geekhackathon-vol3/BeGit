@@ -102,3 +102,27 @@ func TestGitHubService_ListGroupCommits_GroupNotFound(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestGitHubService_ListGroupPullRequests_Success(t *testing.T) {
+	var capturedRepo string
+	gh := &mockGitHubClient{
+		listPullRequestsFunc: func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.PullRequestListOptions) ([]githubpkg.PullRequest, error) {
+			capturedRepo = repoFullName
+			return []githubpkg.PullRequest{{Number: 42, Title: "Activity picker"}}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
+			return &model.Group{ID: groupID, RepoFullName: "alice/repo"}, nil
+		},
+	}
+	svc := NewGitHubService(gh, groupRepo)
+
+	pulls, err := svc.ListGroupPullRequests(context.Background(), 1, "token", githubpkg.PullRequestListOptions{})
+	if err != nil {
+		t.Fatalf("ListGroupPullRequests() failed: %v", err)
+	}
+	if capturedRepo != "alice/repo" || len(pulls) != 1 || pulls[0].Number != 42 {
+		t.Fatalf("unexpected pulls: repo=%q pulls=%+v", capturedRepo, pulls)
+	}
+}

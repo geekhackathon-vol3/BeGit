@@ -14,10 +14,14 @@ import (
 
 // CreatePostRequest は POST /groups/:id/posts のリクエストボディ
 type CreatePostRequest struct {
-	Body           *string `json:"body"`
-	NotificationID *int64  `json:"notification_id"`
-	GitHubLogin    string  `json:"github_login"`
-	RepoFullName   string  `json:"repo_full_name"`
+	Body              *string `json:"body"`
+	NotificationID    *int64  `json:"notification_id"`
+	PostType          string  `json:"post_type" enums:"commit,pull_request,memo" default:"commit"`
+	ContentSource     string  `json:"content_source" enums:"github,manual" default:"github"`
+	CommitSHA         *string `json:"commit_sha"`
+	PullRequestNumber *int    `json:"pull_request_number"`
+	GitHubLogin       string  `json:"github_login"`
+	RepoFullName      string  `json:"repo_full_name"`
 }
 
 // PostJSON は投稿レスポンス型
@@ -96,13 +100,21 @@ func (h *PostHandler) Create(c *gin.Context) {
 	}
 
 	post, err := h.postService.CreatePost(c.Request.Context(), service.CreatePostRequest{
-		Body:           req.Body,
-		NotificationID: req.NotificationID,
-		AccessToken:    accessToken,
-		GitHubLogin:    req.GitHubLogin,
-		RepoFullName:   req.RepoFullName,
+		Body:              req.Body,
+		NotificationID:    req.NotificationID,
+		PostType:          req.PostType,
+		ContentSource:     req.ContentSource,
+		CommitSHA:         req.CommitSHA,
+		PullRequestNumber: req.PullRequestNumber,
+		AccessToken:       accessToken,
+		GitHubLogin:       req.GitHubLogin,
+		RepoFullName:      req.RepoFullName,
 	}, groupID, userID)
 	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			respondError(c, http.StatusBadRequest, err.Error())
+			return
+		}
 		if errors.Is(err, service.ErrExternalAPI) {
 			respondError(c, http.StatusBadGateway, "external api error")
 			return

@@ -139,10 +139,33 @@
                     "body": {
                         "type": "string"
                     },
+                    "commit_sha": {
+                        "type": "string"
+                    },
+                    "content_source": {
+                        "default": "github",
+                        "enum": [
+                            "github",
+                            "manual"
+                        ],
+                        "type": "string"
+                    },
                     "github_login": {
                         "type": "string"
                     },
                     "notification_id": {
+                        "type": "integer"
+                    },
+                    "post_type": {
+                        "default": "commit",
+                        "enum": [
+                            "commit",
+                            "pull_request",
+                            "memo"
+                        ],
+                        "type": "string"
+                    },
+                    "pull_request_number": {
                         "type": "integer"
                     },
                     "repo_full_name": {
@@ -426,6 +449,41 @@
                     "posts": {
                         "items": {
                             "$ref": "#/components/schemas/handler.PostFeedJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "handler.PullRequestJSON": {
+                "properties": {
+                    "author_login": {
+                        "type": "string"
+                    },
+                    "merged": {
+                        "type": "boolean"
+                    },
+                    "number": {
+                        "type": "integer"
+                    },
+                    "state": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "handler.PullRequestListResponse": {
+                "properties": {
+                    "pull_requests": {
+                        "items": {
+                            "$ref": "#/components/schemas/handler.PullRequestJSON"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -2534,6 +2592,109 @@
                 "summary": "リアクション削除",
                 "tags": [
                     "reactions"
+                ]
+            }
+        },
+        "/groups/{id}/pull-requests": {
+            "get": {
+                "description": "グループに紐づく GitHub リポジトリの Pull Request を更新日時順で返す。",
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "作成者 GitHub login",
+                        "in": "query",
+                        "name": "author",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "取得件数（1〜50、既定 20）",
+                        "in": "query",
+                        "name": "per_page",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.PullRequestListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Gateway"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Pull Request 一覧",
+                "tags": [
+                    "github"
                 ]
             }
         },

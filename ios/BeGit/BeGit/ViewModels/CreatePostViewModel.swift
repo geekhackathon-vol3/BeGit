@@ -13,6 +13,14 @@ final class CreatePostViewModel: ObservableObject {
     @Published var frontImage: UIImage?
 
     @Published var bodyText = ""
+    @Published var selectedType: RepositoryActivityType
+    @Published var contentSource: PostContentSource
+    @Published var selectedCommit: GitHubCommitSelection?
+    @Published var selectedPullRequest: GitHubPullRequestSelection?
+    @Published private(set) var recentCommits: [GitHubCommitSelection] = []
+    @Published private(set) var recentPullRequests: [GitHubPullRequestSelection] = []
+    @Published private(set) var isLoadingGitHubActivities = false
+    @Published var githubActivityError: Error?
 
     let repositoryID: Int64
     let repoFullName: String
@@ -20,6 +28,7 @@ final class CreatePostViewModel: ObservableObject {
     let accessToken: String
     //  ② Nice Work! の下書き投稿ID。指定時は新規投稿を作らず、この下書きに写真を付けて確定する
     let draftPostID: Int64?
+    let isPostTypeSelectionEnabled: Bool
 
     init(
         mainImage: UIImage?,
@@ -28,6 +37,7 @@ final class CreatePostViewModel: ObservableObject {
         repoFullName: String,
         githubLogin: String,
         accessToken: String,
+        initialPostType: RepositoryActivityType = .commit,
         draftPostID: Int64? = nil
     ) {
         self.mainImage = mainImage
@@ -37,7 +47,10 @@ final class CreatePostViewModel: ObservableObject {
         self.repoFullName = repoFullName
         self.githubLogin = githubLogin
         self.accessToken = accessToken
+        self.selectedType = initialPostType
+        self.contentSource = initialPostType == .memo ? .manual : .github
         self.draftPostID = draftPostID
+        self.isPostTypeSelectionEnabled = draftPostID == nil
     }
     // CreatePostViewModel.swift に追加
 
@@ -45,6 +58,101 @@ final class CreatePostViewModel: ObservableObject {
     @Published var postError: Error?
     @Published private(set) var postedActivity: RepositoryActivity?
     private var draftPhotosUploaded = false
+
+    var canSubmit: Bool {
+        guard isPosting == false else { return false }
+        if draftPostID != nil {
+            return true
+        }
+        if selectedType == .memo || contentSource == .manual {
+            return bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false && isPosting == false
+        }
+        return switch selectedType {
+        case .commit: selectedCommit != nil
+        case .pullRequest: selectedPullRequest != nil
+        case .memo: false
+        }
+    }
+
+    var selectedGitHubActivityTitle: String? {
+        return switch selectedType {
+        case .commit: selectedCommit?.message
+        case .pullRequest:
+            selectedPullRequest.map { "PR #\($0.number): \($0.title)" }
+        case .memo: nil
+        }
+    }
+
+    func selectPostType(_ type: RepositoryActivityType) {
+        guard isPostTypeSelectionEnabled else { return }
+        selectedType = type
+        selectedCommit = nil
+        selectedPullRequest = nil
+        githubActivityError = nil
+        contentSource = type == .memo ? .manual : .github
+    }
+
+    func selectContentSource(_ source: PostContentSource) {
+        guard selectedType != .memo else { return }
+        contentSource = source
+        if source == .manual {
+            clearSelectedGitHubActivity()
+        }
+        githubActivityError = nil
+    }
+
+    func clearSelectedGitHubActivity() {
+        selectedCommit = nil
+        selectedPullRequest = nil
+    }
+
+    func loadGitHubActivities() async {
+        guard contentSource == .github, selectedType != .memo else { return }
+        isLoadingGitHubActivities = true
+        githubActivityError = nil
+        defer { isLoadingGitHubActivities = false }
+
+        if repositoryID < 0 {
+            if selectedType == .commit {
+                recentCommits = [
+                    GitHubCommitSelection(
+                        sha: "demo123", message: "feat: デモ用の最新commit", authorLogin: githubLogin,
+                        date: ISO8601DateFormatter().string(from: Date()), additions: 24, deletions: 3
+                    )
+                ]
+            } else {
+                recentPullRequests = [
+                    GitHubPullRequestSelection(
+                        number: 42, title: "デモ用のPull Request", authorLogin: githubLogin,
+                        state: "open", merged: false, updatedAt: ISO8601DateFormatter().string(from: Date())
+                    )
+                ]
+            }
+            return
+        }
+
+        do {
+            let api = BeGitBackendAPI()
+            switch selectedType {
+            case .commit:
+                recentCommits = try await api.listRecentCommits(
+                    repositoryID: repositoryID,
+                    githubLogin: githubLogin,
+                    accessToken: accessToken
+                )
+            case .pullRequest:
+                recentPullRequests = try await api.listRecentPullRequests(
+                    repositoryID: repositoryID,
+                    githubLogin: githubLogin,
+                    accessToken: accessToken
+                )
+            case .memo:
+                break
+            }
+        } catch {
+            githubActivityError = error
+        }
+    }
 
     func submitPost() async throws {
         guard !isPosting else { return }
@@ -92,12 +200,20 @@ final class CreatePostViewModel: ObservableObject {
             body: bodyText,
             repoFullName: repoFullName,
             githubLogin: githubLogin,
+            postType: selectedType,
+            contentSource: contentSource,
+            commitSHA: selectedType == .commit ? selectedCommit?.sha : nil,
+            pullRequestNumber: selectedType == .pullRequest ? selectedPullRequest?.number : nil,
             accessToken: accessToken
         )
 
         // If both attempts fail, the post will remain without photos.
         // TODO: Implement deletePost API and call it here to clean up orphaned posts.
         try await uploadPhotosWithRetry(api: api, postID: postID, mainData: mainData, frontData: frontData)
+
+        // Result画面へ戻った直後にも、選択した投稿タイプを表示する。
+        // 次のフィード取得が完了すると、サーバーの正規データへ置き換わる。
+        postedActivity = makeDemoActivity()
     }
 
     //  写真アップロードを失敗時に1回だけ再試行する
@@ -144,8 +260,8 @@ final class CreatePostViewModel: ObservableObject {
         }
         let avatarURL = URL(string: "https://github.com/\(githubLogin).png")
         return RepositoryActivity(
-            type: .commit,
-            title: repoFullName,
+            type: selectedType,
+            title: selectedGitHubActivityTitle ?? (bodyText.isEmpty ? repoFullName : bodyText),
             comment: bodyText.isEmpty ? nil : bodyText,
             mainPhotoURL: mainURL,
             frontPhotoURL: frontURL,

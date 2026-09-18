@@ -17,6 +17,8 @@ type GitHubService interface {
 	ListInstallationRepos(ctx context.Context, installationID int64) ([]githubpkg.Repo, error)
 	// ListGroupCommits はグループに紐づくリポジトリのコミット一覧を返す。
 	ListGroupCommits(ctx context.Context, groupID int64, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
+	// ListGroupPullRequests はグループに紐づくリポジトリの Pull Request 一覧を返す。
+	ListGroupPullRequests(ctx context.Context, groupID int64, accessToken string, opts githubpkg.PullRequestListOptions) ([]githubpkg.PullRequest, error)
 }
 
 // gitHubService は GitHubService インターフェースの実装
@@ -116,4 +118,25 @@ func (s *gitHubService) ListGroupCommits(ctx context.Context, groupID int64, acc
 		return nil, fmt.Errorf("%w: failed to list commits: %v", ErrExternalAPI, err)
 	}
 	return commits, nil
+}
+
+// ListGroupPullRequests はグループの repo_full_name を解決し、Pull Request 一覧を返す。
+func (s *gitHubService) ListGroupPullRequests(ctx context.Context, groupID int64, accessToken string, opts githubpkg.PullRequestListOptions) ([]githubpkg.PullRequest, error) {
+	if s.githubClient == nil {
+		return nil, fmt.Errorf("%w: github client not configured", ErrExternalAPI)
+	}
+
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("github_service: ListGroupPullRequests failed: %w", err)
+	}
+
+	pulls, err := s.githubClient.ListPullRequests(ctx, group.RepoFullName, accessToken, opts)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list pull requests: %v", ErrExternalAPI, err)
+	}
+	return pulls, nil
 }

@@ -111,6 +111,21 @@ type CommitListResponse struct {
 	Commits []CommitJSON `json:"commits"`
 }
 
+// PullRequestJSON は Pull Request レスポンス型。
+type PullRequestJSON struct {
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	AuthorLogin string `json:"author_login"`
+	State       string `json:"state"`
+	Merged      bool   `json:"merged"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+// PullRequestListResponse は GET /groups/:id/pull-requests のレスポンス。
+type PullRequestListResponse struct {
+	PullRequests []PullRequestJSON `json:"pull_requests"`
+}
+
 // ListCommits はグループに紐づくリポジトリのコミット一覧を返す。
 //
 //	@Summary		コミット一覧
@@ -183,4 +198,65 @@ func (h *GitHubHandler) ListCommits(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, CommitListResponse{Commits: result})
+}
+
+// ListPullRequests はグループに紐づくリポジトリの Pull Request 一覧を返す。
+//
+//	@Summary		Pull Request 一覧
+//	@Description	グループに紐づく GitHub リポジトリの Pull Request を更新日時順で返す。
+//	@Tags			github
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id			path		int		true	"グループ ID"
+//	@Param			author		query		string	false	"作成者 GitHub login"
+//	@Param			per_page	query		int		false	"取得件数（1〜50、既定 20）"
+//	@Success		200			{object}	PullRequestListResponse
+//	@Failure		400			{object}	ErrorResponse
+//	@Failure		401			{object}	ErrorResponse
+//	@Failure		404			{object}	ErrorResponse
+//	@Failure		502			{object}	ErrorResponse
+//	@Failure		500			{object}	ErrorResponse
+//	@Router			/groups/{id}/pull-requests [get]
+func (h *GitHubHandler) ListPullRequests(c *gin.Context) {
+	if _, ok := userIDFromContext(c); !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	opts := githubpkg.PullRequestListOptions{Author: c.Query("author")}
+	if pp := c.Query("per_page"); pp != "" {
+		if value, parseErr := strconv.Atoi(pp); parseErr == nil {
+			opts.PerPage = value
+		}
+	}
+
+	pulls, err := h.githubService.ListGroupPullRequests(
+		c.Request.Context(), groupID, accessTokenFromContext(c), opts,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrExternalAPI):
+			respondError(c, http.StatusBadGateway, "external api error")
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "group not found")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	result := make([]PullRequestJSON, 0, len(pulls))
+	for _, pull := range pulls {
+		result = append(result, PullRequestJSON{
+			Number: pull.Number, Title: pull.Title, AuthorLogin: pull.AuthorLogin,
+			State: pull.State, Merged: pull.Merged, UpdatedAt: pull.UpdatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, PullRequestListResponse{PullRequests: result})
 }

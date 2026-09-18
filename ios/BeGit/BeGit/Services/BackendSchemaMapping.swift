@@ -81,13 +81,16 @@ extension Components.Schemas.Handler_GroupMemberJSON {
 }
 
 extension Components.Schemas.Handler_PostFeedJSON {
-    func toActivity(fallbackRepository: Repository) -> RepositoryActivity {
+    func toActivity(
+        fallbackRepository: Repository,
+        typeOverride: RepositoryActivityType? = nil
+    ) -> RepositoryActivity {
 
            let mainURL = photoURL(for: "main")
            let frontURL = photoURL(for: "front")
 
            return RepositoryActivity(
-               type: activityType,
+               type: typeOverride ?? activityType,
                title: activityTitle(fallbackRepository: fallbackRepository),
                comment: {
                    let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -122,15 +125,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
     }
 
     private var activityType: RepositoryActivityType {
-        switch postType {
-        case "pull_request", "pullRequest":
-            return .pullRequest
-        // "memo" が正。"sorry"/"comment" は旧名称・旧データ互換のため受理。
-        case "memo", "sorry", "comment":
-            return .memo
-        default:
-            return .commit
-        }
+        RepositoryActivityType.fromAPIValue(postType)
     }
 
     private func activityTitle(fallbackRepository: Repository) -> String {
@@ -154,6 +149,7 @@ extension Components.Schemas.Handler_PostJSON {
         DraftPost(
             id: id.map(Int64.init) ?? fallbackID,
             repoFullName: repoFullName ?? "",
+            postType: RepositoryActivityType.fromAPIValue(postType),
             status: status
         )
     }
