@@ -370,11 +370,15 @@ struct RepositoryActivityCardView: View {
 
         showReactionPicker = false
         isUpdatingReaction = true
+        let isRemovingSelectedReaction = myReaction == type
         Task {
             defer { isUpdatingReaction = false }
             do {
                 if let reactions = try await onReactionTapped(type) {
-                    applyReactions(reactions)
+                    applyReactions(
+                        reactions,
+                        preferredMyReaction: isRemovingSelectedReaction ? nil : type
+                    )
                 } else {
                     // APIの対象IDを持たないMock投稿は従来どおりローカル更新する。
                     applyLocalToggle(type)
@@ -403,14 +407,17 @@ struct RepositoryActivityCardView: View {
         }
     }
 
-    private func applyReactions(_ reactions: [ActivityReaction]) {
+    private func applyReactions(
+        _ reactions: [ActivityReaction],
+        preferredMyReaction: ActivityReactionType? = nil
+    ) {
         withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
             var counts: [ActivityReactionType: Int] = [:]
             for reaction in reactions {
                 counts[reaction.type] = reaction.count
             }
             reactionCounts = counts
-            myReaction = reactions.first(where: \.reactedByMe)?.type
+            myReaction = preferredMyReaction ?? reactions.first(where: \.reactedByMe)?.type
             showReactionPicker = false
         }
     }

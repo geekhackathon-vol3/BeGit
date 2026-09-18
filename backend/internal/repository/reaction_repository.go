@@ -11,7 +11,7 @@ import (
 
 // ReactionRepository は reactions テーブルへのアクセスインターフェース
 type ReactionRepository interface {
-	// Add はリアクションを追加する。UNIQUE(post_id, user_id, reaction_type) により冪等。
+	// Add は同じユーザーの既存リアクションを置き換えて追加する。
 	Add(ctx context.Context, postID, userID int64, reactionType string) error
 	// Remove はリアクションを削除する（トグル用）。
 	Remove(ctx context.Context, postID, userID int64, reactionType string) error
@@ -53,8 +53,15 @@ func scanReaction(row map[string]interface{}) model.Reaction {
 	return r
 }
 
-// Add はリアクションを追加する。INSERT OR IGNORE で UNIQUE 制約を冪等に扱う。
+// Add は1投稿につき1ユーザー1種類になるよう、既存リアクションを削除してから追加する。
 func (r *reactionRepository) Add(ctx context.Context, postID, userID int64, reactionType string) error {
+	if _, err := r.db.Exec(ctx,
+		`DELETE FROM reactions WHERE post_id = ? AND user_id = ?`,
+		[]interface{}{postID, userID},
+	); err != nil {
+		return fmt.Errorf("reaction_repository: Add remove previous failed: %w", err)
+	}
+
 	_, err := r.db.Exec(ctx,
 		`INSERT OR IGNORE INTO reactions (post_id, user_id, reaction_type) VALUES (?, ?, ?)`,
 		[]interface{}{postID, userID, reactionType},
