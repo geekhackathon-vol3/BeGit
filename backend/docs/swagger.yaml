@@ -423,9 +423,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.DevLoginRequest'
-              description: ログイン名（省略時 alice）
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.DevLoginRequest'
+                description: ログイン名（省略時 alice）
+                summary: request
         description: ログイン名（省略時 alice）
       responses:
         "200":
@@ -450,9 +452,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.AuthRequest'
-              description: GitHub 認可コード
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.AuthRequest'
+                description: GitHub 認可コード
+                summary: request
         description: GitHub 認可コード
         required: true
       responses:
@@ -628,9 +632,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.CreateGroupRequest'
-              description: 作成するリポジトリ
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateGroupRequest'
+                description: 作成するリポジトリ
+                summary: request
         description: 作成するリポジトリ
         required: true
       responses:
@@ -971,9 +977,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.CreatePostRequest'
-              description: 投稿内容
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreatePostRequest'
+                description: 投稿内容
+                summary: request
         description: 投稿内容
         required: true
       responses:
@@ -1093,9 +1101,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.CreateCommentRequest'
-              description: コメント本文
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateCommentRequest'
+                description: コメント本文
+                summary: request
         description: コメント本文
         required: true
       responses:
@@ -1219,9 +1229,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.ConfirmPostRequest'
-              description: 確定内容（本文の上書き等）
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.ConfirmPostRequest'
+                description: 確定内容（本文の上書き等）
+                summary: request
         description: 確定内容（本文の上書き等）
       responses:
         "200":
@@ -1323,21 +1335,17 @@ paths:
           type: integer
       requestBody:
         content:
+          application/x-www-form-urlencoded:
+            schema:
+              oneOf:
+              - title: main
+                type: file
+              - title: front
+                type: file
           multipart/form-data:
             schema:
-              properties:
-                front:
-                  description: 前面写真（任意）
-                  format: binary
-                  type: string
-                main:
-                  description: 背面写真（image/jpeg, image/png, image/heic）
-                  format: binary
-                  type: string
-              required:
-              - main
               type: object
-        description: 背面写真（image/jpeg, image/png, image/heic）
+        description: 背面写真（image/jpeg, image/png, image/heic） | 前面写真（任意）
       responses:
         "201":
           content:
@@ -1473,9 +1481,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.CreateReactionRequest'
-              description: リアクション種別
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateReactionRequest'
+                description: リアクション種別
+                summary: request
         description: リアクション種別
         required: true
       responses:
@@ -1782,9 +1792,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/handler.UpdateFCMTokenRequest'
-              description: FCM トークン
-              summary: request
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.UpdateFCMTokenRequest'
+                description: FCM トークン
+                summary: request
         description: FCM トークン
         required: true
       responses:

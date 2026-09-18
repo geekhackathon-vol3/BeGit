@@ -632,9 +632,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.DevLoginRequest",
-                                "summary": "request",
-                                "description": "ログイン名（省略時 alice）"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.DevLoginRequest",
+                                        "summary": "request",
+                                        "description": "ログイン名（省略時 alice）"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -675,9 +682,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.AuthRequest",
-                                "summary": "request",
-                                "description": "GitHub 認可コード"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.AuthRequest",
+                                        "summary": "request",
+                                        "description": "GitHub 認可コード"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -969,9 +983,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.CreateGroupRequest",
-                                "summary": "request",
-                                "description": "作成するリポジトリ"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.CreateGroupRequest",
+                                        "summary": "request",
+                                        "description": "作成するリポジトリ"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -1537,9 +1558,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.CreatePostRequest",
-                                "summary": "request",
-                                "description": "投稿内容"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.CreatePostRequest",
+                                        "summary": "request",
+                                        "description": "投稿内容"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -1738,9 +1766,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.CreateCommentRequest",
-                                "summary": "request",
-                                "description": "コメント本文"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.CreateCommentRequest",
+                                        "summary": "request",
+                                        "description": "コメント本文"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -1944,9 +1979,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.ConfirmPostRequest",
-                                "summary": "request",
-                                "description": "確定内容（本文の上書き等）"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.ConfirmPostRequest",
+                                        "summary": "request",
+                                        "description": "確定内容（本文の上書き等）"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -2116,28 +2158,27 @@
                 ],
                 "requestBody": {
                     "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "title": "main",
+                                        "type": "file"
+                                    },
+                                    {
+                                        "title": "front",
+                                        "type": "file"
+                                    }
+                                ]
+                            }
+                        },
                         "multipart/form-data": {
                             "schema": {
-                                "properties": {
-                                    "front": {
-                                        "description": "前面写真（任意）",
-                                        "format": "binary",
-                                        "type": "string"
-                                    },
-                                    "main": {
-                                        "description": "背面写真（image/jpeg, image/png, image/heic）",
-                                        "format": "binary",
-                                        "type": "string"
-                                    }
-                                },
-                                "required": [
-                                    "main"
-                                ],
                                 "type": "object"
                             }
                         }
                     },
-                    "description": "背面写真（image/jpeg, image/png, image/heic）"
+                    "description": "背面写真（image/jpeg, image/png, image/heic） | 前面写真（任意）"
                 },
                 "responses": {
                     "201": {
@@ -2361,9 +2402,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.CreateReactionRequest",
-                                "summary": "request",
-                                "description": "リアクション種別"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.CreateReactionRequest",
+                                        "summary": "request",
+                                        "description": "リアクション種別"
+                                    }
+                                ]
                             }
                         }
                     },
@@ -2873,9 +2921,16 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/handler.UpdateFCMTokenRequest",
-                                "summary": "request",
-                                "description": "FCM トークン"
+                                "oneOf": [
+                                    {
+                                        "type": "object"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/handler.UpdateFCMTokenRequest",
+                                        "summary": "request",
+                                        "description": "FCM トークン"
+                                    }
+                                ]
                             }
                         }
                     },
