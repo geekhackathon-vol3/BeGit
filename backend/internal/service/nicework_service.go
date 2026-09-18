@@ -15,6 +15,17 @@ import (
 // challengeWindow は ① BeGit Time! のチャレンジ有効期間（発行から1時間）
 const challengeWindow = time.Hour
 
+// challengeDeadline は通知の締め切りを返す。
+// 既定は sent_at + 1h。発行者が途中中断した場合（ended_at 非 nil かつそれより早い）は ended_at。
+// On Time / Late 判定（computeMemberStatuses）と ② Nice Work! の on_time / late 判定で共通に使う。
+func challengeDeadline(n *model.Notification) time.Time {
+	deadline := n.SentAt.Add(challengeWindow)
+	if n.EndedAt != nil && n.EndedAt.Before(deadline) {
+		return *n.EndedAt
+	}
+	return deadline
+}
+
 // ActivityData は ② Nice Work! の検知データ（GitHub アクティビティから取得）。
 // draft 投稿のプレフィル元になる。
 type ActivityData struct {
@@ -121,10 +132,10 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 		return fmt.Errorf("nicework_service: GetLatestInSprintBefore failed: %w", err)
 	}
 
-	// Step 5: on_time / late を確定（検知時刻 vs anchor.sent_at + 1h）。
+	// Step 5: on_time / late を確定（検知時刻 vs 締め切り = anchor.sent_at + 1h、途中中断なら ended_at）。
 	status := NiceWorkStatusOnTime
 	statusStr := "on_time"
-	if detectionTime.After(anchor.SentAt.Add(challengeWindow)) {
+	if detectionTime.After(challengeDeadline(anchor)) {
 		status = NiceWorkStatusLate
 		statusStr = "late"
 	}

@@ -210,3 +210,35 @@ func TestNiceWork_FCMFailure_DoesNotFail(t *testing.T) {
 		t.Fatalf("HandleActivity() should succeed even if FCM fails, got: %v", err)
 	}
 }
+
+// TestNiceWork_LateAfterEarlyEnd は発行者が途中中断した後（ended_at 後・sent_at + 1h 前）に検知した活動が late になることを確認する
+func TestNiceWork_LateAfterEarlyEnd(t *testing.T) {
+	u, g, sp, n, p, ft, fc := niceWorkDeps()
+	u.getByLoginFunc = func(ctx context.Context, login string) (*model.User, error) { return &model.User{ID: 10}, nil }
+	g.isMemberFunc = func(ctx context.Context, groupID, userID int64) (bool, error) { return true, nil }
+	sp.getCurrentFunc = func(ctx context.Context, groupID int64) (*model.Sprint, error) {
+		return &model.Sprint{ID: 7, GroupID: groupID}, nil
+	}
+	sentAt := time.Now().Add(-30 * time.Minute)
+	endedAt := sentAt.Add(10 * time.Minute) // 発行10分後に中断、検知は今（発行30分後 = 1時間以内だが中断後）
+	n.getLatestInSprintBeforeFunc = func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
+		return &model.Notification{ID: 345, SprintID: 7, SentAt: sentAt, EndedAt: &endedAt}, nil
+	}
+	var draftStatus string
+	p.createDraftFunc = func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		if post.Status != nil {
+			draftStatus = *post.Status
+		}
+		post.ID = 891
+		return post, nil
+	}
+	ft.getTokensByUserIDFunc = func(ctx context.Context, userID int64) ([]string, error) { return []string{"t"}, nil }
+
+	svc := newNiceWorkSvc(u, g, sp, n, p, ft, fc)
+	if err := svc.HandleActivity(context.Background(), 12, "octocat", "commit", ActivityData{}); err != nil {
+		t.Fatalf("HandleActivity() failed: %v", err)
+	}
+	if draftStatus != "late" {
+		t.Errorf("expected draft status late after early end, got %q", draftStatus)
+	}
+}
