@@ -306,3 +306,74 @@ func TestGetRecentCommits(t *testing.T) {
 		t.Errorf("expected message=Initial commit, got %s", summary.LatestCommitMessage)
 	}
 }
+
+func TestGetLatestPullRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/pulls" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"number": 50, "title": "Other user's PR", "user": map[string]interface{}{"login": "someone"}},
+			{"number": 42, "title": "Add activity selector", "user": map[string]interface{}{"login": "TestUser"}},
+		})
+	}))
+	defer server.Close()
+
+	client := &githubClient{httpClient: server.Client(), oauthEndpoint: server.URL, apiEndpoint: server.URL}
+	summary, err := client.GetLatestPullRequest(context.Background(), "owner/repo", "testuser", "test_token")
+	if err != nil {
+		t.Fatalf("GetLatestPullRequest() failed: %v", err)
+	}
+	if summary.Number != 42 || summary.Title != "Add activity selector" || summary.RepoFullName != "owner/repo" {
+		t.Errorf("unexpected summary: %+v", summary)
+	}
+}
+
+func TestGetCommit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/commits/abc123" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"sha": "abc123",
+			"commit": map[string]interface{}{
+				"message": "Selected commit",
+				"author":  map[string]interface{}{"name": "Alice", "date": "2026-09-18T00:00:00Z"},
+			},
+			"author": map[string]interface{}{"login": "alice"},
+			"stats":  map[string]interface{}{"additions": 12, "deletions": 3},
+		})
+	}))
+	defer server.Close()
+
+	client := &githubClient{httpClient: server.Client(), oauthEndpoint: server.URL, apiEndpoint: server.URL}
+	commit, err := client.GetCommit(context.Background(), "owner/repo", "abc123", "token")
+	if err != nil {
+		t.Fatalf("GetCommit() failed: %v", err)
+	}
+	if commit.Message != "Selected commit" || commit.AuthorLogin != "alice" || commit.Additions != 12 {
+		t.Fatalf("unexpected commit: %+v", commit)
+	}
+}
+
+func TestListPullRequests(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]map[string]interface{}{
+			{"number": 2, "title": "Other", "state": "open", "user": map[string]interface{}{"login": "bob"}},
+			{"number": 1, "title": "Mine", "state": "closed", "merged_at": "2026-09-18T00:00:00Z", "updated_at": "2026-09-18T00:00:00Z", "user": map[string]interface{}{"login": "Alice"}},
+		})
+	}))
+	defer server.Close()
+
+	client := &githubClient{httpClient: server.Client(), oauthEndpoint: server.URL, apiEndpoint: server.URL}
+	pulls, err := client.ListPullRequests(context.Background(), "owner/repo", "token", PullRequestListOptions{Author: "alice", PerPage: 20})
+	if err != nil {
+		t.Fatalf("ListPullRequests() failed: %v", err)
+	}
+	if len(pulls) != 1 || pulls[0].Number != 1 || !pulls[0].Merged {
+		t.Fatalf("unexpected pulls: %+v", pulls)
+	}
+}

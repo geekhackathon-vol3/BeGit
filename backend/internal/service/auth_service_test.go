@@ -19,6 +19,10 @@ type mockGitHubClient struct {
 	getCollaboratorsFunc      func(ctx context.Context, repoFullName, accessToken string) ([]githubpkg.User, error)
 	registerWebhookFunc       func(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
 	getRecentCommitsFunc      func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.CommitSummary, error)
+	getCommitFunc             func(ctx context.Context, repoFullName, sha, accessToken string) (*githubpkg.Commit, error)
+	getLatestPullRequestFunc  func(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.PullRequestSummary, error)
+	listPullRequestsFunc      func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.PullRequestListOptions) ([]githubpkg.PullRequest, error)
+	getPullRequestFunc        func(ctx context.Context, repoFullName string, number int, accessToken string) (*githubpkg.PullRequest, error)
 	listUserReposFunc         func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
 	listInstallationReposFunc func(ctx context.Context, accessToken string) ([]githubpkg.Repo, error)
 	listCommitsFunc           func(ctx context.Context, repoFullName, accessToken string, opts githubpkg.CommitListOptions) ([]githubpkg.Commit, error)
@@ -65,6 +69,34 @@ func (m *mockGitHubClient) GetRecentCommits(ctx context.Context, repoFullName, l
 		return m.getRecentCommitsFunc(ctx, repoFullName, login, accessToken)
 	}
 	return &githubpkg.CommitSummary{CommitCount: 3, Additions: 100, Deletions: 50, LatestCommitMessage: "Test commit"}, nil
+}
+
+func (m *mockGitHubClient) GetCommit(ctx context.Context, repoFullName, sha, accessToken string) (*githubpkg.Commit, error) {
+	if m.getCommitFunc != nil {
+		return m.getCommitFunc(ctx, repoFullName, sha, accessToken)
+	}
+	return &githubpkg.Commit{SHA: sha, Message: "Test commit", AuthorLogin: "testuser", Additions: 10, Deletions: 2}, nil
+}
+
+func (m *mockGitHubClient) GetLatestPullRequest(ctx context.Context, repoFullName, login, accessToken string) (*githubpkg.PullRequestSummary, error) {
+	if m.getLatestPullRequestFunc != nil {
+		return m.getLatestPullRequestFunc(ctx, repoFullName, login, accessToken)
+	}
+	return &githubpkg.PullRequestSummary{Number: 42, Title: "Test pull request", RepoFullName: repoFullName}, nil
+}
+
+func (m *mockGitHubClient) ListPullRequests(ctx context.Context, repoFullName, accessToken string, opts githubpkg.PullRequestListOptions) ([]githubpkg.PullRequest, error) {
+	if m.listPullRequestsFunc != nil {
+		return m.listPullRequestsFunc(ctx, repoFullName, accessToken, opts)
+	}
+	return []githubpkg.PullRequest{}, nil
+}
+
+func (m *mockGitHubClient) GetPullRequest(ctx context.Context, repoFullName string, number int, accessToken string) (*githubpkg.PullRequest, error) {
+	if m.getPullRequestFunc != nil {
+		return m.getPullRequestFunc(ctx, repoFullName, number, accessToken)
+	}
+	return &githubpkg.PullRequest{Number: number, Title: "Test pull request", AuthorLogin: "testuser", State: "open"}, nil
 }
 
 func (m *mockGitHubClient) ListUserRepos(ctx context.Context, accessToken string) ([]githubpkg.Repo, error) {

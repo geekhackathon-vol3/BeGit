@@ -80,6 +80,28 @@ type CommitSummary struct {
 	RepoFullName        string
 }
 
+// PullRequestSummary はユーザーの最新 Pull Request 情報。
+type PullRequestSummary struct {
+	Number       int
+	Title        string
+	RepoFullName string
+}
+
+// PullRequest は投稿候補として表示する GitHub Pull Request 情報。
+type PullRequest struct {
+	Number      int
+	Title       string
+	AuthorLogin string
+	State       string
+	Merged      bool
+	UpdatedAt   string
+}
+
+type PullRequestListOptions struct {
+	Author  string
+	PerPage int
+}
+
 // Commit は GitHub のコミット情報（コミット一覧用）
 type Commit struct {
 	SHA         string `json:"sha"`
@@ -119,6 +141,10 @@ type Client interface {
 	GetCollaborators(ctx context.Context, repoFullName, accessToken string) ([]User, error)
 	RegisterWebhook(ctx context.Context, repoFullName, accessToken, webhookURL, secret string) error
 	GetRecentCommits(ctx context.Context, repoFullName, login, accessToken string) (*CommitSummary, error)
+	GetCommit(ctx context.Context, repoFullName, sha, accessToken string) (*Commit, error)
+	GetLatestPullRequest(ctx context.Context, repoFullName, login, accessToken string) (*PullRequestSummary, error)
+	ListPullRequests(ctx context.Context, repoFullName, accessToken string, opts PullRequestListOptions) ([]PullRequest, error)
+	GetPullRequest(ctx context.Context, repoFullName string, number int, accessToken string) (*PullRequest, error)
 	ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error)
 	ListCommits(ctx context.Context, repoFullName, accessToken string, opts CommitListOptions) ([]Commit, error)
 	RevokeToken(ctx context.Context, clientID, clientSecret, accessToken string) error
@@ -490,6 +516,136 @@ func (c *githubClient) GetRecentCommits(ctx context.Context, repoFullName, login
 	}
 
 	return summary, nil
+}
+
+// GetCommit は SHA を指定してコミット詳細を取得する。
+func (c *githubClient) GetCommit(ctx context.Context, repoFullName, sha, accessToken string) (*Commit, error) {
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		"/repos/"+repoFullName+"/commits/"+url.PathEscape(sha), accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to get commit: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var raw struct {
+		SHA    string `json:"sha"`
+		Commit struct {
+			Message string `json:"message"`
+			Author  struct {
+				Name string `json:"name"`
+				Date string `json:"date"`
+			} `json:"author"`
+		} `json:"commit"`
+		Author struct {
+			Login string `json:"login"`
+		} `json:"author"`
+		Stats struct {
+			Additions int `json:"additions"`
+			Deletions int `json:"deletions"`
+		} `json:"stats"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("github: failed to decode commit: %w", err)
+	}
+
+	return &Commit{
+		SHA:         raw.SHA,
+		Message:     raw.Commit.Message,
+		AuthorName:  raw.Commit.Author.Name,
+		AuthorLogin: raw.Author.Login,
+		Date:        raw.Commit.Author.Date,
+		Additions:   raw.Stats.Additions,
+		Deletions:   raw.Stats.Deletions,
+	}, nil
+}
+
+// GetLatestPullRequest は更新日時が新しい順に PR を取得し、指定ユーザーが作成した最新1件を返す。
+func (c *githubClient) GetLatestPullRequest(ctx context.Context, repoFullName, login, accessToken string) (*PullRequestSummary, error) {
+	pulls, err := c.ListPullRequests(ctx, repoFullName, accessToken, PullRequestListOptions{Author: login, PerPage: 30})
+	if err != nil {
+		return nil, err
+	}
+	if len(pulls) > 0 {
+		return &PullRequestSummary{Number: pulls[0].Number, Title: pulls[0].Title, RepoFullName: repoFullName}, nil
+	}
+	return &PullRequestSummary{RepoFullName: repoFullName}, nil
+}
+
+// ListPullRequests は更新日時順の PR を返し、Author 指定時は作成者で絞り込む。
+func (c *githubClient) ListPullRequests(ctx context.Context, repoFullName, accessToken string, opts PullRequestListOptions) ([]PullRequest, error) {
+	perPage := opts.PerPage
+	if perPage <= 0 || perPage > 50 {
+		perPage = 20
+	}
+	// pulls API には author フィルタがないため、本人指定時は直近100件を取得してから
+	// 要求件数まで絞り込む。共同開発が活発なリポジトリでも本人の候補を見つけやすくする。
+	fetchPerPage := perPage
+	if opts.Author != "" {
+		fetchPerPage = 100
+	}
+	path := fmt.Sprintf("/repos/%s/pulls?state=all&sort=updated&direction=desc&per_page=%d", repoFullName, fetchPerPage)
+	resp, err := c.doAPIRequest(ctx, http.MethodGet, path, accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to list pull requests: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var raw []struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		MergedAt  string `json:"merged_at"`
+		UpdatedAt string `json:"updated_at"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("github: failed to decode pull requests: %w", err)
+	}
+
+	pulls := make([]PullRequest, 0, len(raw))
+	for _, item := range raw {
+		if opts.Author != "" && !strings.EqualFold(item.User.Login, opts.Author) {
+			continue
+		}
+		pulls = append(pulls, PullRequest{
+			Number: item.Number, Title: item.Title, AuthorLogin: item.User.Login,
+			State: item.State, Merged: item.MergedAt != "", UpdatedAt: item.UpdatedAt,
+		})
+		if len(pulls) >= perPage {
+			break
+		}
+	}
+	return pulls, nil
+}
+
+// GetPullRequest は番号を指定して PR 詳細を取得する。
+func (c *githubClient) GetPullRequest(ctx context.Context, repoFullName string, number int, accessToken string) (*PullRequest, error) {
+	resp, err := c.doAPIRequest(ctx, http.MethodGet,
+		fmt.Sprintf("/repos/%s/pulls/%d", repoFullName, number), accessToken, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to get pull request: %v", ErrExternalAPI, err)
+	}
+	defer resp.Body.Close()
+
+	var raw struct {
+		Number    int    `json:"number"`
+		Title     string `json:"title"`
+		State     string `json:"state"`
+		MergedAt  string `json:"merged_at"`
+		UpdatedAt string `json:"updated_at"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("github: failed to decode pull request: %w", err)
+	}
+	return &PullRequest{
+		Number: raw.Number, Title: raw.Title, AuthorLogin: raw.User.Login,
+		State: raw.State, Merged: raw.MergedAt != "", UpdatedAt: raw.UpdatedAt,
+	}, nil
 }
 
 // ListUserRepos は認証ユーザーがアクセスできるリポジトリ一覧を取得する。

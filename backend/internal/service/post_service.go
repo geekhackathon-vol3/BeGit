@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/irj0927/begit/internal/model"
@@ -17,11 +18,15 @@ const feedPhotoURLTTL = time.Hour
 
 // CreatePostRequest は投稿作成リクエスト
 type CreatePostRequest struct {
-	Body           *string
-	NotificationID *int64
-	AccessToken    string
-	GitHubLogin    string
-	RepoFullName   string
+	Body              *string
+	NotificationID    *int64
+	PostType          string
+	ContentSource     string
+	CommitSHA         *string
+	PullRequestNumber *int
+	AccessToken       string
+	GitHubLogin       string
+	RepoFullName      string
 }
 
 // ConfirmPostRequest は下書き確定リクエスト（確定時に本文を上書きできる）
@@ -69,34 +74,94 @@ func NewPostService(
 	}
 }
 
-// CreatePost は GitHub コミット情報を取得して posts テーブルに INSERT する
+// CreatePost は投稿種別に対応する GitHub 情報を取得して posts テーブルに INSERT する。
 func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, groupID, userID int64) (*model.Post, error) {
-	// GitHub クライアントが未設定の場合は ErrExternalAPI を返す
-	if s.githubClient == nil {
+	postType := req.PostType
+	if postType == "" {
+		postType = "commit"
+	}
+	if postType != "commit" && postType != "pull_request" && postType != "memo" {
+		return nil, fmt.Errorf("%w: unsupported post type %q", ErrValidation, postType)
+	}
+	contentSource := req.ContentSource
+	if contentSource == "" {
+		contentSource = "github"
+	}
+	if postType == "memo" {
+		contentSource = "manual"
+	}
+	if contentSource != "github" && contentSource != "manual" {
+		return nil, fmt.Errorf("%w: unsupported content source %q", ErrValidation, contentSource)
+	}
+	if contentSource == "manual" && (req.Body == nil || strings.TrimSpace(*req.Body) == "") {
+		return nil, fmt.Errorf("%w: comment body is required for manual posts", ErrValidation)
+	}
+
+	repoFullName := req.RepoFullName
+	post := &model.Post{
+		NotificationID: req.NotificationID,
+		UserID:         userID,
+		GroupID:        groupID,
+		PostType:       postType,
+		Body:           req.Body,
+		RepoFullName:   &repoFullName,
+	}
+
+	if contentSource == "github" && s.githubClient == nil {
 		return nil, fmt.Errorf("%w: github client not configured", ErrExternalAPI)
 	}
 
-	// Step 1: GitHub からコミット情報を取得
-	commitSummary, err := s.githubClient.GetRecentCommits(ctx, req.RepoFullName, req.GitHubLogin, req.AccessToken)
-	if err != nil {
-		return nil, fmt.Errorf("%w: failed to get recent commits: %v", ErrExternalAPI, err)
-	}
-
-	// Step 2: posts テーブルに INSERT
-	repoFullName := commitSummary.RepoFullName
-	latestCommitMsg := commitSummary.LatestCommitMessage
-
-	post := &model.Post{
-		NotificationID:      req.NotificationID,
-		UserID:              userID,
-		GroupID:             groupID,
-		PostType:            "commit",
-		Body:                req.Body,
-		RepoFullName:        &repoFullName,
-		CommitCount:         commitSummary.CommitCount,
-		Additions:           commitSummary.Additions,
-		Deletions:           commitSummary.Deletions,
-		LatestCommitMessage: &latestCommitMsg,
+	switch postType {
+	case "commit":
+		if contentSource == "manual" {
+			break
+		}
+		if req.CommitSHA != nil && strings.TrimSpace(*req.CommitSHA) != "" {
+			commit, err := s.githubClient.GetCommit(ctx, req.RepoFullName, strings.TrimSpace(*req.CommitSHA), req.AccessToken)
+			if err != nil {
+				return nil, fmt.Errorf("%w: failed to get commit: %v", ErrExternalAPI, err)
+			}
+			if commit.AuthorLogin == "" || !strings.EqualFold(commit.AuthorLogin, req.GitHubLogin) {
+				return nil, fmt.Errorf("%w: selected commit is not authored by the current user", ErrValidation)
+			}
+			post.CommitCount = 1
+			post.Additions = commit.Additions
+			post.Deletions = commit.Deletions
+			post.LatestCommitMessage = strOrNil(commit.Message)
+			break
+		}
+		commitSummary, err := s.githubClient.GetRecentCommits(ctx, req.RepoFullName, req.GitHubLogin, req.AccessToken)
+		if err != nil {
+			return nil, fmt.Errorf("%w: failed to get recent commits: %v", ErrExternalAPI, err)
+		}
+		post.RepoFullName = strOrNil(commitSummary.RepoFullName)
+		post.CommitCount = commitSummary.CommitCount
+		post.Additions = commitSummary.Additions
+		post.Deletions = commitSummary.Deletions
+		post.LatestCommitMessage = strOrNil(commitSummary.LatestCommitMessage)
+	case "pull_request":
+		if contentSource == "manual" {
+			break
+		}
+		if req.PullRequestNumber != nil && *req.PullRequestNumber > 0 {
+			pullRequest, err := s.githubClient.GetPullRequest(ctx, req.RepoFullName, *req.PullRequestNumber, req.AccessToken)
+			if err != nil {
+				return nil, fmt.Errorf("%w: failed to get pull request: %v", ErrExternalAPI, err)
+			}
+			if !strings.EqualFold(pullRequest.AuthorLogin, req.GitHubLogin) {
+				return nil, fmt.Errorf("%w: selected pull request is not authored by the current user", ErrValidation)
+			}
+			post.LatestCommitMessage = strOrNil(fmt.Sprintf("PR #%d: %s", pullRequest.Number, pullRequest.Title))
+			break
+		}
+		pullRequest, err := s.githubClient.GetLatestPullRequest(ctx, req.RepoFullName, req.GitHubLogin, req.AccessToken)
+		if err != nil {
+			return nil, fmt.Errorf("%w: failed to get latest pull request: %v", ErrExternalAPI, err)
+		}
+		post.RepoFullName = strOrNil(pullRequest.RepoFullName)
+		if pullRequest.Number > 0 && pullRequest.Title != "" {
+			post.LatestCommitMessage = strOrNil(fmt.Sprintf("PR #%d: %s", pullRequest.Number, pullRequest.Title))
+		}
 	}
 
 	created, err := s.postRepo.Create(ctx, post)

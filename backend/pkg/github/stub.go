@@ -78,6 +78,39 @@ func (c *stubClient) GetRecentCommits(ctx context.Context, repoFullName, login, 
 	}, nil
 }
 
+// GetCommit は開発環境用の固定コミットを返す。
+func (c *stubClient) GetCommit(ctx context.Context, repoFullName, sha, accessToken string) (*Commit, error) {
+	return &Commit{
+		SHA: sha, Message: "feat: dev stub commit", AuthorName: "Dev Stub User",
+		AuthorLogin: "dev-stub-user", Date: "2026-06-01T10:00:00Z", Additions: 120, Deletions: 30,
+	}, nil
+}
+
+// GetLatestPullRequest は開発環境用の固定 PR を返す。
+func (c *stubClient) GetLatestPullRequest(ctx context.Context, repoFullName, login, accessToken string) (*PullRequestSummary, error) {
+	return &PullRequestSummary{
+		Number:       42,
+		Title:        "feat: dev stub pull request",
+		RepoFullName: repoFullName,
+	}, nil
+}
+
+// ListPullRequests は開発環境用の固定 PR 一覧を返す。
+func (c *stubClient) ListPullRequests(ctx context.Context, repoFullName, accessToken string, opts PullRequestListOptions) ([]PullRequest, error) {
+	return []PullRequest{
+		{Number: 42, Title: "feat: dev stub pull request", AuthorLogin: "dev-stub-user", State: "open", UpdatedAt: "2026-06-01T10:00:00Z"},
+		{Number: 41, Title: "fix: dev stub fix", AuthorLogin: "dev-stub-user", State: "closed", Merged: true, UpdatedAt: "2026-05-31T10:00:00Z"},
+	}, nil
+}
+
+// GetPullRequest は開発環境用の固定 PR を返す。
+func (c *stubClient) GetPullRequest(ctx context.Context, repoFullName string, number int, accessToken string) (*PullRequest, error) {
+	return &PullRequest{
+		Number: number, Title: "feat: dev stub pull request", AuthorLogin: "dev-stub-user",
+		State: "open", UpdatedAt: "2026-06-01T10:00:00Z",
+	}, nil
+}
+
 // ListUserRepos は固定のダミーリポジトリ一覧を返す。
 func (c *stubClient) ListUserRepos(ctx context.Context, accessToken string) ([]Repo, error) {
 	return []Repo{
