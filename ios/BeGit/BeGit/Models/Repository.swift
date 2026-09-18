@@ -12,6 +12,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
     let memberCount: Int            //  Team member数
     let members: [RepositoryMember] //  Repository member一覧
     let isReadOnly: Bool            //  GitHub App未接続の公開リポジトリ（表示専用）
+    let activeChallenge: ActiveChallenge? //  進行中のBeGit Time（GET /groups/:id 取得時のみ。一覧では常にnil）
 
     init(
         id: UUID = UUID(),
@@ -20,7 +21,8 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         ownerAvatarURL: URL? = nil,
         memberCount: Int,
         members: [RepositoryMember],
-        isReadOnly: Bool = false
+        isReadOnly: Bool = false,
+        activeChallenge: ActiveChallenge? = nil
     ) {
         self.id = id
         self.backendID = backendID
@@ -29,6 +31,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         self.memberCount = memberCount
         self.members = members
         self.isReadOnly = isReadOnly
+        self.activeChallenge = activeChallenge
     }
 }
 

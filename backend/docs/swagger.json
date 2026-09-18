@@ -1,6 +1,69 @@
 {
     "components": {
         "schemas": {
+            "handler.ActiveChallengeIssuerJSON": {
+                "properties": {
+                    "avatar_url": {
+                        "type": "string"
+                    },
+                    "login": {
+                        "description": "Login は発行者がグループを離脱済みの場合は空文字",
+                        "type": "string"
+                    },
+                    "user_id": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "handler.ActiveChallengeJSON": {
+                "description": "ActiveChallenge は進行中の BeGit Time チャレンジ。無ければ省略（GET /groups/:id のみ。一覧では返さない）",
+                "properties": {
+                    "can_end": {
+                        "description": "CanEnd は要求ユーザーが発行者で、途中中断（POST /groups/:id/notifications/:nid/end）できるか",
+                        "type": "boolean"
+                    },
+                    "ends_at": {
+                        "description": "EndsAt は締め切り（sent_at + 1h）。残り時間の表示に使う",
+                        "example": "2026-09-18T02:25:46Z",
+                        "type": "string"
+                    },
+                    "my_post": {
+                        "$ref": "#/components/schemas/handler.ActiveChallengePostJSON"
+                    },
+                    "notification_id": {
+                        "type": "integer"
+                    },
+                    "sent_at": {
+                        "example": "2026-09-18T01:25:46Z",
+                        "type": "string"
+                    },
+                    "sent_by": {
+                        "$ref": "#/components/schemas/handler.ActiveChallengeIssuerJSON"
+                    },
+                    "sprint_id": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "handler.ActiveChallengePostJSON": {
+                "description": "MyPost は要求ユーザー自身のこの通知への投稿。無ければ省略。is_draft=true なら投稿作成（カメラ）へ誘導できる",
+                "properties": {
+                    "is_draft": {
+                        "type": "boolean"
+                    },
+                    "post_id": {
+                        "type": "integer"
+                    },
+                    "status": {
+                        "description": "Status は \"on_time\" | \"late\" | \"missed\"。未設定なら省略",
+                        "example": "on_time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "handler.AuthRequest": {
                 "properties": {
                     "code": {
@@ -139,10 +202,33 @@
                     "body": {
                         "type": "string"
                     },
+                    "commit_sha": {
+                        "type": "string"
+                    },
+                    "content_source": {
+                        "default": "github",
+                        "enum": [
+                            "github",
+                            "manual"
+                        ],
+                        "type": "string"
+                    },
                     "github_login": {
                         "type": "string"
                     },
                     "notification_id": {
+                        "type": "integer"
+                    },
+                    "post_type": {
+                        "default": "commit",
+                        "enum": [
+                            "commit",
+                            "pull_request",
+                            "memo"
+                        ],
+                        "type": "string"
+                    },
+                    "pull_request_number": {
                         "type": "integer"
                     },
                     "repo_full_name": {
@@ -178,6 +264,9 @@
             },
             "handler.GroupDetailJSON": {
                 "properties": {
+                    "active_challenge": {
+                        "$ref": "#/components/schemas/handler.ActiveChallengeJSON"
+                    },
                     "avatar_url": {
                         "type": "string"
                     },
@@ -291,6 +380,11 @@
             },
             "handler.NotificationJSON": {
                 "properties": {
+                    "ended_at": {
+                        "description": "EndedAt は発行者による途中中断時刻。未中断なら省略",
+                        "example": "2026-09-18T01:40:00Z",
+                        "type": "string"
+                    },
                     "id": {
                         "type": "integer"
                     },
@@ -426,6 +520,41 @@
                     "posts": {
                         "items": {
                             "$ref": "#/components/schemas/handler.PostFeedJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
+            "handler.PullRequestJSON": {
+                "properties": {
+                    "author_login": {
+                        "type": "string"
+                    },
+                    "merged": {
+                        "type": "boolean"
+                    },
+                    "number": {
+                        "type": "integer"
+                    },
+                    "state": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "updated_at": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "handler.PullRequestListResponse": {
+                "properties": {
+                    "pull_requests": {
+                        "items": {
+                            "$ref": "#/components/schemas/handler.PullRequestJSON"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -1424,6 +1553,112 @@
                     }
                 ],
                 "summary": "通知の達成ステータス（On Time / Late / Missed）",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/groups/{id}/notifications/{nid}/end": {
+            "post": {
+                "description": "発行者のみ実行可。締め切りを今にする扱いで、未投稿メンバーは Missed になり challenge_end のサマリ通知が送られる。中断後は直ちに再発行できる",
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "通知 ID",
+                        "in": "path",
+                        "name": "nid",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.NotificationJSON"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "発行者以外"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "通知がグループに存在しない"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "進行中でない（中断済み・1時間経過済み）"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "BeGit Time チャレンジの途中中断",
                 "tags": [
                     "notifications"
                 ]
@@ -2534,6 +2769,109 @@
                 "summary": "リアクション削除",
                 "tags": [
                     "reactions"
+                ]
+            }
+        },
+        "/groups/{id}/pull-requests": {
+            "get": {
+                "description": "グループに紐づく GitHub リポジトリの Pull Request を更新日時順で返す。",
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "作成者 GitHub login",
+                        "in": "query",
+                        "name": "author",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "取得件数（1〜50、既定 20）",
+                        "in": "query",
+                        "name": "per_page",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.PullRequestListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    },
+                    "502": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Gateway"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Pull Request 一覧",
+                "tags": [
+                    "github"
                 ]
             }
         },

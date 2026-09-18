@@ -569,11 +569,7 @@ private struct BottomLeadingRoundedRectangle: Shape {
 //  activity種別UI定義
 private extension RepositoryActivityType {
     var badgeTitle: String {
-        switch self {
-        case .commit:      "commit"
-        case .pullRequest: "PR"
-        case .memo:        "sorry"
-        }
+        displayName
     }
 
     var badgeIconName: String {

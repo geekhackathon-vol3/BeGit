@@ -32,6 +32,11 @@ struct MakeNotificationView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
                         makeNotificationHeader
+
+                        if let activeChallengeMessage = viewModel.activeChallengeMessage {
+                            activeChallengeNotice(activeChallengeMessage)
+                        }
+
                         membersSection
                         commentsSection
 
@@ -49,7 +54,9 @@ struct MakeNotificationView: View {
 
                 Button(action: sendNotification) {
                     PrimaryCapsuleButtonLabel(
-                        title: viewModel.isSending ? "送信中..." : "通知を送る",
+                        title: viewModel.activeChallenge != nil
+                            ? "BeGit Time 進行中"
+                            : (viewModel.isSending ? "送信中..." : "通知を送る"),
                         systemImage: "paperplane.fill",
                         isEnabled: viewModel.canSend
                     )
@@ -102,6 +109,27 @@ struct MakeNotificationView: View {
                 .foregroundStyle(AppTheme.Text.low)
                 .lineLimit(1)
         }
+    }
+
+    //  進行中のBeGit Timeがあるときの案内（送信ボタンは無効化される）
+    private func activeChallengeNotice(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "hourglass")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(AppTheme.accent)
+            Text(message)
+                .appFont(.label)
+                .foregroundStyle(AppTheme.Text.primary)
+                .lineSpacing(3)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(AppTheme.accent.opacity(0.8), lineWidth: 2)
+        )
     }
 
     private var membersSection: some View {

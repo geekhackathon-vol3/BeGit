@@ -236,3 +236,45 @@ func TestCron_FCMFailure_DoesNotFail(t *testing.T) {
 		t.Fatalf("RunCron(minutely) should succeed even if FCM fails, got: %v", err)
 	}
 }
+
+// TestCron_Minutely_EarlyEnded_SendsChallengeEnd は途中中断された通知（ended_at 非 nil、まだ1時間以内）が
+// ListChallengeEndDue で拾われれば challenge_end が送信され、ステータス算出で ended_at 後の投稿が Late になることを確認する
+func TestCron_Minutely_EarlyEnded_SendsChallengeEnd(t *testing.T) {
+	sentAt := time.Now().Add(-20 * time.Minute)
+	endedAt := sentAt.Add(5 * time.Minute)
+	notifRepo := &mockNotificationRepository{
+		listChallengeEndDueFunc: func(ctx context.Context) ([]model.Notification, error) {
+			return []model.Notification{{ID: 8, SprintID: 5, SentBy: 23, SentAt: sentAt, EndedAt: &endedAt}}, nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(ctx context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: 5, GroupID: 12}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
+			return []model.GroupMember{{UserID: 23}, {UserID: 24}}, nil
+		},
+	}
+	postRepo := &mockPostRepository{
+		getByUserAndNotifFunc: func(ctx context.Context, userID, notifID int64) (*model.Post, error) {
+			if userID == 24 {
+				return &model.Post{ID: 2, UserID: 24, CreatedAt: endedAt.Add(time.Minute)}, nil
+			}
+			return nil, repository.ErrNotFound
+		},
+	}
+	fcmTokenRepo := &mockFCMTokenRepository{
+		getTokensByGroupIDFunc: func(ctx context.Context, groupID int64) ([]string, error) { return []string{"t1"}, nil },
+	}
+	fc := &fakeFCMClient{}
+
+	svc := NewCronService(notifRepo, sprintRepo, groupRepo, postRepo, newMockDeliveryRepo(), fcmTokenRepo, fc)
+	if err := svc.RunCron(context.Background(), "minutely"); err != nil {
+		t.Fatalf("RunCron(minutely) failed: %v", err)
+	}
+	if len(fc.withDataCalls) != 1 || fc.withDataCalls[0].data["type"] != "challenge_end" || fc.withDataCalls[0].data["notification_id"] != "8" {
+		t.Fatalf("expected 1 challenge_end send for notification 8, got %+v", fc.withDataCalls)
+	}
+}

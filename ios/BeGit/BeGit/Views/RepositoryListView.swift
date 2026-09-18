@@ -241,6 +241,8 @@ struct RepositoryListView: View {
         } message: {
             Text("セッションの有効期限が切れています。GitHubに再ログインすると続行できます。")
         }
+        // alert より外側で指定し、アクション文字へ黒を継承させる。
+        .tint(.black)
     }
 
     //  ログイン中ユーザー情報表示

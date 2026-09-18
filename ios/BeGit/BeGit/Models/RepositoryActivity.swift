@@ -51,9 +51,29 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
 //  Repository activity種別
 enum RepositoryActivityType: String, CaseIterable, Hashable, Sendable {
-    case commit         //  commit activity
-    case pullRequest    //  Pull Request activity
-    case memo           //  進捗メモ投稿
+    case commit = "commit"                  //  commit activity
+    case pullRequest = "pull_request"       //  Pull Request activity
+    case memo = "memo"                      //  進捗メモ投稿
+
+    var displayName: String {
+        switch self {
+        case .commit: "commit"
+        case .pullRequest: "PR"
+        case .memo: "sorry"
+        }
+    }
+
+    static func fromAPIValue(_ value: String?) -> RepositoryActivityType {
+        let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        switch normalized {
+        case "pull_request", "pullrequest", "pull-request", "pr", "review": return .pullRequest
+        case "memo", "sorry", "comment", "issue": return .memo
+        default: return .commit
+        }
+    }
 }
 
 //  リアクション種別（バックエンドと一致）

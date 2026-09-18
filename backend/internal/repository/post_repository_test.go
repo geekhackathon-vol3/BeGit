@@ -28,6 +28,39 @@ func TestPostRepository_ListByGroupID_ExcludesDraft(t *testing.T) {
 	}
 }
 
+// TestPostRepository_Create_PersistsPostType は選択した投稿タイプがDB保存時に失われないことを確認する。
+func TestPostRepository_Create_PersistsPostType(t *testing.T) {
+	var capturedParams []interface{}
+	mock := &mockD1Client{
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			capturedParams = params
+			return 1, nil
+		},
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{
+				{
+					"id": float64(901), "user_id": float64(10), "group_id": float64(12),
+					"post_type": "pull_request", "is_draft": float64(0), "created_at": "2026-09-18T10:00:00Z",
+				},
+			}, nil
+		},
+	}
+
+	repo := NewPostRepository(mock)
+	created, err := repo.Create(context.Background(), &model.Post{
+		UserID: 10, GroupID: 12, PostType: "pull_request",
+	})
+	if err != nil {
+		t.Fatalf("Create() failed: %v", err)
+	}
+	if len(capturedParams) < 4 || capturedParams[3] != "pull_request" {
+		t.Fatalf("expected post_type parameter pull_request, got: %v", capturedParams)
+	}
+	if created.PostType != "pull_request" {
+		t.Fatalf("expected created PostType pull_request, got %q", created.PostType)
+	}
+}
+
 // TestPostRepository_CreateDraft は is_draft=1 と notification_id を指定して draft を作成することを確認する
 func TestPostRepository_CreateDraft(t *testing.T) {
 	var capturedSQL string

@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.1 |
-| 最終更新日 | 2026-06-01 22:34 |
+| バージョン | v1.2 |
+| 最終更新日 | 2026-09-18 |
 | 対象ブランチ | `feat/backend-api` |
 
 実装済み API は `backend/cmd/server/main.go` のルーティング登録を真実のソースとする。
@@ -16,8 +16,9 @@
 | POST | `/webhook/github` | GitHub Webhook 受信（サーバ間） | 署名検証 |
 | GET | `/groups` | 参加グループ（リポジトリ）一覧 | Bearer |
 | POST | `/groups` | グループ作成（リポジトリ登録 + Webhook 登録） | Bearer |
-| GET | `/groups/{id}` | グループ詳細 + メンバー | Bearer + メンバー |
+| GET | `/groups/{id}` | グループ詳細 + メンバー + 進行中 BeGit Time（`active_challenge`） | Bearer + メンバー |
 | POST | `/groups/{id}/notifications` | BeGit Time 通知発行 | Bearer + メンバー |
+| POST | `/groups/{id}/notifications/{nid}/end` | BeGit Time の途中中断（発行者のみ・締め切りを今にする） | Bearer + メンバー |
 | GET | `/groups/{id}/notifications/{nid}` | 通知の達成ステータス（OnTime/Late/Missed） | Bearer + メンバー |
 | POST | `/groups/{id}/posts` | 投稿作成 | Bearer + メンバー |
 | GET | `/groups/{id}/posts` | フィード取得 | Bearer + メンバー |
@@ -58,6 +59,7 @@ flowchart LR
         A7["GET /groups/{id}/notifications/{nid}"]
         A8["POST /groups/{id}/posts"]
         A9["PUT /me/fcm-token"]
+        A10["POST /groups/{id}/notifications/{nid}/end"]
     end
 
     GH["POST /webhook/github<br/>(GitHub→サーバ, 画面なし)"]
@@ -69,6 +71,7 @@ flowchart LR
     Add --> A3
     Dash --> A4
     Dash --> A5
+    Dash -.発行者のみ 終了ボタン.-> A10
     Make --> A6
     Result --> A7
     Post --> A8

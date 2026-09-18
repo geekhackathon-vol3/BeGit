@@ -8,6 +8,8 @@ struct RepositoryDashboardView: View {
     @EnvironmentObject private var authState: AuthState
     //  Dashboard画面の状態を管理するViewModel
     @StateObject private var viewModel: RepositoryDashboardViewModel
+    @State private var isShowingGallery = false
+    @State private var isShowingRepoSetting = false
 
     //  Dashboard画面の状態を管理するViewModel
     init(repository: Repository) {
@@ -25,57 +27,99 @@ struct RepositoryDashboardView: View {
             AppTheme.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
-                        //  Timeline Header
-                        timelineHeader
+            if isShowingGallery {
+                RepositoryPhotoGalleryContentView(
+                    repository: viewModel.repository,
+                    activities: viewModel.activities
+                )
+                .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 18) {
+                            //  Timeline Header
+                            timelineHeader
 
-                        if viewModel.isLoading {
-                            statusText("Loading timeline...")
+                            //  進行中のBeGit Time（残り時間・発行者・撮影導線・終了ボタン）
+                            if let challenge = viewModel.activeChallenge {
+                                ActiveChallengeBannerView(
+                                    challenge: challenge,
+                                    repository: viewModel.repository,
+                                    isEnding: viewModel.isEndingChallenge,
+                                    onEnd: {
+                                        Task { await viewModel.endChallenge(accessToken: authState.accessToken) }
+                                    },
+                                    onExpire: {
+                                        Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
+                                    }
+                                )
+                                .transition(.opacity)
+                            }
+
+                            if let challengeErrorMessage = viewModel.challengeErrorMessage {
+                                statusText(challengeErrorMessage)
+                            }
+
+                            if viewModel.isLoading {
+                                statusText("Loading timeline...")
+                            }
+
+                            if let errorMessage = viewModel.errorMessage {
+                                statusText(errorMessage)
+                            }
+
+                            //  達成状況プログレスバー
+                            progressSummary
+
+                            //  activity card一覧（横幅フル）
+                            RepositoryActivityTimelineView(
+                                activities: viewModel.activities,
+                                onReactionTapped: { activityID, type in
+                                    try await viewModel.toggleReaction(
+                                        activityID: activityID,
+                                        type: type,
+                                        accessToken: authState.accessToken,
+                                        currentUserID: authState.githubUser.map { Int64($0.id) }
+                                    )
+                                }
+                            )
+                                .padding(.horizontal, -20)
                         }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        .padding(.bottom, 104)
+                    }
 
-                        if let errorMessage = viewModel.errorMessage {
-                            statusText(errorMessage)
-                        }
-
-                        //  達成状況プログレスバー
-                        progressSummary
-
-                        //  activity card一覧（横幅フル）
-                        RepositoryActivityTimelineView(
-                            activities: viewModel.activities,
-                            onReactionTapped: { activityID, type in
-                                try await viewModel.toggleReaction(
-                                    activityID: activityID,
-                                    type: type,
-                                    accessToken: authState.accessToken,
-                                    currentUserID: authState.githubUser.map { Int64($0.id) }
+                    //  通知作成画面へ遷移（BeGit Time 進行中は発行できないので無効化）
+                    Group {
+                        if viewModel.activeChallenge != nil {
+                            PrimaryCapsuleButtonLabel(
+                                title: "BeGit Time 進行中",
+                                systemImage: "hourglass",
+                                isEnabled: false
+                            )
+                            .accessibilityLabel("BeGit Time進行中のため通知を作成できません")
+                        } else {
+                            NavigationLink(value: RepositoryNavigationRoute.makeNotification(viewModel.repository)) {
+                                PrimaryCapsuleButtonLabel(
+                                    title: "通知を作成する",
+                                    systemImage: "bolt.badge.clock",
+                                    isEnabled: true
                                 )
                             }
-                        )
-                            .padding(.horizontal, -20)
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 104)
+                    .padding(.top, 14)
+                    .padding(.bottom, 18)
+                    .background(bottomBarBackground)
                 }
-
-                //  通知作成画面へ遷移
-                NavigationLink(value: RepositoryNavigationRoute.makeNotification(viewModel.repository)) {
-                    PrimaryCapsuleButtonLabel(
-                        title: "通知を作成する",
-                        systemImage: "bolt.badge.clock",
-                        isEnabled: true
-                    )
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 20)
-                .padding(.top, 14)
-                .padding(.bottom, 18)
-                .background(bottomBarBackground)
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.20), value: isShowingGallery)
+        .animation(.easeInOut(duration: 0.20), value: viewModel.activeChallenge)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -88,18 +132,31 @@ struct RepositoryDashboardView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    RepositoryPhotoGridView(
-                        repository: viewModel.repository,
-                        activities: viewModel.activities
-                    )
-                } label: {
-                    Image(systemName: "square.grid.3x3.fill")
-                        .foregroundStyle(AppTheme.softPink)
-                        .frame(minWidth: 44, minHeight: 44)
+                HStack(spacing: 0) {
+                    Button {
+                        isShowingGallery.toggle()
+                    } label: {
+                        Image(systemName: isShowingGallery ? "list.bullet" : "square.grid.3x3.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isShowingGallery ? "タイムラインに戻る" : "投稿写真一覧")
+
+                    Button {
+                        isShowingRepoSetting = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("リポジトリ設定")
                 }
-                .accessibilityLabel("投稿写真一覧")
             }
+        }
+        .sheet(isPresented: $isShowingRepoSetting) {
+            RepoSettingView(repository: viewModel.repository)
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
@@ -109,6 +166,10 @@ struct RepositoryDashboardView: View {
                 accessToken: authState.accessToken,
                 currentUserID: authState.githubUser.map { Int64($0.id) }
             )
+        }
+        //  表示のたび（通知作成・撮影から戻ったときを含む）に進行中のBeGit Timeを取り直す
+        .onAppear {
+            Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
         }
     }
 

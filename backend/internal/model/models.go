@@ -66,6 +66,9 @@ type Notification struct {
 	SentBy   int64
 	Message  string
 	SentAt   time.Time
+	// EndedAt は発行者による途中中断時刻。nil = 中断なし（締め切りは SentAt + 1h）。
+	// 中断は「締め切りを今にする」扱いで、以降は進行中とみなさない。
+	EndedAt *time.Time
 }
 
 // Post は投稿。notification_id でどの通知に応答したかを記録

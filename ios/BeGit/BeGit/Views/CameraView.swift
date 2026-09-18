@@ -11,6 +11,7 @@ struct CameraView: View {
     let repoFullName: String
     let githubLogin: String
     let accessToken: String
+    var initialPostType: RepositoryActivityType = .commit
     //  ② Nice Work! の下書き投稿ID。指定時は撮影した写真をこの下書きに付けて確定する
     var draftPostID: Int64? = nil
     let onPostCompleted: (RepositoryActivity?) -> Void
@@ -126,6 +127,7 @@ struct CameraView: View {
                     repoFullName: repoFullName,
                     githubLogin: githubLogin,
                     accessToken: accessToken,
+                    initialPostType: initialPostType,
                     draftPostID: draftPostID
                 )
 

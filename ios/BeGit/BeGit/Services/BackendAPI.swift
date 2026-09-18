@@ -122,6 +122,9 @@ protocol RepositoryAPI: Sendable {
         accessToken: String
     ) async throws -> [ActivityReaction]
     func sendNotification(repositoryID: Int64, accessToken: String) async throws
+    //  進行中の BeGit Time を発行者が途中終了する（POST /groups/:id/notifications/:nid/end）。
+    //  発行者以外は 403、進行中でなければ 409 が BeGitAPIError.requestFailed で返る
+    func endChallenge(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
     func uploadPhotos(
         repositoryID: Int64,
         postID: Int64,

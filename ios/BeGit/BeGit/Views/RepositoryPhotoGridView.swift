@@ -3,12 +3,11 @@
 
 import SwiftUI
 
+// Timeline / Result の中でも切り替えて使える、toolbarを持たないギャラリー本体。
 @MainActor
-struct RepositoryPhotoGridView: View {
+struct RepositoryPhotoGalleryContentView: View {
     let repository: Repository
     let activities: [RepositoryActivity]
-
-    @State private var showRepoSetting = false
 
     private var photoActivities: [RepositoryActivity] {
         activities
@@ -25,7 +24,6 @@ struct RepositoryPhotoGridView: View {
 
             GeometryReader { proxy in
                 VStack(spacing: 0) {
-                    // Timeline / Result と同じ、タイトル＋リポジトリ名のヘッダー。
                     photoHeader
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
@@ -38,32 +36,6 @@ struct RepositoryPhotoGridView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                BeGitBackButton()
-            }
-
-            ToolbarItem(placement: .principal) {
-                BeGitToolbarLogoView()
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showRepoSetting = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .foregroundStyle(AppTheme.softPink)
-                        .frame(minWidth: 44, minHeight: 44)
-                }
-                .accessibilityLabel("リポジトリ設定")
-            }
-        }
-        .sheet(isPresented: $showRepoSetting) {
-            RepoSettingView(repository: repository)
-        }
-        .tint(AppTheme.accent)
     }
 
     private var photoHeader: some View {
