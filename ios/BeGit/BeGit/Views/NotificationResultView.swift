@@ -8,6 +8,8 @@ struct NotificationResultView: View {
     //  通知結果画面の状態を管理するViewModel
     @StateObject private var viewModel: NotificationResultViewModel
     @EnvironmentObject private var authState: AuthState     //  アクセストークン取得用
+    @State private var isShowingGallery = false
+    @State private var isShowingRepoSetting = false
     let onReturnHome: () -> Void    //  通知結果画面の状態を管理するViewModel
 
     //  通知モデルからViewModelを生成
@@ -28,32 +30,42 @@ struct NotificationResultView: View {
             AppTheme.background
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
-                        //  Result Header
-                        resultHeader
+            if isShowingGallery {
+                RepositoryPhotoGalleryContentView(
+                    repository: viewModel.notification.repository,
+                    activities: viewModel.activities
+                )
+                .transition(.opacity)
+            } else {
+                VStack(spacing: 0) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 18) {
+                            //  Result Header
+                            resultHeader
 
-                        //  通知結果サマリー
-                        resultSummary
+                            //  通知結果サマリー
+                            resultSummary
 
-                        //  Activity一覧（横幅フル）
-                        RepositoryActivityTimelineView(activities: viewModel.activities)
-                            .padding(.horizontal, -20)
+                            //  Activity一覧（横幅フル）
+                            RepositoryActivityTimelineView(activities: viewModel.activities)
+                                .padding(.horizontal, -20)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        .padding(.bottom, 104)  //  下部固定button領域分の余白
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 104)  //  下部固定button領域分の余白
-                }
 
-                //  ホームへ戻るbutton
-                PrimaryButton("ホームへ戻る", systemImage: "house.fill", action: onReturnHome)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-                    .padding(.bottom, 18)
-                    .background(bottomBarBackground)    //  下部固定エリア背景
+                    //  ホームへ戻るbutton
+                    PrimaryButton("ホームへ戻る", systemImage: "house.fill", action: onReturnHome)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 14)
+                        .padding(.bottom, 18)
+                        .background(bottomBarBackground)    //  下部固定エリア背景
+                }
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.20), value: isShowingGallery)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -66,18 +78,31 @@ struct NotificationResultView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink {
-                    RepositoryPhotoGridView(
-                        repository: viewModel.notification.repository,
-                        activities: viewModel.activities
-                    )
-                } label: {
-                    Image(systemName: "square.grid.3x3.fill")
-                        .foregroundStyle(AppTheme.softPink)
-                        .frame(minWidth: 44, minHeight: 44)
+                HStack(spacing: 0) {
+                    Button {
+                        isShowingGallery.toggle()
+                    } label: {
+                        Image(systemName: isShowingGallery ? "doc.text.fill" : "square.grid.3x3.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isShowingGallery ? "リザルトに戻る" : "投稿写真一覧")
+
+                    Button {
+                        isShowingRepoSetting = true
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("リポジトリ設定")
                 }
-                .accessibilityLabel("投稿写真一覧")
             }
+        }
+        .sheet(isPresented: $isShowingRepoSetting) {
+            RepoSettingView(repository: viewModel.notification.repository)
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
