@@ -35,6 +35,7 @@ struct RepositoryDashboardView: View {
             dashboardContent
         }
         .animation(.easeInOut(duration: 0.20), value: isShowingGallery)
+        .animation(.easeInOut(duration: 0.20), value: viewModel.activeChallenge)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -125,12 +126,19 @@ struct RepositoryDashboardView: View {
         .tint(AppTheme.accent)
         //  accessToken変更時に前のタスクを自動キャンセルしてリロード
         .task(id: authState.accessToken) {
-            await viewModel.loadActivities(accessToken: authState.accessToken)
+            await viewModel.loadActivities(
+                accessToken: authState.accessToken,
+                currentUserID: authState.githubUser.map { Int64($0.id) }
+            )
             while Task.isCancelled == false {
                 try? await Task.sleep(for: .seconds(5))
                 if Task.isCancelled { break }
                 await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
             }
+        }
+        //  表示のたび（通知作成・撮影から戻ったときを含む）に進行中のBeGit Timeを取り直す
+        .onAppear {
+            Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
         }
     }
 
@@ -211,6 +219,14 @@ struct RepositoryDashboardView: View {
             onDeleteRequested: {
                 activityToDelete = $0
                 isShowingDeleteConfirmation = true
+            },
+            onReactionTapped: { activityID, type in
+                try await viewModel.toggleReaction(
+                    activityID: activityID,
+                    type: type,
+                    accessToken: authState.accessToken,
+                    currentUserID: authState.githubUser.map { Int64($0.id) }
+                )
             }
         )
         .padding(.horizontal, -20)

@@ -246,6 +246,104 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
             )
         }
     }
+
+    func listReactions(
+        repositoryID: Int64,
+        postID: Int64,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction] {
+        try await requestReactions(
+            repositoryID: repositoryID,
+            postID: postID,
+            method: "GET",
+            currentUserID: currentUserID,
+            accessToken: accessToken
+        )
+    }
+
+    func addReaction(
+        _ type: ActivityReactionType,
+        repositoryID: Int64,
+        postID: Int64,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction] {
+        try await requestReactions(
+            repositoryID: repositoryID,
+            postID: postID,
+            method: "POST",
+            body: ReactionCreateRequestDTO(reactionType: type.rawValue),
+            currentUserID: currentUserID,
+            accessToken: accessToken
+        )
+    }
+
+    func deleteReaction(
+        _ type: ActivityReactionType,
+        repositoryID: Int64,
+        postID: Int64,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction] {
+        try await requestReactions(
+            repositoryID: repositoryID,
+            postID: postID,
+            reactionType: type.rawValue,
+            method: "DELETE",
+            currentUserID: currentUserID,
+            accessToken: accessToken
+        )
+    }
+
+    private func requestReactions(
+        repositoryID: Int64,
+        postID: Int64,
+        reactionType: String? = nil,
+        method: String,
+        body: ReactionCreateRequestDTO? = nil,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction] {
+        var url = baseURL.appending(path: "groups/\(repositoryID)/posts/\(postID)/reactions")
+        if let reactionType {
+            url.append(path: reactionType)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let body {
+            request.httpBody = try JSONEncoder().encode(body)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 {
+                throw BeGitAPIError.authenticationRequired
+            }
+            let message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
+            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        let payload = try JSONDecoder().decode(ReactionListResponseDTO.self, from: data)
+        return ActivityReactionType.allCases.compactMap { type in
+            let matching = payload.reactions.filter { $0.reactionType == type.rawValue }
+            guard matching.isEmpty == false else { return nil }
+            return ActivityReaction(
+                type: type,
+                count: matching.count,
+                reactedByMe: currentUserID.map { userID in
+                    matching.contains { $0.userID == userID }
+                } ?? false
+            )
+        }
+    }
     
     // 通知発行成功は 201(.created)
     func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64 {
@@ -323,7 +421,15 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         let (data, response) = try await session.data(for: request)
         try validateHTTPResponse(response, data: data)
     }
-    
+
+    // POST /groups/:id/notifications/:nid/end : 進行中の BeGit Time を発行者が途中終了する
+    func endChallenge(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws {
+        let output = try await makeClient(accessToken: accessToken).postGroupsIdNotificationsNidEnd(
+            .init(path: .init(id: Int(repositoryID), nid: Int(notificationID)))
+        )
+        guard case .ok = output else { throw BeGitAPIError.invalidResponse }
+    }
+
     // GET /me : Bearer トークンから現在ログイン中ユーザーを取得（GitHub 直叩きの代替）
     func getCurrentUser(accessToken: String) async throws -> GitHubUser {
         let output = try await makeClient(accessToken: accessToken).getMe()
@@ -539,6 +645,28 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
 // MainActor 隔離になり、上の nonisolated な ErrorThrowingMiddleware から decode できない。
 private nonisolated struct ErrorResponseDTO: Decodable {
     let error: String
+}
+
+private nonisolated struct ReactionCreateRequestDTO: Encodable {
+    let reactionType: String
+
+    enum CodingKeys: String, CodingKey {
+        case reactionType = "reaction_type"
+    }
+}
+
+private nonisolated struct ReactionListResponseDTO: Decodable {
+    let reactions: [ReactionDTO]
+}
+
+private nonisolated struct ReactionDTO: Decodable {
+    let userID: Int64
+    let reactionType: String
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case reactionType = "reaction_type"
+    }
 }
 
 private nonisolated struct GitHubRepoListResponseDTO: Decodable {

@@ -76,6 +76,22 @@ type mockNotificationRepository struct {
 	createIfNoActiveAllowMultiple []bool
 	listChallengeEndDueFunc       func(ctx context.Context) ([]model.Notification, error)
 	listBySprintIDFunc            func(ctx context.Context, sprintID int64) ([]model.Notification, error)
+	getActiveByGroupFunc          func(ctx context.Context, groupID int64) (*model.Notification, error)
+	endIfActiveFunc               func(ctx context.Context, notifID int64) (bool, error)
+}
+
+func (m *mockNotificationRepository) GetActiveByGroup(ctx context.Context, groupID int64) (*model.Notification, error) {
+	if m.getActiveByGroupFunc != nil {
+		return m.getActiveByGroupFunc(ctx, groupID)
+	}
+	return nil, repository.ErrNotFound
+}
+
+func (m *mockNotificationRepository) EndIfActive(ctx context.Context, notifID int64) (bool, error) {
+	if m.endIfActiveFunc != nil {
+		return m.endIfActiveFunc(ctx, notifID)
+	}
+	return false, nil
 }
 
 func (m *mockNotificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
@@ -586,5 +602,217 @@ func TestNotificationService_SendNotification_FCMFailure_DoesNotFail(t *testing.
 	svc := NewNotificationService(sprintRepo, notifRepo, ft, &failingFCMClient{})
 	if _, err := svc.SendNotification(context.Background(), 12, 2); err != nil {
 		t.Fatalf("SendNotification() should succeed even if FCM fails, got: %v", err)
+	}
+}
+
+// TestNotificationService_GetActiveChallenge_None は進行中の通知が無ければ (nil, nil) を返すことを確認する
+func TestNotificationService_GetActiveChallenge_None(t *testing.T) {
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, &mockNotificationRepository{}, &mockGroupRepository{}, &mockPostRepository{})
+	active, err := svc.GetActiveChallenge(context.Background(), 12, 10)
+	if err != nil {
+		t.Fatalf("GetActiveChallenge() failed: %v", err)
+	}
+	if active != nil {
+		t.Errorf("expected nil, got %+v", active)
+	}
+}
+
+// TestNotificationService_GetActiveChallenge_NoPost は進行中通知はあるが自分の投稿が無い場合、MyPost が nil で締め切りが sent_at+1h になることを確認する
+func TestNotificationService_GetActiveChallenge_NoPost(t *testing.T) {
+	sentAt := time.Now().Add(-10 * time.Minute)
+	notifRepo := &mockNotificationRepository{
+		getActiveByGroupFunc: func(ctx context.Context, groupID int64) (*model.Notification, error) {
+			if groupID != 12 {
+				t.Errorf("expected groupID 12, got %d", groupID)
+			}
+			return &model.Notification{ID: 8, SprintID: 5, SentBy: 23, SentAt: sentAt}, nil
+		},
+	}
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+	active, err := svc.GetActiveChallenge(context.Background(), 12, 10)
+	if err != nil {
+		t.Fatalf("GetActiveChallenge() failed: %v", err)
+	}
+	if active == nil || active.Notification.ID != 8 {
+		t.Fatalf("expected active notification 8, got %+v", active)
+	}
+	if !active.EndsAt.Equal(sentAt.Add(time.Hour)) {
+		t.Errorf("expected EndsAt = sent_at + 1h, got %v", active.EndsAt)
+	}
+	if active.MyPost != nil {
+		t.Errorf("expected MyPost nil, got %+v", active.MyPost)
+	}
+}
+
+// TestNotificationService_GetActiveChallenge_WithDraft は自分の Nice Work! draft があれば MyPost に含まれることを確認する
+func TestNotificationService_GetActiveChallenge_WithDraft(t *testing.T) {
+	notifRepo := &mockNotificationRepository{
+		getActiveByGroupFunc: func(ctx context.Context, groupID int64) (*model.Notification, error) {
+			return &model.Notification{ID: 8, SprintID: 5, SentBy: 23, SentAt: time.Now().Add(-10 * time.Minute)}, nil
+		},
+	}
+	status := "on_time"
+	postRepo := &mockPostRepository{
+		getByUserAndNotifFunc: func(ctx context.Context, userID, notifID int64) (*model.Post, error) {
+			if userID != 10 || notifID != 8 {
+				t.Errorf("expected (user 10, notif 8), got (%d, %d)", userID, notifID)
+			}
+			return &model.Post{ID: 41, UserID: 10, IsDraft: true, Status: &status}, nil
+		},
+	}
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, notifRepo, &mockGroupRepository{}, postRepo)
+	active, err := svc.GetActiveChallenge(context.Background(), 12, 10)
+	if err != nil {
+		t.Fatalf("GetActiveChallenge() failed: %v", err)
+	}
+	if active == nil || active.MyPost == nil {
+		t.Fatalf("expected MyPost, got %+v", active)
+	}
+	if active.MyPost.ID != 41 || !active.MyPost.IsDraft || active.MyPost.Status == nil || *active.MyPost.Status != "on_time" {
+		t.Errorf("unexpected MyPost: %+v", active.MyPost)
+	}
+}
+
+// endChallengeDeps は EndChallenge テスト用の共通依存（通知 8 = sprint 5 = group 12、発行者 23）を返す
+func endChallengeDeps(t *testing.T) (*mockNotificationRepository, *mockSprintRepository) {
+	t.Helper()
+	notifRepo := &mockNotificationRepository{
+		getByIDFunc: func(ctx context.Context, notifID int64) (*model.Notification, error) {
+			if notifID != 8 {
+				return nil, repository.ErrNotFound
+			}
+			return &model.Notification{ID: 8, SprintID: 5, SentBy: 23, SentAt: time.Now().Add(-10 * time.Minute)}, nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(ctx context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: 5, GroupID: 12}, nil
+		},
+	}
+	return notifRepo, sprintRepo
+}
+
+// TestNotificationService_EndChallenge_NotIssuer_Forbidden は発行者以外が中断しようとすると ErrForbidden になることを確認する
+func TestNotificationService_EndChallenge_NotIssuer_Forbidden(t *testing.T) {
+	notifRepo, sprintRepo := endChallengeDeps(t)
+	ended := false
+	notifRepo.endIfActiveFunc = func(ctx context.Context, notifID int64) (bool, error) { ended = true; return true, nil }
+	svc := NewNotificationServiceWithGroupRepo(sprintRepo, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+
+	_, err := svc.EndChallenge(context.Background(), 12, 8, 24)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+	if ended {
+		t.Error("EndIfActive must not be called for a non-issuer")
+	}
+}
+
+// TestNotificationService_EndChallenge_WrongGroup_NotFound は通知が別グループのものなら ErrNotFound になることを確認する
+func TestNotificationService_EndChallenge_WrongGroup_NotFound(t *testing.T) {
+	notifRepo, sprintRepo := endChallengeDeps(t)
+	svc := NewNotificationServiceWithGroupRepo(sprintRepo, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+
+	if _, err := svc.EndChallenge(context.Background(), 99, 8, 23); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound for wrong group, got %v", err)
+	}
+	if _, err := svc.EndChallenge(context.Background(), 12, 404, 23); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound for unknown notification, got %v", err)
+	}
+}
+
+// TestNotificationService_EndChallenge_NotActive_Conflict は既に中断済み／1時間経過済み（UPDATE 0 行）なら ErrConflict になることを確認する
+func TestNotificationService_EndChallenge_NotActive_Conflict(t *testing.T) {
+	notifRepo, sprintRepo := endChallengeDeps(t)
+	notifRepo.endIfActiveFunc = func(ctx context.Context, notifID int64) (bool, error) { return false, nil }
+	svc := NewNotificationServiceWithGroupRepo(sprintRepo, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+
+	if _, err := svc.EndChallenge(context.Background(), 12, 8, 23); !errors.Is(err, ErrConflict) {
+		t.Errorf("expected ErrConflict, got %v", err)
+	}
+}
+
+// TestNotificationService_EndChallenge_OK は発行者が中断すると ended_at 付きの通知が返ることを確認する
+func TestNotificationService_EndChallenge_OK(t *testing.T) {
+	notifRepo, sprintRepo := endChallengeDeps(t)
+	endedAt := time.Now().Truncate(time.Second)
+	notifRepo.endIfActiveFunc = func(ctx context.Context, notifID int64) (bool, error) {
+		if notifID != 8 {
+			t.Errorf("expected notifID 8, got %d", notifID)
+		}
+		// 中断後の GetByID は ended_at 付きを返す
+		notifRepo.getByIDFunc = func(ctx context.Context, notifID int64) (*model.Notification, error) {
+			return &model.Notification{ID: 8, SprintID: 5, SentBy: 23, SentAt: endedAt.Add(-10 * time.Minute), EndedAt: &endedAt}, nil
+		}
+		return true, nil
+	}
+	svc := NewNotificationServiceWithGroupRepo(sprintRepo, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+
+	notif, err := svc.EndChallenge(context.Background(), 12, 8, 23)
+	if err != nil {
+		t.Fatalf("EndChallenge() failed: %v", err)
+	}
+	if notif.EndedAt == nil || !notif.EndedAt.Equal(endedAt) {
+		t.Errorf("expected EndedAt %v, got %v", endedAt, notif.EndedAt)
+	}
+}
+
+// TestNotificationService_GetStatus_EndedAtIsDeadline は途中中断された通知では ended_at が締め切りになり、
+// ended_at 後（sent_at + 1h 前）の投稿が Late、ended_at 前の投稿が On Time になることを確認する
+func TestNotificationService_GetStatus_EndedAtIsDeadline(t *testing.T) {
+	sentAt := time.Now().Add(-40 * time.Minute)
+	endedAt := sentAt.Add(15 * time.Minute) // 発行15分後に中断
+	notifRepo := &mockNotificationRepository{
+		getByIDFunc: func(ctx context.Context, notifID int64) (*model.Notification, error) {
+			return &model.Notification{ID: 1, SprintID: 1, SentBy: 10, SentAt: sentAt, EndedAt: &endedAt}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
+			return []model.GroupMember{{UserID: 10, Login: "before"}, {UserID: 11, Login: "after"}}, nil
+		},
+	}
+	postRepo := &mockPostRepository{
+		getByUserAndNotifFunc: func(ctx context.Context, userID, notifID int64) (*model.Post, error) {
+			switch userID {
+			case 10:
+				return &model.Post{ID: 1, UserID: 10, CreatedAt: endedAt.Add(-time.Minute)}, nil
+			case 11:
+				return &model.Post{ID: 2, UserID: 11, CreatedAt: endedAt.Add(time.Minute)}, nil // 中断後・1時間以内
+			}
+			return nil, repository.ErrNotFound
+		},
+	}
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, notifRepo, groupRepo, postRepo)
+
+	status, err := svc.GetNotificationStatus(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("GetNotificationStatus() failed: %v", err)
+	}
+	if status.Members[0].Status != "On Time" {
+		t.Errorf("post before ended_at: expected On Time, got %s", status.Members[0].Status)
+	}
+	if status.Members[1].Status != "Late" {
+		t.Errorf("post after ended_at: expected Late, got %s", status.Members[1].Status)
+	}
+}
+
+// TestChallengeDeadline は締め切り算出（sent_at + 1h と ended_at の早い方）を確認する
+func TestChallengeDeadline(t *testing.T) {
+	sentAt := time.Date(2026, 9, 18, 1, 25, 46, 0, time.UTC)
+	early := sentAt.Add(15 * time.Minute)
+	late := sentAt.Add(2 * time.Hour)
+	for name, tc := range map[string]struct {
+		endedAt *time.Time
+		want    time.Time
+	}{
+		"no end":          {nil, sentAt.Add(time.Hour)},
+		"ended early":     {&early, early},
+		"ended after 1h?": {&late, sentAt.Add(time.Hour)},
+	} {
+		got := challengeDeadline(&model.Notification{SentAt: sentAt, EndedAt: tc.endedAt})
+		if !got.Equal(tc.want) {
+			t.Errorf("[%s] expected %v, got %v", name, tc.want, got)
+		}
 	}
 }

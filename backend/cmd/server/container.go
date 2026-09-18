@@ -170,7 +170,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
-	groupHandler := handler.NewGroupHandler(groupSvc)
+	groupHandler := handler.NewGroupHandler(groupSvc, notifSvc)
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	postHandler := handler.NewPostHandler(postSvc)
 	photoHandler := handler.NewPhotoHandler(photoSvc, r2Client)
@@ -243,6 +243,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups/:id/notifications/active", bearerAuth, groupMember, notifHandler.GetActive)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupMember, notifHandler.Stop)
+	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupMember, notifHandler.End)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
 	r.DELETE("/groups/:id/posts/:postId", bearerAuth, groupMember, postHandler.Delete)

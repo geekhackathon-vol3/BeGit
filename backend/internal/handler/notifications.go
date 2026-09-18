@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/service"
 )
 
@@ -16,6 +17,22 @@ type NotificationJSON struct {
 	ID       int64  `json:"id"`
 	SprintID int64  `json:"sprint_id"`
 	SentAt   string `json:"sent_at"`
+	// EndedAt は発行者による途中中断時刻。未中断なら省略
+	EndedAt *string `json:"ended_at,omitempty" example:"2026-09-18T01:40:00Z"`
+}
+
+// toNotificationJSON は model.Notification をレスポンス型へ変換する
+func toNotificationJSON(notif *model.Notification) NotificationJSON {
+	out := NotificationJSON{
+		ID:       notif.ID,
+		SprintID: notif.SprintID,
+		SentAt:   notif.SentAt.UTC().Format(time.RFC3339),
+	}
+	if notif.EndedAt != nil {
+		endedAt := notif.EndedAt.UTC().Format(time.RFC3339)
+		out.EndedAt = &endedAt
+	}
+	return out
 }
 
 // NotificationStatusJSON は通知ステータスレスポンス型
@@ -86,11 +103,61 @@ func (h *NotificationHandler) Send(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, NotificationJSON{
-		ID:       notif.ID,
-		SprintID: notif.SprintID,
-		SentAt:   notif.SentAt.UTC().Format(time.RFC3339),
-	})
+	c.JSON(http.StatusCreated, toNotificationJSON(notif))
+}
+
+// End は進行中の BeGit Time 通知を発行者が途中中断する。
+//
+//	@Summary		BeGit Time チャレンジの途中中断
+//	@Description	発行者のみ実行可。締め切りを今にする扱いで、未投稿メンバーは Missed になり challenge_end のサマリ通知が送られる。中断後は直ちに再発行できる
+//	@Tags			notifications
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Param			nid	path		int	true	"通知 ID"
+//	@Success		200	{object}	NotificationJSON
+//	@Failure		400	{object}	ErrorResponse
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse	"発行者以外"
+//	@Failure		404	{object}	ErrorResponse	"通知がグループに存在しない"
+//	@Failure		409	{object}	ErrorResponse	"進行中でない（中断済み・1時間経過済み）"
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/notifications/{nid}/end [post]
+func (h *NotificationHandler) End(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	notifID, err := strconv.ParseInt(c.Param("nid"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid notification id")
+		return
+	}
+
+	notif, err := h.notificationService.EndChallenge(c.Request.Context(), groupID, notifID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "not found")
+		case errors.Is(err, service.ErrForbidden):
+			respondError(c, http.StatusForbidden, "forbidden: only the issuer can end the challenge")
+		case errors.Is(err, service.ErrConflict):
+			respondError(c, http.StatusConflict, "conflict: challenge is not active")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, toNotificationJSON(notif))
 }
 
 // GetActive は現在進行中のBeGit Timeを返す。進行中でなければ204を返す。

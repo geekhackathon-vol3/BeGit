@@ -184,11 +184,33 @@ protocol RepositoryAPI: Sendable {
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
     func deleteRepository(id: Int64, accessToken: String) async throws
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
+    func listReactions(
+        repositoryID: Int64,
+        postID: Int64,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction]
+    func addReaction(
+        _ type: ActivityReactionType,
+        repositoryID: Int64,
+        postID: Int64,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction]
+    func deleteReaction(
+        _ type: ActivityReactionType,
+        repositoryID: Int64,
+        postID: Int64,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> [ActivityReaction]
     func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64
     func stopNotification(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
     func getActiveBeGitTime(repositoryID: Int64, accessToken: String) async throws -> ActiveBeGitTime?
     func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus]
     func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws
+    // 旧チャレンジ終了APIとの互換性を維持する。
+    func endChallenge(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
     func uploadPhotos(
         repositoryID: Int64,
         postID: Int64,

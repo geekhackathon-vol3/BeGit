@@ -7,15 +7,18 @@ struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
     let currentUserLogin: String?
     let onDeleteRequested: ((RepositoryActivity) -> Void)?
+    let onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)?
 
     init(
         activities: [RepositoryActivity],
         currentUserLogin: String? = nil,
-        onDeleteRequested: ((RepositoryActivity) -> Void)? = nil
+        onDeleteRequested: ((RepositoryActivity) -> Void)? = nil,
+        onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activities = activities
         self.currentUserLogin = currentUserLogin
         self.onDeleteRequested = onDeleteRequested
+        self.onReactionTapped = onReactionTapped
     }
 
     private static let dayFormatter: DateFormatter = {
@@ -34,10 +37,14 @@ struct RepositoryActivityTimelineView: View {
 
                 RepositoryActivityCardView(
                     activity: activity,
-                    canDelete: canDelete(activity)
-                ) {
-                    onDeleteRequested?(activity)
-                }
+                    canDelete: canDelete(activity),
+                    onDelete: {
+                        onDeleteRequested?(activity)
+                    },
+                    onReactionTapped: onReactionTapped.map { action in
+                        { type in try await action(activity.id, type) }
+                    }
+                )
 
                 if index < activities.count - 1 {
                     Rectangle()
@@ -79,21 +86,26 @@ struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity
     let canDelete: Bool
     let onDelete: (() -> Void)?
+    var onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
 
     @State private var showReactionPicker = false
     @State private var myReaction: ActivityReactionType?
     @State private var reactionCounts: [ActivityReactionType: Int]
+    @State private var isUpdatingReaction = false
+    @State private var showReactionError = false
     @State private var isSwapped = false //  背景と小窓の写真を入れ替えているか
     @State private var thumbnailScale: CGFloat = 1.0 //  小窓タップ時の弾みアニメ
 
     init(
         activity: RepositoryActivity,
         canDelete: Bool = false,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activity = activity
         self.canDelete = canDelete
         self.onDelete = onDelete
+        self.onReactionTapped = onReactionTapped
         _myReaction = State(initialValue: activity.reactions.first(where: { $0.reactedByMe })?.type)
         var counts: [ActivityReactionType: Int] = [:]
         for r in activity.reactions { counts[r.type] = r.count }
@@ -186,6 +198,12 @@ struct RepositoryActivityCardView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 20)
+        }
+        .onChange(of: activity.reactions) { _, reactions in
+            applyReactions(reactions)
+        }
+        .alert("リアクションの更新に失敗しました", isPresented: $showReactionError) {
+            Button("OK", role: .cancel) {}
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
@@ -311,6 +329,7 @@ struct RepositoryActivityCardView: View {
                         .animation(.spring(response: 0.22, dampingFraction: 0.6), value: myReaction)
                 }
                 .buttonStyle(.plain)
+                .disabled(isUpdatingReaction)
                 .contentShape(Circle())
             }
         }
@@ -350,6 +369,7 @@ struct RepositoryActivityCardView: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .disabled(isUpdatingReaction)
         .contentShape(Circle())
         .zIndex(4)
         .accessibilityLabel(showReactionPicker ? "スタンプを閉じる" : "スタンプを選ぶ")
@@ -395,6 +415,35 @@ struct RepositoryActivityCardView: View {
     // MARK: - Toggle logic
 
     private func toggleReaction(_ type: ActivityReactionType) {
+        guard isUpdatingReaction == false else { return }
+
+        guard let onReactionTapped else {
+            applyLocalToggle(type)
+            return
+        }
+
+        showReactionPicker = false
+        isUpdatingReaction = true
+        let isRemovingSelectedReaction = myReaction == type
+        Task {
+            defer { isUpdatingReaction = false }
+            do {
+                if let reactions = try await onReactionTapped(type) {
+                    applyReactions(
+                        reactions,
+                        preferredMyReaction: isRemovingSelectedReaction ? nil : type
+                    )
+                } else {
+                    // APIの対象IDを持たないMock投稿は従来どおりローカル更新する。
+                    applyLocalToggle(type)
+                }
+            } catch {
+                showReactionError = true
+            }
+        }
+    }
+
+    private func applyLocalToggle(_ type: ActivityReactionType) {
         withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
             if myReaction == type {
                 reactionCounts[type, default: 1] -= 1
@@ -408,6 +457,21 @@ struct RepositoryActivityCardView: View {
                 reactionCounts[type, default: 0] += 1
                 myReaction = type
             }
+            showReactionPicker = false
+        }
+    }
+
+    private func applyReactions(
+        _ reactions: [ActivityReaction],
+        preferredMyReaction: ActivityReactionType? = nil
+    ) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
+            var counts: [ActivityReactionType: Int] = [:]
+            for reaction in reactions {
+                counts[reaction.type] = reaction.count
+            }
+            reactionCounts = counts
+            myReaction = preferredMyReaction ?? reactions.first(where: \.reactedByMe)?.type
             showReactionPicker = false
         }
     }

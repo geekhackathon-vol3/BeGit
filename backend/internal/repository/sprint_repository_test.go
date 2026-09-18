@@ -195,3 +195,44 @@ func TestSprintRepository_GetCurrentSprint_NotFound(t *testing.T) {
 		t.Error("expected error when no active sprint found")
 	}
 }
+
+// TestSprintRepository_GetOrCreate_AssignsNextIndexNum は新規スプリントの INSERT が index_num を
+// 「グループ内の最大 + 1」で採番することを確認する（UNIQUE(group_id, index_num) との衝突回避）
+func TestSprintRepository_GetOrCreate_AssignsNextIndexNum(t *testing.T) {
+	var insertSQL string
+	var insertParams []interface{}
+	queryCallCount := 0
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			queryCallCount++
+			if queryCallCount == 1 {
+				return nil, d1.ErrNotFound // 既存の現行スプリント無し（期限切れ）
+			}
+			return []map[string]interface{}{{
+				"id": float64(9), "group_id": float64(2), "index_num": float64(1),
+				"started_at": time.Now().Format("2006-01-02 15:04:05"),
+				"ends_at":    time.Now().AddDate(0, 0, 7).Format("2006-01-02 15:04:05"),
+			}}, nil
+		},
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			insertSQL = sql
+			insertParams = params
+			return 1, nil
+		},
+	}
+
+	repo := NewSprintRepository(mock)
+	sprint, err := repo.GetOrCreateCurrentSprint(context.Background(), 2, 7)
+	if err != nil {
+		t.Fatalf("GetOrCreateCurrentSprint() failed: %v", err)
+	}
+	if sprint.IndexNum != 1 {
+		t.Errorf("expected IndexNum=1, got %d", sprint.IndexNum)
+	}
+	if !contains(insertSQL, "index_num") || !contains(insertSQL, "COALESCE(MAX(index_num), -1) + 1") {
+		t.Errorf("INSERT must assign the next index_num: %s", insertSQL)
+	}
+	if len(insertParams) != 4 || insertParams[0] != int64(2) || insertParams[1] != int64(2) {
+		t.Errorf("expected params [groupID, groupID, started_at, ends_at], got %v", insertParams)
+	}
+}

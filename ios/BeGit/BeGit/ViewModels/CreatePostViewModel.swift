@@ -195,6 +195,9 @@ final class CreatePostViewModel: ObservableObject {
                 body: trimmedBody.isEmpty ? nil : trimmedBody,
                 accessToken: accessToken
             )
+            // Result画面へ遷移した直後から、この下書き投稿に対して
+            // リアクションAPIを呼べるようバックエンドの投稿IDを保持する。
+            postedActivity = makeDemoActivity(backendPostID: draftPostID)
             return
         }
 
@@ -216,6 +219,7 @@ final class CreatePostViewModel: ObservableObject {
 
         // Result画面へ戻った直後にも、選択した投稿タイプを表示する。
         // 次のフィード取得が完了すると、サーバーの正規データへ置き換わる。
+        // createPostが返したIDを渡し、即時表示中もリアクションAPIの対象にする。
         postedActivity = makeDemoActivity(backendPostID: postID)
     }
 
