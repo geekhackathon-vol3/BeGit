@@ -60,8 +60,15 @@ struct GitHubActivityPickerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("閉じる") { dismiss() }
-                        .foregroundStyle(AppTheme.Text.primary)
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 32, height: 32)
+                    }
+                    .accessibilityLabel("閉じる")
+                    .foregroundStyle(AppTheme.Text.primary)
                 }
             }
         }

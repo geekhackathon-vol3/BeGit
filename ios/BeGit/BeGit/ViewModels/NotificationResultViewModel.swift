@@ -8,6 +8,9 @@ import Combine
 final class NotificationResultViewModel: ObservableObject {
     let notification: RepositoryNotification                        //  通知結果情報
     @Published private(set) var activities: [RepositoryActivity]    //  Timeline表示用activity一覧
+    @Published private(set) var activeBeGitTime: ActiveBeGitTime?
+    @Published private(set) var endedBeGitTime: ActiveBeGitTime?
+    @Published private(set) var notificationMemberStatuses: [NotificationMemberStatus] = []
     @Published private(set) var isLoading = false                   //  フィード取得中
 
     private let repositoryAPI: any RepositoryAPI
@@ -47,6 +50,59 @@ final class NotificationResultViewModel: ObservableObject {
         } catch {
             //  取得失敗時は初期 Mock のまま表示を維持する
         }
+
+        //  フィード取得に失敗しても、BeGit Timeと参加状況の表示取得は継続する。
+        await loadNotificationStatus(accessToken: accessToken)
+        await loadActiveBeGitTime(accessToken: accessToken)
+    }
+
+    func loadActiveBeGitTime(accessToken: String?) async {
+        guard let accessToken,
+              let repositoryID = notification.repository.backendID,
+              let notificationID = notification.backendID else {
+            activeBeGitTime = nil
+            return
+        }
+
+        do {
+            let active = try await repositoryAPI.getActiveBeGitTime(
+                repositoryID: repositoryID,
+                accessToken: accessToken
+            )
+            if let active, active.notificationID == notificationID {
+                activeBeGitTime = active
+                endedBeGitTime = nil
+            } else if let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
+                //  APIが未反映の環境でも、送信直後の有効なキャッシュで表示する。
+                activeBeGitTime = cached
+            } else {
+                activeBeGitTime = nil
+            }
+        } catch {
+            let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+                activeBeGitTime = cached.flatMap { cached in
+                    cached.notificationID == 0 || cached.notificationID == notificationID ? cached : nil
+                }
+        }
+    }
+
+    func loadNotificationStatus(accessToken: String?) async {
+        guard let accessToken,
+              let repositoryID = notification.repository.backendID,
+              let notificationID = notification.backendID else {
+            notificationMemberStatuses = []
+            return
+        }
+
+        do {
+            notificationMemberStatuses = try await repositoryAPI.getNotificationStatus(
+                repositoryID: repositoryID,
+                notificationID: notificationID,
+                accessToken: accessToken
+            )
+        } catch {
+            notificationMemberStatuses = []
+        }
     }
 
     //  Resultには実際に通知対象として選択されたmemberを表示する。
@@ -70,23 +126,74 @@ final class NotificationResultViewModel: ObservableObject {
         }
     }
 
-    //  投稿モックのauthor数ではなく、実際の通知対象member数を使う。
-    var totalCount: Int {
-        members.count
+    func stopActiveBeGitTime(accessToken: String?) async throws {
+        guard let accessToken,
+              let repositoryID = notification.repository.backendID else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        guard let active = activeBeGitTime else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        // Debugのローカル通知モードにはバックエンド通知IDがないため、
+        // サーバーAPIではなく端末内のBeGit Timeを停止する。
+        if NotificationDeliveryMode.current.usesLocalNotificationMock {
+            endedBeGitTime = active
+            activeBeGitTime = nil
+            ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
+            notificationMemberStatuses = []
+            return
+        }
+
+        let serverActive: ActiveBeGitTime
+        if active.notificationID > 0 {
+            serverActive = active
+        } else if let fetched = try await repositoryAPI.getActiveBeGitTime(
+            repositoryID: repositoryID,
+            accessToken: accessToken
+        ) {
+            serverActive = fetched
+            activeBeGitTime = fetched
+        } else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        try await repositoryAPI.stopNotification(
+            repositoryID: repositoryID,
+            notificationID: serverActive.notificationID,
+            accessToken: accessToken
+        )
+
+        endedBeGitTime = serverActive
+        activeBeGitTime = nil
+        ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
+        await loadNotificationStatus(accessToken: accessToken)
     }
 
-    var completedCount: Int {
-        totalCount
+    func deleteActivity(_ activity: RepositoryActivity, accessToken: String?) async throws {
+        guard let accessToken,
+              let repositoryID = notification.repository.backendID,
+              let postID = activity.backendPostID else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        try await repositoryAPI.deletePost(
+            repositoryID: repositoryID,
+            postID: postID,
+            accessToken: accessToken
+        )
+        removeDeletedActivity(activity)
+        await loadNotificationStatus(accessToken: accessToken)
     }
 
-    //  達成率
-    var progress: Double {
-        guard totalCount > 0 else { return 0 }
-        return Double(completedCount) / Double(totalCount)
-    }
-
-    //  達成状況表示テキスト
-    var progressText: String {
-        "\(completedCount)/\(totalCount)人が達成しました"
+    private func removeDeletedActivity(_ activity: RepositoryActivity) {
+        if let backendPostID = activity.backendPostID {
+            activities.removeAll {
+                $0.id == activity.id || $0.backendPostID == backendPostID
+            }
+        } else {
+            activities.removeAll { $0.id == activity.id }
+        }
     }
 }

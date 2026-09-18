@@ -90,6 +90,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
            let frontURL = photoURL(for: "front")
 
            return RepositoryActivity(
+               backendPostID: id.map(Int64.init),
                type: typeOverride ?? activityType,
                title: activityTitle(fallbackRepository: fallbackRepository),
                comment: {

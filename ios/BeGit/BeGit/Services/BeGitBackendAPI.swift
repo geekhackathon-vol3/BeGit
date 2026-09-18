@@ -248,11 +248,80 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     }
     
     // 通知発行成功は 201(.created)
-    func sendNotification(repositoryID: Int64, accessToken: String) async throws {
+    func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64 {
         let output = try await makeClient(accessToken: accessToken).postGroupsIdNotifications(
             .init(path: .init(id: Int(repositoryID)))
         )
-        guard case .created = output else { throw BeGitAPIError.invalidResponse }
+        guard case let .created(created) = output,
+              let notificationID = try created.body.json.id else {
+            throw BeGitAPIError.invalidResponse
+        }
+        return Int64(notificationID)
+    }
+
+    func stopNotification(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/notifications/\(notificationID)/stop")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+    }
+
+    func getActiveBeGitTime(repositoryID: Int64, accessToken: String) async throws -> ActiveBeGitTime? {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/notifications/active")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+        if httpResponse.statusCode == 204 {
+            return nil
+        }
+        try validateHTTPResponse(response, data: data)
+        let payload = try JSONDecoder().decode(ActiveBeGitTimeDTO.self, from: data)
+        guard let sentAt = ISO8601DateFormatter().date(from: payload.sentAt),
+              let expiresAt = ISO8601DateFormatter().date(from: payload.expiresAt) else {
+            throw BeGitAPIError.invalidResponse
+        }
+        return ActiveBeGitTime(
+            notificationID: Int64(payload.notificationID),
+            sentBy: Int64(payload.sentBy),
+            sentAt: sentAt,
+            expiresAt: expiresAt
+        )
+    }
+
+    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus] {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/notifications/\(notificationID)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        let payload = try JSONDecoder().decode(NotificationStatusDTO.self, from: data)
+        return payload.members.map {
+            NotificationMemberStatus(id: Int64($0.userID), login: $0.login, status: $0.status)
+        }
+    }
+
+    func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/posts/\(postID)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
     }
     
     // GET /me : Bearer トークンから現在ログイン中ユーザーを取得（GitHub 直叩きの代替）
@@ -264,6 +333,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
     
     func createPost(
         repositoryID: Int64,
+        notificationID: Int64?,
         body: String,
         repoFullName: String,
         githubLogin: String,
@@ -281,6 +351,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(CreatePostRequestDTO(
             body: body,
+            notificationID: notificationID,
             postType: postType.rawValue,
             contentSource: contentSource.rawValue,
             commitSHA: commitSHA,
@@ -510,6 +581,7 @@ private nonisolated struct GitHubRepoDTO: Decodable {
 
 private nonisolated struct CreatePostRequestDTO: Encodable {
     let body: String
+    let notificationID: Int64?
     let postType: String
     let contentSource: String
     let commitSHA: String?
@@ -519,6 +591,7 @@ private nonisolated struct CreatePostRequestDTO: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case body
+        case notificationID = "notification_id"
         case postType = "post_type"
         case contentSource = "content_source"
         case commitSHA = "commit_sha"
@@ -530,6 +603,35 @@ private nonisolated struct CreatePostRequestDTO: Encodable {
 
 private nonisolated struct CreatePostResponseDTO: Decodable {
     let id: Int?
+}
+
+private nonisolated struct ActiveBeGitTimeDTO: Decodable {
+    let notificationID: Int
+    let sentBy: Int
+    let sentAt: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case notificationID = "notification_id"
+        case sentBy = "sent_by"
+        case sentAt = "sent_at"
+        case expiresAt = "expires_at"
+    }
+}
+
+private nonisolated struct NotificationStatusDTO: Decodable {
+    let members: [NotificationStatusMemberDTO]
+}
+
+private nonisolated struct NotificationStatusMemberDTO: Decodable {
+    let userID: Int
+    let login: String
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
+        case login, status
+    }
 }
 
 private nonisolated struct CommitListResponseDTO: Decodable {

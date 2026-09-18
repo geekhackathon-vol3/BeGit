@@ -7,8 +7,7 @@ import Foundation
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
 let id: UUID                        //  activity識別子
-
-//    let backendPostID: Int64
+let backendPostID: Int64?           //  Backend上の投稿ID（削除に使用）
     
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
@@ -23,6 +22,7 @@ let id: UUID                        //  activity識別子
 
     init(
         id: UUID = UUID(),
+        backendPostID: Int64? = nil,
         type: RepositoryActivityType,
         title: String,
         comment: String? = nil,
@@ -35,6 +35,7 @@ let id: UUID                        //  activity識別子
         reactions: [ActivityReaction] = []
     ) {
         self.id = id
+        self.backendPostID = backendPostID
         self.type = type
         self.title = title
         self.comment = comment

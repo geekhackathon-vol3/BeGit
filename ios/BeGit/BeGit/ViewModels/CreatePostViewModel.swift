@@ -26,6 +26,7 @@ final class CreatePostViewModel: ObservableObject {
     let repoFullName: String
     let githubLogin: String
     let accessToken: String
+    let notificationID: Int64?
     //  ② Nice Work! の下書き投稿ID。指定時は新規投稿を作らず、この下書きに写真を付けて確定する
     let draftPostID: Int64?
     let isPostTypeSelectionEnabled: Bool
@@ -37,6 +38,7 @@ final class CreatePostViewModel: ObservableObject {
         repoFullName: String,
         githubLogin: String,
         accessToken: String,
+        notificationID: Int64? = nil,
         initialPostType: RepositoryActivityType = .commit,
         draftPostID: Int64? = nil
     ) {
@@ -47,6 +49,7 @@ final class CreatePostViewModel: ObservableObject {
         self.repoFullName = repoFullName
         self.githubLogin = githubLogin
         self.accessToken = accessToken
+        self.notificationID = notificationID
         self.selectedType = initialPostType
         self.contentSource = initialPostType == .memo ? .manual : .github
         self.draftPostID = draftPostID
@@ -197,6 +200,7 @@ final class CreatePostViewModel: ObservableObject {
 
         let postID = try await api.createPost(
             repositoryID: repositoryID,
+            notificationID: notificationID,
             body: bodyText,
             repoFullName: repoFullName,
             githubLogin: githubLogin,
@@ -207,13 +211,12 @@ final class CreatePostViewModel: ObservableObject {
             accessToken: accessToken
         )
 
-        // If both attempts fail, the post will remain without photos.
-        // TODO: Implement deletePost API and call it here to clean up orphaned posts.
+        // 写真アップロード失敗時も投稿本体は残して再試行できる。
         try await uploadPhotosWithRetry(api: api, postID: postID, mainData: mainData, frontData: frontData)
 
         // Result画面へ戻った直後にも、選択した投稿タイプを表示する。
         // 次のフィード取得が完了すると、サーバーの正規データへ置き換わる。
-        postedActivity = makeDemoActivity()
+        postedActivity = makeDemoActivity(backendPostID: postID)
     }
 
     //  写真アップロードを失敗時に1回だけ再試行する
@@ -244,7 +247,7 @@ final class CreatePostViewModel: ObservableObject {
     }
 
     //  デモ用：撮影画像を temp ファイルに保存して即時表示できる RepositoryActivity を生成
-    private func makeDemoActivity() -> RepositoryActivity {
+    private func makeDemoActivity(backendPostID: Int64? = nil) -> RepositoryActivity {
         let tmp = FileManager.default.temporaryDirectory
         var mainURL: URL? = nil
         var frontURL: URL? = nil
@@ -260,6 +263,7 @@ final class CreatePostViewModel: ObservableObject {
         }
         let avatarURL = URL(string: "https://github.com/\(githubLogin).png")
         return RepositoryActivity(
+            backendPostID: backendPostID,
             type: selectedType,
             title: selectedGitHubActivityTitle ?? (bodyText.isEmpty ? repoFullName : bodyText),
             comment: bodyText.isEmpty ? nil : bodyText,

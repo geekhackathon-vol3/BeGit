@@ -5,6 +5,18 @@ import SwiftUI
 
 struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
+    let currentUserLogin: String?
+    let onDeleteRequested: ((RepositoryActivity) -> Void)?
+
+    init(
+        activities: [RepositoryActivity],
+        currentUserLogin: String? = nil,
+        onDeleteRequested: ((RepositoryActivity) -> Void)? = nil
+    ) {
+        self.activities = activities
+        self.currentUserLogin = currentUserLogin
+        self.onDeleteRequested = onDeleteRequested
+    }
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -20,7 +32,12 @@ struct RepositoryActivityTimelineView: View {
                     dateHeader(for: activity.date)
                 }
 
-                RepositoryActivityCardView(activity: activity)
+                RepositoryActivityCardView(
+                    activity: activity,
+                    canDelete: canDelete(activity)
+                ) {
+                    onDeleteRequested?(activity)
+                }
 
                 if index < activities.count - 1 {
                     Rectangle()
@@ -41,6 +58,12 @@ struct RepositoryActivityTimelineView: View {
         ) == false
     }
 
+    private func canDelete(_ activity: RepositoryActivity) -> Bool {
+        guard let currentUserLogin,
+              activity.backendPostID != nil else { return false }
+        return activity.author.login.caseInsensitiveCompare(currentUserLogin) == .orderedSame
+    }
+
     private func dateHeader(for date: Date) -> some View {
         Text(Self.dayFormatter.string(from: date))
             .appFont(.label)
@@ -54,6 +77,8 @@ struct RepositoryActivityTimelineView: View {
 
 struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity
+    let canDelete: Bool
+    let onDelete: (() -> Void)?
 
     @State private var showReactionPicker = false
     @State private var myReaction: ActivityReactionType?
@@ -61,8 +86,14 @@ struct RepositoryActivityCardView: View {
     @State private var isSwapped = false //  背景と小窓の写真を入れ替えているか
     @State private var thumbnailScale: CGFloat = 1.0 //  小窓タップ時の弾みアニメ
 
-    init(activity: RepositoryActivity) {
+    init(
+        activity: RepositoryActivity,
+        canDelete: Bool = false,
+        onDelete: (() -> Void)? = nil
+    ) {
         self.activity = activity
+        self.canDelete = canDelete
+        self.onDelete = onDelete
         _myReaction = State(initialValue: activity.reactions.first(where: { $0.reactedByMe })?.type)
         var counts: [ActivityReactionType: Int] = [:]
         for r in activity.reactions { counts[r.type] = r.count }
@@ -233,6 +264,30 @@ struct RepositoryActivityCardView: View {
             }
 
             Spacer()
+
+            if canDelete {
+                Menu {
+                    Button(role: .destructive) {
+                        onDelete?()
+                    } label: {
+                        Label {
+                            Text("削除")
+                                .foregroundStyle(.red)
+                        } icon: {
+                            Image(systemName: "trash")
+                                .foregroundStyle(.red)
+                        }
+                        .tint(.red)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.high)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("投稿メニュー")
+            }
         }
     }
     // MARK: - Reaction picker

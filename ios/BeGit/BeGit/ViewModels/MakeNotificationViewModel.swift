@@ -12,6 +12,7 @@ final class MakeNotificationViewModel: ObservableObject {
     @Published private(set) var repositoryMemberCandidates: [RepositoryMember] // Repository由来のmember候補一覧
     @Published var selectedMemberIDs: Set<UUID>     //  選択中member ID一覧
     @Published var comment = ""                     //  通知コメント入力値
+    @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var isSending = false   //  通知送信中
     @Published private(set) var isLoadingMembers = false // member同期中
     @Published var errorMessage: String?            //  APIエラー表示
@@ -70,8 +71,9 @@ final class MakeNotificationViewModel: ObservableObject {
     }
 
     //  通知モデル生成
-    func makeNotification() -> RepositoryNotification {
+    func makeNotification(backendID: Int64? = nil) -> RepositoryNotification {
         RepositoryNotification(
+            backendID: backendID,
             repository: repository,
             //  選択中memberのみ通知対象
             selectedMembers: selectedMembers,
@@ -106,13 +108,32 @@ final class MakeNotificationViewModel: ObservableObject {
         }
     }
 
-    func sendNotification(accessToken: String?) async -> RepositoryNotification? {
+    func loadActiveBeGitTime(accessToken: String?) async {
+        guard let accessToken, let repositoryID = repository.backendID else {
+            activeBeGitTime = nil
+            return
+        }
+
+        do {
+            let active = try await repositoryAPI.getActiveBeGitTime(
+                repositoryID: repositoryID,
+                accessToken: accessToken
+            )
+            activeBeGitTime = active ?? ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+            if activeBeGitTime == nil {
+                ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
+            }
+        } catch {
+            // 新しいactive APIが未反映の環境では送信直後の互換キャッシュを使う。
+            activeBeGitTime = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+        }
+    }
+
+    func sendNotification(accessToken: String?, sentBy: Int64? = nil) async -> RepositoryNotification? {
         guard isSending == false else { return nil }
         isSending = true
         errorMessage = nil
         defer { isSending = false }
-
-        let notification = makeNotification()
 
         guard NotificationDeliveryMode.current.usesLocalNotificationMock else {
             guard let accessToken else {
@@ -126,8 +147,15 @@ final class MakeNotificationViewModel: ObservableObject {
             }
 
             do {
-                try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
-                return notification
+                let notificationID = try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
+                ActiveBeGitTimeStore.save(
+                    repositoryID: backendID,
+                    notificationID: notificationID,
+                    sentBy: sentBy ?? 0,
+                    expiresAt: Date().addingTimeInterval(60 * 60)
+                )
+                await loadActiveBeGitTime(accessToken: accessToken)
+                return makeNotification(backendID: notificationID)
             } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
                 // チャレンジ進行中（発行から1時間以内）、または設定によりこのスプリントは送信済み。
                 // 送信できていないので結果画面へは進めない
@@ -139,6 +167,14 @@ final class MakeNotificationViewModel: ObservableObject {
             }
         }
 
+        let notification = makeNotification()
+        if let repositoryID = repository.backendID {
+            ActiveBeGitTimeStore.save(
+                repositoryID: repositoryID,
+                sentBy: sentBy ?? 0,
+                expiresAt: notification.createdAt.addingTimeInterval(60 * 60)
+            )
+        }
         LocalNotificationScheduler.shared.scheduleNotification(for: notification)
         return notification
     }
