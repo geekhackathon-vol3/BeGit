@@ -47,7 +47,17 @@ struct NotificationResultView: View {
                             resultSummary
 
                             //  Activity一覧（横幅フル）
-                            RepositoryActivityTimelineView(activities: viewModel.activities)
+                            RepositoryActivityTimelineView(
+                                activities: viewModel.activities,
+                                onReactionTapped: { activityID, type in
+                                    try await viewModel.toggleReaction(
+                                        activityID: activityID,
+                                        type: type,
+                                        accessToken: authState.accessToken,
+                                        currentUserID: authState.githubUser.map { Int64($0.id) }
+                                    )
+                                }
+                            )
                                 .padding(.horizontal, -20)
                         }
                         .padding(.horizontal, 20)
@@ -108,7 +118,10 @@ struct NotificationResultView: View {
         .tint(AppTheme.accent)
         .task {
             //  実写真付きフィードを取得して Timeline を差し替える
-            await viewModel.loadActivities(accessToken: authState.accessToken)
+            await viewModel.loadActivities(
+                accessToken: authState.accessToken,
+                currentUserID: authState.githubUser.map { Int64($0.id) }
+            )
         }
     }
 
