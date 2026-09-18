@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -24,10 +25,24 @@ type MemberStatus struct {
 	Status    string // "On Time" | "Late" | "Missed"
 }
 
+// ActiveChallenge はグループで進行中の BeGit Time チャレンジと、要求ユーザー自身の投稿状況
+type ActiveChallenge struct {
+	Notification model.Notification
+	// EndsAt は締め切り（sent_at + 1h）。進行中なので ended_at は常に nil
+	EndsAt time.Time
+	// MyPost は要求ユーザーのこの通知への投稿（draft 含む）。無ければ nil
+	MyPost *model.Post
+}
+
 // NotificationService は BeGit Time 通知サービスインターフェース
 type NotificationService interface {
 	SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error)
 	GetNotificationStatus(ctx context.Context, notifID, groupID int64) (*NotificationStatus, error)
+	// GetActiveChallenge はグループで進行中のチャレンジを返す。進行中が無ければ (nil, nil)。
+	GetActiveChallenge(ctx context.Context, groupID, userID int64) (*ActiveChallenge, error)
+	// EndChallenge は発行者が進行中のチャレンジを途中中断する（締め切りを今にする）。
+	// 通知がグループに属さない → ErrNotFound、発行者以外 → ErrForbidden、進行中でない → ErrConflict。
+	EndChallenge(ctx context.Context, groupID, notifID, userID int64) (*model.Notification, error)
 }
 
 // notificationService は NotificationService インターフェースの実装
@@ -172,9 +187,81 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 	}, nil
 }
 
+// GetActiveChallenge はグループで進行中のチャレンジと要求ユーザーの投稿状況を返す。進行中が無ければ (nil, nil)。
+func (s *notificationService) GetActiveChallenge(ctx context.Context, groupID, userID int64) (*ActiveChallenge, error) {
+	notif, err := s.notifRepo.GetActiveByGroup(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("notification_service: GetActiveByGroup failed: %w", err)
+	}
+
+	active := &ActiveChallenge{
+		Notification: *notif,
+		EndsAt:       challengeDeadline(notif),
+	}
+
+	if s.postRepo != nil {
+		post, err := s.postRepo.GetByUserAndNotification(ctx, userID, notif.ID)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return nil, fmt.Errorf("notification_service: GetByUserAndNotification failed: %w", err)
+		}
+		if err == nil {
+			active.MyPost = post
+		}
+	}
+
+	return active, nil
+}
+
+// EndChallenge は発行者が進行中のチャレンジを途中中断する（締め切りを今にする）。
+func (s *notificationService) EndChallenge(ctx context.Context, groupID, notifID, userID int64) (*model.Notification, error) {
+	notif, err := s.notifRepo.GetByID(ctx, notifID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("notification_service: GetByID failed: %w", err)
+	}
+
+	// 通知が要求されたグループに属するか（GetNotificationStatus と同じ判定）
+	sprint, err := s.sprintRepo.GetByID(ctx, notif.SprintID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("notification_service: GetSprintByID failed: %w", err)
+	}
+	if sprint.GroupID != groupID {
+		return nil, ErrNotFound
+	}
+
+	// 中断できるのは発行者のみ
+	if notif.SentBy != userID {
+		return nil, ErrForbidden
+	}
+
+	ended, err := s.notifRepo.EndIfActive(ctx, notifID)
+	if err != nil {
+		return nil, fmt.Errorf("notification_service: EndIfActive failed: %w", err)
+	}
+	if !ended {
+		// 既に中断済み、または1時間経過済み
+		return nil, ErrConflict
+	}
+
+	updated, err := s.notifRepo.GetByID(ctx, notifID)
+	if err != nil {
+		return nil, fmt.Errorf("notification_service: GetByID after end failed: %w", err)
+	}
+	return updated, nil
+}
+
 // computeMemberStatuses は1通知に対する各メンバーの On Time / Late / Missed を算出する。
 // GetNotificationStatus（API）と Cron（③/⑤ サマリ）で共通利用する（Req3.4）。
-// 判定基準: post.created_at <= notif.sent_at + 1h → On Time、超過 → Late、投稿無し → Missed。
+// 判定基準: post.created_at <= 締め切り → On Time、超過 → Late、投稿無し → Missed。
+// 締め切りは notif.sent_at + 1h、発行者が途中中断した場合は ended_at（challengeDeadline）。
 // repository エラーは errors.Is(err, repository.ErrNotFound) のみ Missed にマップし、それ以外はエラーを返す。
 func computeMemberStatuses(
 	ctx context.Context,
@@ -182,7 +269,7 @@ func computeMemberStatuses(
 	notif *model.Notification,
 	members []model.GroupMember,
 ) ([]MemberStatus, error) {
-	deadline := notif.SentAt.Add(challengeWindow)
+	deadline := challengeDeadline(notif)
 	statuses := make([]MemberStatus, 0, len(members))
 	for _, member := range members {
 		post, err := postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)

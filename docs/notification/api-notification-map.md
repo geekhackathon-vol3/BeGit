@@ -30,6 +30,7 @@
 |---|---|---|---|---|
 | PUT | `/me/fcm-token` | FCM トークン登録/更新 | Bearer | アプリ起動・トークン更新 |
 | POST | `/groups/:id/notifications` | ① BeGit Time! 発行 | Bearer + メンバー | ユーザー操作 (A) |
+| POST | `/groups/:id/notifications/:nid/end` | ① の途中中断（発行者のみ。締め切りを今にし、③ を即発火させる） | Bearer + メンバー | ユーザー操作 (A) |
 | GET | `/groups/:id/notifications/:nid` | チャレンジ達成ステータス（On Time/Late/Missed） | Bearer + メンバー | ③通知タップ後 (B) |
 | POST | `/groups/:id/posts` | 投稿作成（memo 含む） | Bearer + メンバー | ①通知タップ後 (B) |
 | GET | `/groups/:id/posts` | フィード取得（draft 除外） | Bearer + メンバー | 画面表示 |
@@ -40,7 +41,7 @@
 | POST | `/groups/:id/posts/:postId/comments` | コメント投稿 | Bearer + メンバー | ⑦を発火 (A) |
 | GET | `/groups/:id/posts/:postId/comments` | コメント一覧 | Bearer + メンバー | ⑦通知タップ後 (B) |
 | GET | `/groups/:id/posts/:postId/reactions` | リアクション一覧 | Bearer + メンバー | ⑦通知タップ後 (B) |
-| GET | `/groups/:id` | グループ詳細 + メンバー | Bearer + メンバー | ④⑤⑥通知タップ後 (B) |
+| GET | `/groups/:id` | グループ詳細 + メンバー + 進行中 ①（`active_challenge`: 発行者・締め切り・自分の draft） | Bearer + メンバー | 画面表示 / ④⑤⑥通知タップ後 (B) |
 
 ### クライアントが叩かない内部経路（通知を発火させるが画面なし）
 
@@ -195,7 +196,8 @@ sequenceDiagram
 
 ## 4. 注意点（API を叩くときの落とし穴）
 
-- **①の 409**: `POST /groups/:id/notifications` は進行中チャレンジ（発行+1h 以内）があると 409。UI で「別のチャレンジが進行中」をハンドリングする。
+- **①の 409**: `POST /groups/:id/notifications` は進行中チャレンジ（発行+1h 以内 かつ 未中断）があると 409。送る前に `GET /groups/:id` の `active_challenge` を見れば 409 を踏まずに済む（[ios-guide §4.5](ios-guide.md)）。
+- **①の途中中断**: `POST …/notifications/:nid/end` は発行者以外 403、進行中でなければ 409。中断＝締め切りを今にするので、以降の投稿は Late、③ のサマリ Push は 1 分以内（毎分 Cron）。中断後は即再発行できる。
 - **②は draft 前提**: `draft_post_id` の中身は `GET …/draft` で取得。**「写真が無い＝下書き」ではない**（draft は明示状態 `is_draft`）。確定は `POST …/confirm`。
 - **フィードは draft 非表示**: `GET /groups/:id/posts` は `is_draft=0` のみ返す。確定するまでフィードに出ない。
 - **数値も文字列**: FCM data は全フィールド文字列（`notification_id` 等は Int 変換が必要）。

@@ -257,3 +257,164 @@ func TestWebhookRepository_InsertDelivery_Duplicate(t *testing.T) {
 		t.Error("expected isDuplicate=true for second call with same delivery_id")
 	}
 }
+
+// TestNotificationRepository_ActivePredicateExcludesEnded は「進行中」判定（HasActiveInSprint / CreateIfNoActive）が
+// 途中中断済み（ended_at 非 NULL）の通知を除外する SQL になっていることを確認する。
+// これが無いと「中断 → 即再発行」が 409 のままになる。
+func TestNotificationRepository_ActivePredicateExcludesEnded(t *testing.T) {
+	var querySQL, execSQL string
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			querySQL = sql
+			return []map[string]interface{}{{"count": float64(0)}}, nil
+		},
+		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+			execSQL = sql
+			return 0, nil
+		},
+	}
+	repo := NewNotificationRepository(mock)
+
+	if _, err := repo.HasActiveInSprint(context.Background(), 7); err != nil {
+		t.Fatalf("HasActiveInSprint() failed: %v", err)
+	}
+	if !contains(querySQL, "ended_at IS NULL") || !contains(querySQL, "+1 hour") {
+		t.Errorf("HasActiveInSprint SQL should exclude ended notifications: %s", querySQL)
+	}
+
+	_, _ = repo.CreateIfNoActive(context.Background(), &model.Notification{SprintID: 7, SentBy: 1}, true)
+	if !contains(execSQL, "ended_at IS NULL") || !contains(execSQL, "+1 hour") {
+		t.Errorf("CreateIfNoActive SQL should exclude ended notifications: %s", execSQL)
+	}
+}
+
+// TestNotificationRepository_ListChallengeEndDue_IncludesEnded は途中中断済み（ended_at 非 NULL）の通知も
+// ③ challenge_end の対象として抽出されること（SQL に OR ended_at IS NOT NULL がある）を確認する
+func TestNotificationRepository_ListChallengeEndDue_IncludesEnded(t *testing.T) {
+	var capturedSQL string
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			capturedSQL = sql
+			return []map[string]interface{}{
+				{"id": float64(8), "sprint_id": float64(5), "sent_by": float64(23), "message": "m",
+					"sent_at": "2026-09-18 01:25:46", "ended_at": "2026-09-18 01:40:00"},
+			}, nil
+		},
+	}
+	repo := NewNotificationRepository(mock)
+	notifs, err := repo.ListChallengeEndDue(context.Background())
+	if err != nil {
+		t.Fatalf("ListChallengeEndDue() failed: %v", err)
+	}
+	if !contains(capturedSQL, "ended_at IS NOT NULL") {
+		t.Errorf("expected ended_at condition in SQL: %s", capturedSQL)
+	}
+	if len(notifs) != 1 || notifs[0].EndedAt == nil {
+		t.Fatalf("expected 1 notif with EndedAt, got %+v", notifs)
+	}
+	if got := notifs[0].EndedAt.Format("2006-01-02 15:04:05"); got != "2026-09-18 01:40:00" {
+		t.Errorf("unexpected EndedAt: %s", got)
+	}
+}
+
+// TestNotificationRepository_ScanNotification_EndedAtNull は ended_at が NULL/欠落のとき EndedAt が nil のままになることを確認する
+func TestNotificationRepository_ScanNotification_EndedAtNull(t *testing.T) {
+	for name, row := range map[string]map[string]interface{}{
+		"nil":     {"id": float64(1), "sprint_id": float64(1), "sent_by": float64(1), "sent_at": "2026-09-18T01:25:46Z", "ended_at": nil},
+		"missing": {"id": float64(1), "sprint_id": float64(1), "sent_by": float64(1), "sent_at": "2026-09-18T01:25:46Z"},
+	} {
+		n, err := scanNotification(row)
+		if err != nil {
+			t.Fatalf("[%s] scanNotification() failed: %v", name, err)
+		}
+		if n.EndedAt != nil {
+			t.Errorf("[%s] expected EndedAt nil, got %v", name, n.EndedAt)
+		}
+	}
+}
+
+// TestNotificationRepository_GetActiveByGroup はグループ単位（sprints JOIN）で進行中の通知を1件返すことを確認する
+func TestNotificationRepository_GetActiveByGroup(t *testing.T) {
+	var capturedSQL string
+	var capturedParams []interface{}
+	mock := &mockD1Client{
+		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			capturedSQL = sql
+			capturedParams = params
+			return []map[string]interface{}{
+				{"id": float64(8), "sprint_id": float64(5), "sent_by": float64(23), "message": "m", "sent_at": "2026-09-18 01:25:46"},
+			}, nil
+		},
+	}
+	repo := NewNotificationRepository(mock)
+	n, err := repo.GetActiveByGroup(context.Background(), 12)
+	if err != nil {
+		t.Fatalf("GetActiveByGroup() failed: %v", err)
+	}
+	if n.ID != 8 || n.SprintID != 5 || n.SentBy != 23 || n.EndedAt != nil {
+		t.Errorf("unexpected notification: %+v", n)
+	}
+	for _, want := range []string{"JOIN sprints", "group_id = ?", "ended_at IS NULL", "+1 hour", "ORDER BY n.sent_at DESC", "LIMIT 1"} {
+		if !contains(capturedSQL, want) {
+			t.Errorf("expected %q in SQL: %s", want, capturedSQL)
+		}
+	}
+	if len(capturedParams) != 1 || capturedParams[0] != int64(12) {
+		t.Errorf("expected params [12], got %v", capturedParams)
+	}
+}
+
+// TestNotificationRepository_GetActiveByGroup_None は進行中が無ければ ErrNotFound を返すことを確認する
+func TestNotificationRepository_GetActiveByGroup_None(t *testing.T) {
+	for name, mock := range map[string]*mockD1Client{
+		"d1 not found": {queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			return nil, d1.ErrNotFound
+		}},
+		"empty rows": {queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{}, nil
+		}},
+	} {
+		repo := NewNotificationRepository(mock)
+		_, err := repo.GetActiveByGroup(context.Background(), 12)
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("[%s] expected ErrNotFound, got %v", name, err)
+		}
+	}
+}
+
+// TestNotificationRepository_EndIfActive は条件付き UPDATE の結果（更新行数）を bool に変換することを確認する
+func TestNotificationRepository_EndIfActive(t *testing.T) {
+	for name, tc := range map[string]struct {
+		rows int64
+		want bool
+	}{
+		"ended":      {rows: 1, want: true},
+		"not active": {rows: 0, want: false},
+	} {
+		var capturedSQL string
+		var capturedParams []interface{}
+		mock := &mockD1Client{
+			execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
+				capturedSQL = sql
+				capturedParams = params
+				return tc.rows, nil
+			},
+		}
+		repo := NewNotificationRepository(mock)
+		got, err := repo.EndIfActive(context.Background(), 8)
+		if err != nil {
+			t.Fatalf("[%s] EndIfActive() failed: %v", name, err)
+		}
+		if got != tc.want {
+			t.Errorf("[%s] expected %v, got %v", name, tc.want, got)
+		}
+		for _, want := range []string{"UPDATE notifications", "SET ended_at = datetime('now')", "ended_at IS NULL", "+1 hour"} {
+			if !contains(capturedSQL, want) {
+				t.Errorf("[%s] expected %q in SQL: %s", name, want, capturedSQL)
+			}
+		}
+		if len(capturedParams) != 1 || capturedParams[0] != int64(8) {
+			t.Errorf("[%s] expected params [8], got %v", name, capturedParams)
+		}
+	}
+}

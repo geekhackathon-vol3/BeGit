@@ -2,11 +2,14 @@ package handler
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/service"
 )
 
@@ -37,6 +40,38 @@ type GroupListResponse struct {
 type GroupDetailJSON struct {
 	GroupJSON
 	Members []GroupMemberJSON `json:"members"`
+	// ActiveChallenge は進行中の BeGit Time チャレンジ。無ければ省略（GET /groups/:id のみ。一覧では返さない）
+	ActiveChallenge *ActiveChallengeJSON `json:"active_challenge,omitempty"`
+}
+
+// ActiveChallengeJSON は進行中の BeGit Time チャレンジ（GET /groups/:id の active_challenge）
+type ActiveChallengeJSON struct {
+	NotificationID int64                     `json:"notification_id"`
+	SprintID       int64                     `json:"sprint_id"`
+	SentBy         ActiveChallengeIssuerJSON `json:"sent_by"`
+	SentAt         string                    `json:"sent_at" example:"2026-09-18T01:25:46Z"`
+	// EndsAt は締め切り（sent_at + 1h）。残り時間の表示に使う
+	EndsAt string `json:"ends_at" example:"2026-09-18T02:25:46Z"`
+	// CanEnd は要求ユーザーが発行者で、途中中断（POST /groups/:id/notifications/:nid/end）できるか
+	CanEnd bool `json:"can_end"`
+	// MyPost は要求ユーザー自身のこの通知への投稿。無ければ省略。is_draft=true なら投稿作成（カメラ）へ誘導できる
+	MyPost *ActiveChallengePostJSON `json:"my_post,omitempty"`
+}
+
+// ActiveChallengeIssuerJSON は進行中チャレンジの発行者
+type ActiveChallengeIssuerJSON struct {
+	UserID int64 `json:"user_id"`
+	// Login は発行者がグループを離脱済みの場合は空文字
+	Login     string `json:"login"`
+	AvatarURL string `json:"avatar_url"`
+}
+
+// ActiveChallengePostJSON は進行中チャレンジに対する要求ユーザー自身の投稿
+type ActiveChallengePostJSON struct {
+	PostID  int64 `json:"post_id"`
+	IsDraft bool  `json:"is_draft"`
+	// Status は "on_time" | "late" | "missed"。未設定なら省略
+	Status *string `json:"status,omitempty" example:"on_time"`
 }
 
 // GroupMemberJSON はグループメンバーの JSON 型
@@ -55,11 +90,13 @@ type MemberListResponse struct {
 // GroupHandler はグループ（リポジトリ）エンドポイントのハンドラ
 type GroupHandler struct {
 	groupService service.GroupService
+	// notificationService は GET /groups/:id の active_challenge 取得に使う（nil 可: その場合は省略）
+	notificationService service.NotificationService
 }
 
 // NewGroupHandler は GroupHandler を作成する
-func NewGroupHandler(groupService service.GroupService) *GroupHandler {
-	return &GroupHandler{groupService: groupService}
+func NewGroupHandler(groupService service.GroupService, notificationService service.NotificationService) *GroupHandler {
+	return &GroupHandler{groupService: groupService, notificationService: notificationService}
 }
 
 // List は参加グループ一覧を返す。
@@ -251,7 +288,50 @@ func (h *GroupHandler) Get(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, toGroupDetailJSON(*detail))
+	resp := toGroupDetailJSON(*detail)
+
+	// 進行中の BeGit Time チャレンジ（ベストエフォート: 取得失敗はログのみで、グループ詳細は返す）
+	if h.notificationService != nil {
+		active, err := h.notificationService.GetActiveChallenge(c.Request.Context(), groupID, userID)
+		if err != nil {
+			log.Printf("groups: GetActiveChallenge failed for group %d: %v", groupID, err)
+		} else if active != nil {
+			resp.ActiveChallenge = toActiveChallengeJSON(active, detail.Members, userID)
+		}
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// toActiveChallengeJSON は進行中チャレンジをレスポンス型へ変換する。
+// 発行者の login / avatar は既に取得済みのメンバー一覧から引く（離脱済みなら空文字）。
+func toActiveChallengeJSON(active *service.ActiveChallenge, members []model.GroupMember, userID int64) *ActiveChallengeJSON {
+	notif := active.Notification
+	issuer := ActiveChallengeIssuerJSON{UserID: notif.SentBy}
+	for _, m := range members {
+		if m.UserID == notif.SentBy {
+			issuer.Login = m.Login
+			issuer.AvatarURL = m.AvatarURL
+			break
+		}
+	}
+
+	out := &ActiveChallengeJSON{
+		NotificationID: notif.ID,
+		SprintID:       notif.SprintID,
+		SentBy:         issuer,
+		SentAt:         notif.SentAt.UTC().Format(time.RFC3339),
+		EndsAt:         active.EndsAt.UTC().Format(time.RFC3339),
+		CanEnd:         notif.SentBy == userID,
+	}
+	if active.MyPost != nil {
+		out.MyPost = &ActiveChallengePostJSON{
+			PostID:  active.MyPost.ID,
+			IsDraft: active.MyPost.IsDraft,
+			Status:  active.MyPost.Status,
+		}
+	}
+	return out
 }
 
 func toGroupDetailJSON(detail service.GroupDetail) GroupDetailJSON {

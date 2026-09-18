@@ -56,9 +56,52 @@ extension Components.Schemas.Handler_GroupDetailJSON {
             ownerAvatarURL: avatarURL,
             memberCount: repositoryMembers.count,
             members: repositoryMembers,
-            isReadOnly: readOnly ?? false
+            isReadOnly: readOnly ?? false,
+            activeChallenge: activeChallenge?.toActiveChallenge()
         )
     }
+}
+
+extension Components.Schemas.Handler_ActiveChallengeJSON {
+    //  active_challenge → ActiveChallenge。必須の時刻が読めない場合は nil（進行中なし扱い）
+    func toActiveChallenge() -> ActiveChallenge? {
+        guard let notificationId,
+              let sentAt = sentAt.flatMap(parseBackendDate),
+              let endsAt = endsAt.flatMap(parseBackendDate) else {
+            return nil
+        }
+        return ActiveChallenge(
+            notificationID: Int64(notificationId),
+            sprintID: sprintId.map(Int64.init) ?? 0,
+            issuer: ActiveChallenge.Issuer(
+                userID: sentBy?.userId.map(Int64.init) ?? 0,
+                login: sentBy?.login ?? "",
+                avatarURL: sentBy?.avatarUrl.flatMap { URL(string: $0) }
+            ),
+            sentAt: sentAt,
+            endsAt: endsAt,
+            canEnd: canEnd ?? false,
+            myPost: myPost.flatMap { post in
+                post.postId.map { postID in
+                    ActiveChallenge.MyPost(
+                        postID: Int64(postID),
+                        isDraft: post.isDraft ?? false,
+                        status: post.status
+                    )
+                }
+            }
+        )
+    }
+}
+
+//  バックエンドの RFC3339（小数秒あり／なし）を Date にする
+private func parseBackendDate(_ value: String) -> Date? {
+    if let date = sharedISO8601DateFormatter.date(from: value) {
+        return date
+    }
+    let plain = ISO8601DateFormatter()
+    plain.formatOptions = [.withInternetDateTime]
+    return plain.date(from: value)
 }
 
 private func ownerAvatarURL(from repoFullName: String) -> URL? {
