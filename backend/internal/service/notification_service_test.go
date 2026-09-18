@@ -67,15 +67,17 @@ func (m *mockSprintRepository) ListActive(ctx context.Context) ([]model.Sprint, 
 type mockNotificationRepository struct {
 	createFunc                  func(ctx context.Context, notif *model.Notification) (*model.Notification, error)
 	getByIDFunc                 func(ctx context.Context, notifID int64) (*model.Notification, error)
+	getActiveInSprintFunc       func(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error)
+	stopFunc                    func(ctx context.Context, notifID, userID int64) error
 	getLatestInSprintBeforeFunc func(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
 	hasActiveInSprintFunc       func(ctx context.Context, sprintID int64) (bool, error)
 	createIfNoActiveFunc        func(ctx context.Context, notif *model.Notification) (*model.Notification, error)
 	// createIfNoActiveAllowMultiple は CreateIfNoActive に渡された allowMultiplePerSprint の記録
 	createIfNoActiveAllowMultiple []bool
-	listChallengeEndDueFunc     func(ctx context.Context) ([]model.Notification, error)
-	listBySprintIDFunc          func(ctx context.Context, sprintID int64) ([]model.Notification, error)
-	getActiveByGroupFunc        func(ctx context.Context, groupID int64) (*model.Notification, error)
-	endIfActiveFunc             func(ctx context.Context, notifID int64) (bool, error)
+	listChallengeEndDueFunc       func(ctx context.Context) ([]model.Notification, error)
+	listBySprintIDFunc            func(ctx context.Context, sprintID int64) ([]model.Notification, error)
+	getActiveByGroupFunc          func(ctx context.Context, groupID int64) (*model.Notification, error)
+	endIfActiveFunc               func(ctx context.Context, notifID int64) (bool, error)
 }
 
 func (m *mockNotificationRepository) GetActiveByGroup(ctx context.Context, groupID int64) (*model.Notification, error) {
@@ -122,6 +124,13 @@ func (m *mockNotificationRepository) GetByID(ctx context.Context, notifID int64)
 	return nil, repository.ErrNotFound
 }
 
+func (m *mockNotificationRepository) GetActiveInSprint(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error) {
+	if m.getActiveInSprintFunc != nil {
+		return m.getActiveInSprintFunc(ctx, sprintID, now)
+	}
+	return nil, repository.ErrNotFound
+}
+
 func (m *mockNotificationRepository) GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
 	if m.getLatestInSprintBeforeFunc != nil {
 		return m.getLatestInSprintBeforeFunc(ctx, sprintID, before)
@@ -144,6 +153,13 @@ func (m *mockNotificationRepository) CreateIfNoActive(ctx context.Context, notif
 	notif.ID = 1
 	notif.SentAt = time.Now()
 	return notif, nil
+}
+
+func (m *mockNotificationRepository) Stop(ctx context.Context, notifID, userID int64) error {
+	if m.stopFunc != nil {
+		return m.stopFunc(ctx, notifID, userID)
+	}
+	return nil
 }
 
 // mockPostRepository はテスト用の投稿リポジトリモック
@@ -308,6 +324,27 @@ func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	_, err := svc.SendNotification(context.Background(), 1, 2)
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict, got %v", err)
+	}
+}
+
+func TestNotificationService_GetActiveNotification(t *testing.T) {
+	sentAt := time.Now().UTC().Add(-10 * time.Minute)
+	notifRepo := &mockNotificationRepository{
+		getActiveInSprintFunc: func(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error) {
+			if sprintID != 1 {
+				t.Fatalf("expected sprint 1, got %d", sprintID)
+			}
+			return &model.Notification{ID: 12, SprintID: sprintID, SentBy: 7, SentAt: sentAt}, nil
+		},
+	}
+	svc := NewNotificationService(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil)
+
+	active, err := svc.GetActiveNotification(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("GetActiveNotification() failed: %v", err)
+	}
+	if active == nil || active.NotificationID != 12 || active.SentBy != 7 || !active.ExpiresAt.Equal(sentAt.Add(challengeWindow)) {
+		t.Fatalf("unexpected active notification: %+v", active)
 	}
 }
 

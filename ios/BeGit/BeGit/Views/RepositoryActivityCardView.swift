@@ -5,7 +5,21 @@ import SwiftUI
 
 struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
-    var onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
+    let currentUserLogin: String?
+    let onDeleteRequested: ((RepositoryActivity) -> Void)?
+    let onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)?
+
+    init(
+        activities: [RepositoryActivity],
+        currentUserLogin: String? = nil,
+        onDeleteRequested: ((RepositoryActivity) -> Void)? = nil,
+        onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
+    ) {
+        self.activities = activities
+        self.currentUserLogin = currentUserLogin
+        self.onDeleteRequested = onDeleteRequested
+        self.onReactionTapped = onReactionTapped
+    }
 
     private static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -23,6 +37,10 @@ struct RepositoryActivityTimelineView: View {
 
                 RepositoryActivityCardView(
                     activity: activity,
+                    canDelete: canDelete(activity),
+                    onDelete: {
+                        onDeleteRequested?(activity)
+                    },
                     onReactionTapped: onReactionTapped.map { action in
                         { type in try await action(activity.id, type) }
                     }
@@ -47,6 +65,12 @@ struct RepositoryActivityTimelineView: View {
         ) == false
     }
 
+    private func canDelete(_ activity: RepositoryActivity) -> Bool {
+        guard let currentUserLogin,
+              activity.backendPostID != nil else { return false }
+        return activity.author.login.caseInsensitiveCompare(currentUserLogin) == .orderedSame
+    }
+
     private func dateHeader(for date: Date) -> some View {
         Text(Self.dayFormatter.string(from: date))
             .appFont(.label)
@@ -60,6 +84,8 @@ struct RepositoryActivityTimelineView: View {
 
 struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity
+    let canDelete: Bool
+    let onDelete: (() -> Void)?
     var onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
 
     @State private var showReactionPicker = false
@@ -72,9 +98,13 @@ struct RepositoryActivityCardView: View {
 
     init(
         activity: RepositoryActivity,
+        canDelete: Bool = false,
+        onDelete: (() -> Void)? = nil,
         onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activity = activity
+        self.canDelete = canDelete
+        self.onDelete = onDelete
         self.onReactionTapped = onReactionTapped
         _myReaction = State(initialValue: activity.reactions.first(where: { $0.reactedByMe })?.type)
         var counts: [ActivityReactionType: Int] = [:]
@@ -252,6 +282,30 @@ struct RepositoryActivityCardView: View {
             }
 
             Spacer()
+
+            if canDelete {
+                Menu {
+                    Button(role: .destructive) {
+                        onDelete?()
+                    } label: {
+                        Label {
+                            Text("削除")
+                                .foregroundStyle(.red)
+                        } icon: {
+                            Image(systemName: "trash")
+                                .foregroundStyle(.red)
+                        }
+                        .tint(.red)
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(AppTheme.Text.high)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("投稿メニュー")
+            }
         }
     }
     // MARK: - Reaction picker

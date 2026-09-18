@@ -61,11 +61,12 @@ type Sprint struct {
 
 // Notification は BeGit Time 通知。1スプリント1ユーザー1回（設定で解除可）はサービス層で判定する
 type Notification struct {
-	ID       int64
-	SprintID int64
-	SentBy   int64
-	Message  string
-	SentAt   time.Time
+	ID        int64
+	SprintID  int64
+	SentBy    int64
+	Message   string
+	SentAt    time.Time
+	StoppedAt *time.Time
 	// EndedAt は発行者による途中中断時刻。nil = 中断なし（締め切りは SentAt + 1h）。
 	// 中断は「締め切りを今にする」扱いで、以降は進行中とみなさない。
 	EndedAt *time.Time

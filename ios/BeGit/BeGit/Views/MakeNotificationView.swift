@@ -31,6 +31,9 @@ struct MakeNotificationView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
+                        if viewModel.activeBeGitTime != nil {
+                            activeChallengeBanner
+                        }
                         makeNotificationHeader
 
                         if let activeChallengeMessage = viewModel.activeChallengeMessage {
@@ -83,6 +86,7 @@ struct MakeNotificationView: View {
         .tint(AppTheme.accent)
         .task {
             await viewModel.loadMembers(accessToken: authState.accessToken)
+            await viewModel.loadActiveBeGitTime(accessToken: authState.accessToken)
         }
         .sheet(isPresented: $isMemberSearchPresented) {
             GitHubUserSearchSheetView(
@@ -136,6 +140,34 @@ struct MakeNotificationView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("■ Team Members")
             memberListBox
+        }
+    }
+
+    // TODO: 一時確認用。アクティブなBeGit Time取得API実装後に表示条件を追加する。
+    private var activeChallengeBanner: some View {
+        let darkPurple = Color(red: 0.30, green: 0.18, blue: 0.52)
+        let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
+
+        return HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "hourglass")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(darkPurple)
+                .frame(width: 28)
+
+            (Text("BeGit Time開催中！").bold() + Text("\n13:37までみんなの投稿タイムです。"))
+                .appFont(.body)
+                .foregroundStyle(.white)
+                .lineSpacing(4)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(lightPurple)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(darkPurple)
+                .frame(width: 5)
         }
     }
 
@@ -277,7 +309,10 @@ struct MakeNotificationView: View {
 
     private func sendNotification() {
         Task {
-            guard let notification = await viewModel.sendNotification(accessToken: authState.accessToken) else { return }
+            guard let notification = await viewModel.sendNotification(
+                accessToken: authState.accessToken,
+                sentBy: authState.githubUser.map { Int64($0.id) }
+            ) else { return }
             onSend(notification)
         }
     }

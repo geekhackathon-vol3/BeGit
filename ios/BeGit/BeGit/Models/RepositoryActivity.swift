@@ -7,7 +7,7 @@ import Foundation
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
     let id: UUID                        //  activity識別子
-    let backendPostID: Int64?           //  リアクションAPIで使用する投稿ID
+    let backendPostID: Int64?           //  Backend上の投稿ID（削除・リアクションに使用）
     
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル

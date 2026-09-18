@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             RepositoryMember(login: $0, avatarURL: URL(string: "https://github.com/\($0).png"))
         }
         let backendID = (userInfo["backend_id"] as? Int64) ?? (userInfo["backend_id"] as? Int).map(Int64.init)
+        let notificationID = (userInfo["notification_id"] as? Int64) ?? (userInfo["notification_id"] as? Int).map(Int64.init)
         let repository = Repository(
             backendID: backendID,
             name: repositoryName,
@@ -103,6 +104,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         )
 
         return RepositoryNotification(
+            backendID: notificationID,
             repository: repository,
             selectedMembers: selectedMembers,
             comment: comment

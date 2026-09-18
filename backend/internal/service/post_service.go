@@ -42,6 +42,8 @@ type PostService interface {
 	GetDraft(ctx context.Context, groupID, postID, userID int64) (*model.Post, error)
 	// ConfirmPost は下書きを確定（is_draft=0）してフィード表示可能にする。べき等。
 	ConfirmPost(ctx context.Context, req ConfirmPostRequest, groupID, postID, userID int64) (*model.Post, error)
+	// DeletePost は本人の投稿を削除する。GitHub上のデータは変更しない。
+	DeletePost(ctx context.Context, groupID, postID, userID int64) error
 }
 
 // postService は PostService インターフェースの実装
@@ -52,6 +54,7 @@ type postService struct {
 	groupRepo    repository.GroupRepository
 	photoRepo    repository.PhotoRepository
 	r2Client     r2.Client
+	notifRepo    repository.NotificationRepository
 }
 
 // NewPostService は PostService を作成する。
@@ -63,7 +66,12 @@ func NewPostService(
 	groupRepo repository.GroupRepository,
 	photoRepo repository.PhotoRepository,
 	r2Client r2.Client,
+	notifRepos ...repository.NotificationRepository,
 ) PostService {
+	var notifRepo repository.NotificationRepository
+	if len(notifRepos) > 0 {
+		notifRepo = notifRepos[0]
+	}
 	return &postService{
 		githubClient: githubClient,
 		sprintRepo:   sprintRepo,
@@ -71,6 +79,7 @@ func NewPostService(
 		groupRepo:    groupRepo,
 		photoRepo:    photoRepo,
 		r2Client:     r2Client,
+		notifRepo:    notifRepo,
 	}
 }
 
@@ -95,6 +104,11 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	}
 	if contentSource == "manual" && (req.Body == nil || strings.TrimSpace(*req.Body) == "") {
 		return nil, fmt.Errorf("%w: comment body is required for manual posts", ErrValidation)
+	}
+	if req.NotificationID != nil && s.notifRepo != nil {
+		if err := s.validateNotificationPost(ctx, groupID, *req.NotificationID); err != nil {
+			return nil, err
+		}
 	}
 
 	repoFullName := req.RepoFullName
@@ -172,6 +186,28 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	return created, nil
 }
 
+// validateNotificationPost は停止・期限切れのBeGit Timeへの新規投稿を拒否する。
+func (s *postService) validateNotificationPost(ctx context.Context, groupID, notificationID int64) error {
+	notif, err := s.notifRepo.GetByID(ctx, notificationID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return fmt.Errorf("%w: notification not found", ErrValidation)
+		}
+		return fmt.Errorf("post_service: validate notification failed: %w", err)
+	}
+	sprint, err := s.sprintRepo.GetByID(ctx, notif.SprintID)
+	if err != nil {
+		return fmt.Errorf("post_service: validate notification sprint failed: %w", err)
+	}
+	if sprint.GroupID != groupID {
+		return fmt.Errorf("%w: notification does not belong to group", ErrValidation)
+	}
+	if notif.StoppedAt != nil || !time.Now().UTC().Before(notif.SentAt.Add(challengeWindow)) {
+		return fmt.Errorf("%w: notification is no longer accepting posts", ErrConflict)
+	}
+	return nil
+}
+
 // GetDraft は下書き投稿を取得する（② プレフィル元）。
 // 別グループ → ErrNotFound、本人以外 → ErrForbidden、draft でない → ErrNotFound。
 func (s *postService) GetDraft(ctx context.Context, groupID, postID, userID int64) (*model.Post, error) {
@@ -234,6 +270,49 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 		return nil, fmt.Errorf("post_service: ConfirmPost re-fetch failed: %w", err)
 	}
 	return confirmed, nil
+}
+
+// DeletePost は本人の投稿を削除する。GitHub上のcommit/PRは削除しない。
+func (s *postService) DeletePost(ctx context.Context, groupID, postID, userID int64) error {
+	post, err := s.postRepo.GetByID(ctx, postID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("post_service: DeletePost lookup failed: %w", err)
+	}
+	if post.GroupID != groupID {
+		return ErrNotFound
+	}
+	if post.UserID != userID {
+		return ErrForbidden
+	}
+
+	// R2上の写真をDBレコードより先に削除する。失敗時は投稿を残して再試行可能にする。
+	if s.photoRepo != nil {
+		photos, err := s.photoRepo.ListByPostID(ctx, postID)
+		if err != nil {
+			return fmt.Errorf("post_service: DeletePost list photos failed: %w", err)
+		}
+		if s.r2Client != nil {
+			for _, photo := range photos {
+				if err := s.r2Client.DeleteObject(ctx, photo.R2Key); err != nil {
+					return fmt.Errorf("%w: failed to delete photo", ErrExternalAPI)
+				}
+			}
+		}
+	}
+
+	deleter, ok := s.postRepo.(interface {
+		Delete(context.Context, int64) error
+	})
+	if !ok {
+		return fmt.Errorf("post_service: DeletePost is not supported by repository")
+	}
+	if err := deleter.Delete(ctx, postID); err != nil {
+		return fmt.Errorf("post_service: DeletePost failed: %w", err)
+	}
+	return nil
 }
 
 // ListPosts はグループのフィードを取得し、リクエストユーザーの投稿状況によってぼかし制御を適用する

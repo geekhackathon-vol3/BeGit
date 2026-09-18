@@ -377,7 +377,8 @@ struct RepositoryListView: View {
                     repositoryID: backendID,
                     repoFullName: notification.repository.name,
                     githubLogin: githubLogin,
-                    accessToken: accessToken
+                    accessToken: accessToken,
+                    notificationID: notification.backendID
                 ) { activity in
                     // 投稿完了後 → Result画面へ（デモ時は撮影activityを保持）
                     justPostedActivity = activity

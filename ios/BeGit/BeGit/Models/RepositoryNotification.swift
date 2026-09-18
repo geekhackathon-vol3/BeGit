@@ -6,6 +6,7 @@ import Foundation
 //  Repository通知情報
 struct RepositoryNotification: Identifiable, Equatable, Hashable, Sendable {
     let id: UUID                                //  通知識別子
+    let backendID: Int64?                       //  Backend通知ID
     let repository: Repository                  //  対象Repository
     let selectedMembers: [RepositoryMember]     //  通知対象member一覧
     let comment: String                         //  通知コメント
@@ -13,16 +14,17 @@ struct RepositoryNotification: Identifiable, Equatable, Hashable, Sendable {
 
     init(
         id: UUID = UUID(),
+        backendID: Int64? = nil,
         repository: Repository,
         selectedMembers: [RepositoryMember],
         comment: String,
         createdAt: Date = Date()
     ) {
         self.id = id
+        self.backendID = backendID
         self.repository = repository
         self.selectedMembers = selectedMembers
         self.comment = comment
         self.createdAt = createdAt
     }
 }
-

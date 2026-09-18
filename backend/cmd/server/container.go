@@ -111,7 +111,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 		cfg.BeGitTimeAllowMultiplePerSprint,
 	)
 
-	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client)
+	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client, notifRepo)
 
 	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo)
 
@@ -240,10 +240,13 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
 	r.POST("/groups/:id/sync-members", bearerAuth, groupMember, groupHandler.SyncMembers)
 	r.POST("/groups/:id/notifications", bearerAuth, groupMember, notifHandler.Send)
+	r.GET("/groups/:id/notifications/active", bearerAuth, groupMember, notifHandler.GetActive)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
+	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupMember, notifHandler.Stop)
 	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupMember, notifHandler.End)
 	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.DELETE("/groups/:id/posts/:postId", bearerAuth, groupMember, postHandler.Delete)
 	r.GET("/groups/:id/posts/:postId/draft", bearerAuth, groupMember, postHandler.GetDraft)
 	r.POST("/groups/:id/posts/:postId/confirm", bearerAuth, groupMember, postHandler.Confirm)
 	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupMember, photoHandler.Upload)

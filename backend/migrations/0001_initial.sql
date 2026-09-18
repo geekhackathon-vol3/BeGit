@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   sent_by   INTEGER NOT NULL REFERENCES users(id),
   message   TEXT    NOT NULL DEFAULT '今なに作ってる？',
   sent_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+  stopped_at TEXT,
   UNIQUE(sprint_id, sent_by)
 );
 

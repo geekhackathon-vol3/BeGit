@@ -16,10 +16,11 @@ import (
 
 // mockNotificationService はテスト用の NotificationService モック
 type mockNotificationService struct {
-	sendFunc      func(ctx context.Context, groupID, userID int64) (*model.Notification, error)
-	getStatusFunc func(ctx context.Context, notifID, groupID int64) (*service.NotificationStatus, error)
-	getActiveFunc func(ctx context.Context, groupID, userID int64) (*service.ActiveChallenge, error)
-	endFunc       func(ctx context.Context, groupID, notifID, userID int64) (*model.Notification, error)
+	sendFunc              func(ctx context.Context, groupID, userID int64) (*model.Notification, error)
+	getActiveNotification func(ctx context.Context, groupID int64) (*service.ActiveNotification, error)
+	getStatusFunc         func(ctx context.Context, notifID, groupID int64) (*service.NotificationStatus, error)
+	getActiveFunc         func(ctx context.Context, groupID, userID int64) (*service.ActiveChallenge, error)
+	endFunc               func(ctx context.Context, groupID, notifID, userID int64) (*model.Notification, error)
 }
 
 func (m *mockNotificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
@@ -27,6 +28,13 @@ func (m *mockNotificationService) SendNotification(ctx context.Context, groupID,
 		return m.sendFunc(ctx, groupID, userID)
 	}
 	return &model.Notification{ID: 1, SprintID: 1, SentBy: userID, SentAt: time.Now()}, nil
+}
+
+func (m *mockNotificationService) GetActiveNotification(ctx context.Context, groupID int64) (*service.ActiveNotification, error) {
+	if m.getActiveNotification != nil {
+		return m.getActiveNotification(ctx, groupID)
+	}
+	return nil, nil
 }
 
 func (m *mockNotificationService) GetNotificationStatus(ctx context.Context, notifID, groupID int64) (*service.NotificationStatus, error) {
@@ -48,6 +56,10 @@ func (m *mockNotificationService) EndChallenge(ctx context.Context, groupID, not
 		return m.endFunc(ctx, groupID, notifID, userID)
 	}
 	return nil, service.ErrNotFound
+}
+
+func (m *mockNotificationService) StopNotification(ctx context.Context, groupID, notifID, userID int64) error {
+	return nil
 }
 
 // newNotificationRouter は userID を注入した上で通知エンドポイントを登録する

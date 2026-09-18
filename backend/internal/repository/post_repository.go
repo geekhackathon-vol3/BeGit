@@ -283,6 +283,22 @@ func (r *postRepository) UpdateBody(ctx context.Context, postID int64, body stri
 	return nil
 }
 
+// Delete は投稿と、投稿に紐づくコメント・リアクション・写真レコードを削除する。
+// 写真ファイル本体（R2）はサービス層で先に削除する。
+func (r *postRepository) Delete(ctx context.Context, postID int64) error {
+	for _, query := range []string{
+		`DELETE FROM comments WHERE post_id = ?`,
+		`DELETE FROM reactions WHERE post_id = ?`,
+		`DELETE FROM photos WHERE post_id = ?`,
+		`DELETE FROM posts WHERE id = ?`,
+	} {
+		if _, err := r.db.Exec(ctx, query, []interface{}{postID}); err != nil {
+			return fmt.Errorf("post_repository: Delete failed: %w", err)
+		}
+	}
+	return nil
+}
+
 // GetByUserAndNotification はユーザーと通知 ID で投稿を取得する
 func (r *postRepository) GetByUserAndNotification(ctx context.Context, userID, notifID int64) (*model.Post, error) {
 	rows, err := r.db.Query(ctx,

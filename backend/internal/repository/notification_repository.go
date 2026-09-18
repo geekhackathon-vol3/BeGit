@@ -14,6 +14,10 @@ import (
 type NotificationRepository interface {
 	Create(ctx context.Context, notif *model.Notification) (*model.Notification, error)
 	GetByID(ctx context.Context, notifID int64) (*model.Notification, error)
+	// GetActiveInSprint は指定スプリントで現在進行中の最新通知を返す。
+	GetActiveInSprint(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error)
+	// Stop は通知発行者本人の通知を停止する。
+	Stop(ctx context.Context, notifID, userID int64) error
 	// GetLatestInSprintBefore は同一スプリント内・指定時刻以前(sent_at <= before)で最新の通知を返す。
 	// ② Nice Work! の anchor 特定に使用する。該当が無ければ ErrNotFound。
 	GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error)
@@ -79,6 +83,15 @@ func scanNotification(row map[string]interface{}) (*model.Notification, error) {
 		}
 		n.SentAt = t
 	}
+	if v, ok := row["stopped_at"].(string); ok && v != "" {
+		t, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			t, err = time.Parse("2006-01-02 15:04:05", v)
+		}
+		if err == nil {
+			n.StoppedAt = &t
+		}
+	}
 	// ended_at は NULL（未中断）が既定。非 NULL のときだけ設定する
 	if v, ok := row["ended_at"].(string); ok && v != "" {
 		t, err := parseNotificationTime(v)
@@ -111,7 +124,7 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 
 	// 作成されたレコードを取得して返す
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_by = ?
 		 ORDER BY id DESC LIMIT 1`,
@@ -127,7 +140,7 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 // GetLatestInSprintBefore は同一スプリント内・指定時刻以前で最新の通知を返す
 func (r *notificationRepository) GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_at <= datetime(?)
 		 ORDER BY sent_at DESC, id DESC
@@ -149,7 +162,8 @@ func (r *notificationRepository) HasActiveInSprint(ctx context.Context, sprintID
 	rows, err := r.db.Query(ctx,
 		`SELECT COUNT(*) as count
 		 FROM notifications
-		 WHERE sprint_id = ? AND ended_at IS NULL AND datetime(sent_at, '+1 hour') > datetime('now')`,
+		 WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
+		 AND datetime(sent_at, '+1 hour') > datetime('now')`,
 		[]interface{}{sprintID},
 	)
 	if err != nil {
@@ -177,12 +191,13 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 		message = "今、なに作ってる？"
 	}
 
-	// 「アクティブ」= 未中断（ended_at IS NULL）かつ発行から1時間以内。途中中断された通知は再発行を妨げない。
+	// 「アクティブ」= 未中断（stopped_at / ended_at がともに NULL）かつ発行から1時間以内。
 	query := `INSERT INTO notifications (sprint_id, sent_by, message)
 		 SELECT ?, ?, ?
 		 WHERE NOT EXISTS (
 		   SELECT 1 FROM notifications
-		   WHERE sprint_id = ? AND ended_at IS NULL AND datetime(sent_at, '+1 hour') > datetime('now')
+		   WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
+		     AND datetime(sent_at, '+1 hour') > datetime('now')
 		 )`
 	params := []interface{}{notif.SprintID, notif.SentBy, message, notif.SprintID}
 	if !allowMultiplePerSprint {
@@ -211,7 +226,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 
 	// Fetch the created record
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_by = ?
 		 ORDER BY id DESC LIMIT 1`,
@@ -229,9 +244,9 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 // 既に challenge_end として送信済み（notification_deliveries に記録済み）の通知は除外する。
 func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
 		 FROM notifications
-		 WHERE (datetime(sent_at, '+1 hour') <= datetime('now') OR ended_at IS NOT NULL)
+		 WHERE (datetime(sent_at, '+1 hour') <= datetime('now') OR stopped_at IS NOT NULL OR ended_at IS NOT NULL)
 		 AND NOT EXISTS (
 		   SELECT 1 FROM notification_deliveries
 		   WHERE kind = 'challenge_end' AND ref_id = notifications.id
@@ -250,7 +265,7 @@ func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]mod
 // ListBySprintID は指定スプリントの全通知を返す
 func (r *notificationRepository) ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
 		 FROM notifications WHERE sprint_id = ?`,
 		[]interface{}{sprintID},
 	)
@@ -280,10 +295,11 @@ func scanNotifications(rows []map[string]interface{}) ([]model.Notification, err
 // sprints.group_id で引くため現在のスプリントを経由しない（スプリント切替直後の取りこぼし防止）。
 func (r *notificationRepository) GetActiveByGroup(ctx context.Context, groupID int64) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.ended_at
+		`SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at
 		 FROM notifications n
 		 INNER JOIN sprints s ON s.id = n.sprint_id
-		 WHERE s.group_id = ? AND n.ended_at IS NULL AND datetime(n.sent_at, '+1 hour') > datetime('now')
+		 WHERE s.group_id = ? AND n.stopped_at IS NULL AND n.ended_at IS NULL
+		   AND datetime(n.sent_at, '+1 hour') > datetime('now')
 		 ORDER BY n.sent_at DESC, n.id DESC
 		 LIMIT 1`,
 		[]interface{}{groupID},
@@ -307,7 +323,7 @@ func (r *notificationRepository) EndIfActive(ctx context.Context, notifID int64)
 	rowsAffected, err := r.db.Exec(ctx,
 		`UPDATE notifications
 		 SET ended_at = datetime('now')
-		 WHERE id = ? AND ended_at IS NULL AND datetime(sent_at, '+1 hour') > datetime('now')`,
+		 WHERE id = ? AND stopped_at IS NULL AND ended_at IS NULL AND datetime(sent_at, '+1 hour') > datetime('now')`,
 		[]interface{}{notifID},
 	)
 	if err != nil {
@@ -319,7 +335,7 @@ func (r *notificationRepository) EndIfActive(ctx context.Context, notifID int64)
 // GetByID は notifID で通知を取得する
 func (r *notificationRepository) GetByID(ctx context.Context, notifID int64) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
 		 FROM notifications WHERE id = ? LIMIT 1`,
 		[]interface{}{notifID},
 	)
@@ -331,4 +347,40 @@ func (r *notificationRepository) GetByID(ctx context.Context, notifID int64) (*m
 	}
 
 	return scanNotification(rows[0])
+}
+
+// GetActiveInSprint は送信から1時間以内の最新通知を返す。
+func (r *notificationRepository) GetActiveInSprint(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		 FROM notifications
+		 WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
+		 AND datetime(sent_at, '+1 hour') > datetime(?)
+		 ORDER BY sent_at DESC, id DESC LIMIT 1`,
+		[]interface{}{sprintID, now.UTC().Format("2006-01-02 15:04:05")},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("notification_repository: GetActiveInSprint failed: %w", err)
+	}
+	return scanNotification(rows[0])
+}
+
+// Stop は通知発行者本人の通知を停止する。
+func (r *notificationRepository) Stop(ctx context.Context, notifID, userID int64) error {
+	rowsAffected, err := r.db.Exec(ctx,
+		`UPDATE notifications
+		 SET stopped_at = datetime('now')
+		 WHERE id = ? AND sent_by = ? AND stopped_at IS NULL AND ended_at IS NULL`,
+		[]interface{}{notifID, userID},
+	)
+	if err != nil {
+		return fmt.Errorf("notification_repository: Stop failed: %w", err)
+	}
+	if rowsAffected == 0 {
+		return ErrConstraintViolation
+	}
+	return nil
 }

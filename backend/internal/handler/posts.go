@@ -115,6 +115,10 @@ func (h *PostHandler) Create(c *gin.Context) {
 			respondError(c, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, service.ErrConflict) {
+			respondError(c, http.StatusConflict, err.Error())
+			return
+		}
 		if errors.Is(err, service.ErrExternalAPI) {
 			respondError(c, http.StatusBadGateway, "external api error")
 			return
@@ -309,4 +313,49 @@ func (h *PostHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, PostListResponse{Posts: result})
+}
+
+// Delete は投稿を削除する（本人のみ）。GitHub上のcommit/PRは削除しない。
+//
+//	@Summary		投稿削除
+//	@Tags		posts
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id		path	int	true	"グループ ID"
+//	@Param		postId	path	int	true	"投稿 ID"
+//	@Success	204
+//	@Failure	400	{object} ErrorResponse
+//	@Failure	401	{object} ErrorResponse
+//	@Failure	403	{object} ErrorResponse
+//	@Failure	404	{object} ErrorResponse
+//	@Failure	502	{object} ErrorResponse
+//	@Failure	500	{object} ErrorResponse
+//	@Router		/groups/{id}/posts/{postId} [delete]
+func (h *PostHandler) Delete(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, postID, ok := parseGroupAndPostID(c)
+	if !ok {
+		return
+	}
+
+	if err := h.postService.DeletePost(c.Request.Context(), groupID, postID, userID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			respondError(c, http.StatusForbidden, "forbidden")
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "not found")
+		case errors.Is(err, service.ErrExternalAPI):
+			respondError(c, http.StatusBadGateway, "failed to delete post photos")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }

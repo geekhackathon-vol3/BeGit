@@ -24,6 +24,9 @@ final class LocalNotificationScheduler {
         if let backendID = notification.repository.backendID {
             userInfo["backend_id"] = backendID
         }
+        if let notificationID = notification.backendID {
+            userInfo["notification_id"] = notificationID
+        }
         content.userInfo = userInfo
 
         let request = UNNotificationRequest(

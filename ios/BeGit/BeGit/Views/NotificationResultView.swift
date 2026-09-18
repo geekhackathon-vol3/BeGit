@@ -10,6 +10,13 @@ struct NotificationResultView: View {
     @EnvironmentObject private var authState: AuthState     //  アクセストークン取得用
     @State private var isShowingGallery = false
     @State private var isShowingRepoSetting = false
+    @State private var activityToDelete: RepositoryActivity?
+    @State private var isShowingDeleteConfirmation = false
+    @State private var deleteErrorMessage = ""
+    @State private var isShowingDeleteError = false
+    @State private var isShowingStopConfirmation = false
+    @State private var stopErrorMessage = ""
+    @State private var isShowingStopError = false
     let onReturnHome: () -> Void    //  通知結果画面の状態を管理するViewModel
 
     //  通知モデルからViewModelを生成
@@ -40,15 +47,37 @@ struct NotificationResultView: View {
                 VStack(spacing: 0) {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 18) {
+                            if let active = viewModel.activeBeGitTime {
+                                TimelineView(.periodic(from: .now, by: 1)) { context in
+                                    if context.date < active.expiresAt {
+                                        activeChallengeBanner(
+                                            active,
+                                            now: context.date,
+                                            canStop: isNotificationOwner(active),
+                                            onStop: { isShowingStopConfirmation = true }
+                                        )
+                                    } else {
+                                        endedChallengeBanner
+                                    }
+                                }
+                            } else if viewModel.endedBeGitTime != nil {
+                                endedChallengeBanner
+                            }
+
                             //  Result Header
                             resultHeader
 
-                            //  通知結果サマリー
-                            resultSummary
+            //  通知結果サマリー
+            resultSummary
 
                             //  Activity一覧（横幅フル）
                             RepositoryActivityTimelineView(
                                 activities: viewModel.activities,
+                                currentUserLogin: authState.githubUser?.login,
+                                onDeleteRequested: {
+                                    activityToDelete = $0
+                                    isShowingDeleteConfirmation = true
+                                },
                                 onReactionTapped: { activityID, type in
                                     try await viewModel.toggleReaction(
                                         activityID: activityID,
@@ -114,6 +143,54 @@ struct NotificationResultView: View {
         .sheet(isPresented: $isShowingRepoSetting) {
             RepoSettingView(repository: viewModel.notification.repository)
         }
+        .confirmationDialog("この投稿を削除しますか？", isPresented: $isShowingDeleteConfirmation) {
+            Button("削除する", role: .destructive) {
+                guard let activity = activityToDelete else { return }
+                activityToDelete = nil
+                Task {
+                    do {
+                        try await viewModel.deleteActivity(
+                            activity,
+                            accessToken: authState.accessToken
+                        )
+                    } catch {
+                        deleteErrorMessage = error.localizedDescription
+                        isShowingDeleteError = true
+                    }
+                }
+            }
+
+            Button("キャンセル", role: .cancel) {
+                activityToDelete = nil
+            }
+        } message: {
+            Text("写真やコメントの表示だけが削除されます。GitHub上のcommitやPRは削除されません。")
+        }
+        .alert("削除できませんでした", isPresented: $isShowingDeleteError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(deleteErrorMessage)
+        }
+        .confirmationDialog("BeGit Timeを停止しますか？", isPresented: $isShowingStopConfirmation) {
+            Button("Timeを停止", role: .destructive) {
+                Task {
+                    do {
+                        try await viewModel.stopActiveBeGitTime(accessToken: authState.accessToken)
+                    } catch {
+                        stopErrorMessage = error.localizedDescription
+                        isShowingStopError = true
+                    }
+                }
+            }
+            Button("キャンセル", role: .cancel) { }
+        } message: {
+            Text("停止すると、これ以降の投稿は受け付けません。すでに投稿された内容は残ります。")
+        }
+        .alert("BeGit Timeを停止できませんでした", isPresented: $isShowingStopError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(stopErrorMessage)
+        }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
         .task {
@@ -122,6 +199,7 @@ struct NotificationResultView: View {
                 accessToken: authState.accessToken,
                 currentUserID: authState.githubUser.map { Int64($0.id) }
             )
+            await viewModel.loadNotificationStatus(accessToken: authState.accessToken)
         }
     }
 
@@ -142,49 +220,148 @@ struct NotificationResultView: View {
         }
     }
 
+    private func activeChallengeBanner(
+        _ active: ActiveBeGitTime,
+        now: Date,
+        canStop: Bool,
+        onStop: @escaping () -> Void
+    ) -> some View {
+        let accentPurple = Color(red: 0.72, green: 0.58, blue: 0.98)
+        let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
+        let issuer = viewModel.members.first(where: {
+            $0.backendUserID == active.sentBy
+        }) ?? viewModel.members.first
+        let issuerLogin = issuer?.login ?? "メンバー"
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "hourglass")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(accentPurple)
+                    .frame(width: 24)
+
+                Text("BeGit Time")
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Text("開催中")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(accentPurple)
+
+                Spacer(minLength: 8)
+
+                Text(remainingTimeText(until: active.expiresAt, now: now))
+                    .font(.system(size: 17, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppTheme.softPink)
+                    .monospacedDigit()
+            }
+
+            HStack(spacing: 10) {
+                if let issuer = issuer {
+                    AvatarView(member: issuer, size: 38)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(issuerLogin) がスタート")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+
+                    Text("pushしたら投稿できるよ")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.68))
+                }
+            }
+
+            if canStop {
+                HStack {
+                    Spacer()
+                    Button("停止", action: onStop)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.softPink)
+                        .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(lightPurple, lineWidth: 2)
+        )
+    }
+
+    private var endedChallengeBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle")
+                .foregroundStyle(AppTheme.accent)
+            Text("BeGit Time 終了")
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+            Text("投稿された内容は残っています。")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppTheme.Text.high)
+        }
+        .foregroundStyle(AppTheme.Text.primary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func remainingTimeText(until expiry: Date, now: Date) -> String {
+        let seconds = max(0, Int(expiry.timeIntervalSince(now)))
+        return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func isNotificationOwner(_ active: ActiveBeGitTime) -> Bool {
+        guard let userID = authState.githubUser?.id else { return false }
+        return active.sentBy == Int64(userID) || (active.sentBy == 0 && active.notificationID == 0)
+    }
+
     //  通知結果サマリー
     private var resultSummary: some View {
         VStack(alignment: .leading, spacing: 14) {
-            //  通知対象member avatar一覧
-            MemberAvatarRowView(members: viewModel.members, avatarSize: 42)
-
-            //  通知コメント表示
-            if viewModel.notification.comment.isEmpty == false {
-                Text(viewModel.notification.comment)
-                    .appFont(.body)
-                    .foregroundStyle(AppTheme.softPink.opacity(0.82))
-                    .lineSpacing(4)
-            }
-
-            progressSummary
+            BeGitTimeProgressSummaryView(
+                members: viewModel.members,
+                achievedMemberLogins: achievedMemberLogins,
+                dimUnachieved: shouldDimUnachievedMembers,
+                comment: viewModel.notification.comment
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    //  達成状況とProgress bar
-    private var progressSummary: some View {
-        //  達成率Progress bar
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                //  Progress bar背景
-                Capsule()
-                    .fill(Color.white.opacity(0.12))
-
-                //  Progress bar進捗
-                Capsule()
-                    .fill(AppTheme.accent)
-                    .frame(width: proxy.size.width * viewModel.progress)
-
-                //  達成状況テキスト
-                Text(viewModel.progressText)
-                    .appFont(.body)
-                    .foregroundStyle(Color.black.opacity(0.76))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                    .frame(maxWidth: .infinity, alignment: .center)
-            }
+    private var achievedMemberLogins: Set<String> {
+        if viewModel.notificationMemberStatuses.isEmpty == false {
+            let completedIDs = Set(viewModel.notificationMemberStatuses.compactMap { status -> Int64? in
+                let normalized = status.status.lowercased().replacingOccurrences(of: " ", with: "_")
+                guard normalized == "on_time" || normalized == "late" else { return nil }
+                return status.id
+            })
+            return Set(viewModel.members.compactMap { member in
+                guard let backendUserID = member.backendUserID,
+                      completedIDs.contains(backendUserID) else { return nil }
+                return member.login
+            })
         }
-        .frame(height: 30)
+
+        let start = viewModel.activeBeGitTime?.sentAt
+            ?? viewModel.endedBeGitTime?.sentAt
+            ?? viewModel.notification.createdAt
+        let end = viewModel.activeBeGitTime?.expiresAt
+            ?? viewModel.endedBeGitTime?.expiresAt
+            ?? start.addingTimeInterval(60 * 60)
+
+        return Set(viewModel.activities.filter {
+            $0.backendPostID != nil &&
+            $0.date >= start &&
+            $0.date < end
+        }.map(\.author.login))
+    }
+
+    private var shouldDimUnachievedMembers: Bool {
+        viewModel.activeBeGitTime != nil ||
+        viewModel.endedBeGitTime != nil ||
+        viewModel.notificationMemberStatuses.isEmpty == false
     }
 
     //  下部固定エリア背景

@@ -34,6 +34,89 @@ enum BeGitAPIError: LocalizedError {
     }
 }
 
+struct ActiveBeGitTime: Sendable {
+    let notificationID: Int64
+    let sentBy: Int64
+    let sentAt: Date
+    let expiresAt: Date
+}
+
+struct NotificationMemberStatus: Sendable, Identifiable {
+    let id: Int64
+    let login: String
+    let status: String
+}
+
+// 新しいactive通知APIが未反映の環境でも、送信直後の表示を維持するための互換キャッシュ。
+enum ActiveBeGitTimeStore {
+    private static let keyPrefix = "begit.active-time"
+
+    static func save(
+        repositoryID: Int64,
+        notificationID: Int64 = 0,
+        sentBy: Int64 = 0,
+        sentAt: Date = Date(),
+        expiresAt: Date
+    ) {
+        UserDefaults.standard.set(
+            [
+                Double(notificationID),
+                Double(sentBy),
+                sentAt.timeIntervalSince1970,
+                expiresAt.timeIntervalSince1970
+            ],
+            forKey: key(for: repositoryID)
+        )
+    }
+
+    static func load(repositoryID: Int64, now: Date = Date()) -> ActiveBeGitTime? {
+        guard let values = UserDefaults.standard.array(forKey: key(for: repositoryID)) as? [Double],
+              values.count == 2 || values.count == 3 || values.count == 4 else {
+            return nil
+        }
+
+        let notificationID: Int64
+        let sentBy: Int64
+        let sentAt: Date
+        let expiresAt: Date
+        if values.count == 4 {
+            notificationID = Int64(values[0])
+            sentBy = Int64(values[1])
+            sentAt = Date(timeIntervalSince1970: values[2])
+            expiresAt = Date(timeIntervalSince1970: values[3])
+        } else if values.count == 3 {
+            notificationID = 0
+            sentBy = Int64(values[0])
+            sentAt = Date(timeIntervalSince1970: values[1])
+            expiresAt = Date(timeIntervalSince1970: values[2])
+        } else {
+            notificationID = 0
+            sentBy = 0
+            sentAt = Date(timeIntervalSince1970: values[0])
+            expiresAt = Date(timeIntervalSince1970: values[1])
+        }
+        guard expiresAt > now else {
+            remove(repositoryID: repositoryID)
+            return nil
+        }
+
+        return ActiveBeGitTime(
+            notificationID: notificationID,
+            sentBy: sentBy,
+            sentAt: sentAt,
+            expiresAt: expiresAt
+        )
+    }
+
+    static func remove(repositoryID: Int64) {
+        UserDefaults.standard.removeObject(forKey: key(for: repositoryID))
+    }
+
+    private static func key(for repositoryID: Int64) -> String {
+        "\(keyPrefix).\(repositoryID)"
+    }
+}
+
 // OpenAPI Runtime は Middleware から投げられたエラーを ClientError などで
 // ラップすることがある。画面側がラッパーの実装を意識せず、APIエラーを判定できる
 // ように、既知の BeGitAPIError を再帰的に取り出す。
@@ -121,10 +204,11 @@ protocol RepositoryAPI: Sendable {
         currentUserID: Int64?,
         accessToken: String
     ) async throws -> [ActivityReaction]
-    func sendNotification(repositoryID: Int64, accessToken: String) async throws
-    //  進行中の BeGit Time を発行者が途中終了する（POST /groups/:id/notifications/:nid/end）。
-    //  発行者以外は 403、進行中でなければ 409 が BeGitAPIError.requestFailed で返る
-    func endChallenge(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
+    func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64
+    func stopNotification(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
+    func getActiveBeGitTime(repositoryID: Int64, accessToken: String) async throws -> ActiveBeGitTime?
+    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus]
+    func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws
     func uploadPhotos(
         repositoryID: Int64,
         postID: Int64,

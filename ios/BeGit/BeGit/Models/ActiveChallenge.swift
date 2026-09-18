@@ -27,19 +27,8 @@ struct ActiveChallenge: Hashable, Sendable {
     let canEnd: Bool            //  自分が発行者で途中終了できるか
     let myPost: MyPost?
 
-    //  残り時間（秒）。締め切り到達後は 0
-    func remainingSeconds(at now: Date = Date()) -> TimeInterval {
-        max(endsAt.timeIntervalSince(now), 0)
-    }
-
     //  自分の Nice Work! 下書きがあり、アプリ内から撮影に進めるか
     var hasDraftToCapture: Bool {
         myPost?.isDraft == true
-    }
-
-    //  投稿済み（下書きではない）
-    var hasPosted: Bool {
-        guard let myPost else { return false }
-        return myPost.isDraft == false
     }
 }

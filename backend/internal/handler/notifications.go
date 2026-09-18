@@ -41,6 +41,14 @@ type NotificationStatusJSON struct {
 	Members        []MemberStatusJSON `json:"members"`
 }
 
+// ActiveNotificationJSON は進行中のBeGit Time情報。
+type ActiveNotificationJSON struct {
+	NotificationID int64  `json:"notification_id"`
+	SentBy         int64  `json:"sent_by"`
+	SentAt         string `json:"sent_at"`
+	ExpiresAt      string `json:"expires_at"`
+}
+
 // MemberStatusJSON はメンバーごとのステータス
 type MemberStatusJSON struct {
 	UserID    int64  `json:"user_id"`
@@ -152,6 +160,43 @@ func (h *NotificationHandler) End(c *gin.Context) {
 	c.JSON(http.StatusOK, toNotificationJSON(notif))
 }
 
+// GetActive は現在進行中のBeGit Timeを返す。進行中でなければ204を返す。
+//
+//	@Summary		進行中のBeGit Time取得
+//	@Tags			notifications
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path	int	true	"グループ ID"
+//	@Success		200	{object}	ActiveNotificationJSON
+//	@Success		204
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/notifications/active [get]
+func (h *NotificationHandler) GetActive(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+
+	active, err := h.notificationService.GetActiveNotification(c.Request.Context(), groupID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	if active == nil {
+		c.Status(http.StatusNoContent)
+		return
+	}
+
+	c.JSON(http.StatusOK, ActiveNotificationJSON{
+		NotificationID: active.NotificationID,
+		SentBy:         active.SentBy,
+		SentAt:         active.SentAt.UTC().Format(time.RFC3339),
+		ExpiresAt:      active.ExpiresAt.UTC().Format(time.RFC3339),
+	})
+}
+
 // GetStatus は通知の達成ステータスを返す。
 //
 //	@Summary		通知の達成ステータス（On Time / Late / Missed）
@@ -208,4 +253,54 @@ func (h *NotificationHandler) GetStatus(c *gin.Context) {
 		NotificationID: status.NotificationID,
 		Members:        members,
 	})
+}
+
+// Stop はBeGit Timeを停止する（通知発行者本人のみ）。
+//
+//	@Summary		BeGit Time停止
+//	@Tags		notifications
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id	path	int	true	"グループ ID"
+//	@Param		nid	path	int	true	"通知 ID"
+//	@Success	204
+//	@Failure	401	{object} ErrorResponse
+//	@Failure	403	{object} ErrorResponse
+//	@Failure	404	{object} ErrorResponse
+//	@Failure	409	{object} ErrorResponse
+//	@Failure	500	{object} ErrorResponse
+//	@Router		/groups/{id}/notifications/{nid}/stop [post]
+func (h *NotificationHandler) Stop(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+	notifID, err := strconv.ParseInt(c.Param("nid"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid notification id")
+		return
+	}
+
+	if err := h.notificationService.StopNotification(c.Request.Context(), groupID, notifID, userID); err != nil {
+		switch {
+		case errors.Is(err, service.ErrForbidden):
+			respondError(c, http.StatusForbidden, "only the notification owner can stop it")
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "not found")
+		case errors.Is(err, service.ErrConflict):
+			respondError(c, http.StatusConflict, "notification is already stopped or expired")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+
+	c.Status(http.StatusNoContent)
 }
