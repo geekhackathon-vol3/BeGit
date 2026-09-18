@@ -15,6 +15,8 @@ final class MakeNotificationViewModel: ObservableObject {
     @Published private(set) var isSending = false   //  通知送信中
     @Published private(set) var isLoadingMembers = false // member同期中
     @Published var errorMessage: String?            //  APIエラー表示
+    //  進行中のBeGit Time（サーバー同期時に取得）。あれば送信不可
+    @Published private(set) var activeChallenge: ActiveChallenge?
 
     private let repositoryAPI: any RepositoryAPI    // Repository関連API
 
@@ -23,6 +25,7 @@ final class MakeNotificationViewModel: ObservableObject {
         self.members = repository.members                           //  初期member一覧
         self.repositoryMemberCandidates = repository.members         //  初期Repository member候補一覧
         self.selectedMemberIDs = Set(repository.members.map(\.id))  //  初期状態では全memberを選択
+        self.activeChallenge = repository.activeChallenge
         self.repositoryAPI = repositoryAPI
     }
 
@@ -36,9 +39,23 @@ final class MakeNotificationViewModel: ObservableObject {
         members.filter { selectedMemberIDs.contains($0.id) }
     }
 
-    //  通知送信可能か
+    //  通知送信可能か（BeGit Time 進行中は 409 になるので送らせない）
     var canSend: Bool {
-        selectedMembers.isEmpty == false && isSending == false
+        selectedMembers.isEmpty == false && isSending == false && activeChallenge == nil
+    }
+
+    //  進行中のBeGit Timeの説明文（送信不可の理由）
+    var activeChallengeMessage: String? {
+        guard let activeChallenge else { return nil }
+        let issuer = activeChallenge.issuer.login.isEmpty ? "メンバー" : activeChallenge.issuer.login
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "HH:mm"
+        let endsAt = formatter.string(from: activeChallenge.endsAt)
+        if activeChallenge.canEnd {
+            return "あなたが発行したBeGit Timeが進行中です（\(endsAt) まで）。Dashboardから終了すると、すぐに再発行できます。"
+        }
+        return "\(issuer) が発行したBeGit Timeが進行中です（\(endsAt) まで）。終了後に発行できます。"
     }
     // MARK: - Actions
     //  member選択状態切り替え
@@ -99,6 +116,7 @@ final class MakeNotificationViewModel: ObservableObject {
             members = syncedRepository.members
             repositoryMemberCandidates = syncedRepository.members
             selectedMemberIDs = Set(syncedRepository.members.map(\.id))
+            activeChallenge = syncedRepository.activeChallenge
         } catch {
             members = repository.members
             repositoryMemberCandidates = repository.members

@@ -40,6 +40,26 @@ struct RepositoryDashboardView: View {
                             //  Timeline Header
                             timelineHeader
 
+                            //  進行中のBeGit Time（残り時間・発行者・撮影導線・終了ボタン）
+                            if let challenge = viewModel.activeChallenge {
+                                ActiveChallengeBannerView(
+                                    challenge: challenge,
+                                    repository: viewModel.repository,
+                                    isEnding: viewModel.isEndingChallenge,
+                                    onEnd: {
+                                        Task { await viewModel.endChallenge(accessToken: authState.accessToken) }
+                                    },
+                                    onExpire: {
+                                        Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
+                                    }
+                                )
+                                .transition(.opacity)
+                            }
+
+                            if let challengeErrorMessage = viewModel.challengeErrorMessage {
+                                statusText(challengeErrorMessage)
+                            }
+
                             if viewModel.isLoading {
                                 statusText("Loading timeline...")
                             }
@@ -60,15 +80,26 @@ struct RepositoryDashboardView: View {
                         .padding(.bottom, 104)
                     }
 
-                    //  通知作成画面へ遷移
-                    NavigationLink(value: RepositoryNavigationRoute.makeNotification(viewModel.repository)) {
-                        PrimaryCapsuleButtonLabel(
-                            title: "通知を作成する",
-                            systemImage: "bolt.badge.clock",
-                            isEnabled: true
-                        )
+                    //  通知作成画面へ遷移（BeGit Time 進行中は発行できないので無効化）
+                    Group {
+                        if viewModel.activeChallenge != nil {
+                            PrimaryCapsuleButtonLabel(
+                                title: "BeGit Time 進行中",
+                                systemImage: "hourglass",
+                                isEnabled: false
+                            )
+                            .accessibilityLabel("BeGit Time進行中のため通知を作成できません")
+                        } else {
+                            NavigationLink(value: RepositoryNavigationRoute.makeNotification(viewModel.repository)) {
+                                PrimaryCapsuleButtonLabel(
+                                    title: "通知を作成する",
+                                    systemImage: "bolt.badge.clock",
+                                    isEnabled: true
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                     .padding(.horizontal, 20)
                     .padding(.top, 14)
                     .padding(.bottom, 18)
@@ -78,6 +109,7 @@ struct RepositoryDashboardView: View {
             }
         }
         .animation(.easeInOut(duration: 0.20), value: isShowingGallery)
+        .animation(.easeInOut(duration: 0.20), value: viewModel.activeChallenge)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
@@ -121,6 +153,10 @@ struct RepositoryDashboardView: View {
         //  accessToken変更時に前のタスクを自動キャンセルしてリロード
         .task(id: authState.accessToken) {
             await viewModel.loadActivities(accessToken: authState.accessToken)
+        }
+        //  表示のたび（通知作成・撮影から戻ったときを含む）に進行中のBeGit Timeを取り直す
+        .onAppear {
+            Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
         }
     }
 

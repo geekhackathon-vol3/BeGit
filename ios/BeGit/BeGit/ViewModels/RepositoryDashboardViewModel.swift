@@ -10,16 +10,22 @@ final class RepositoryDashboardViewModel: ObservableObject {
     @Published private(set) var activities: [RepositoryActivity]    //  Timeline表示用activity一覧
     @Published private(set) var isLoading = false                   //  Timeline取得中
     @Published var errorMessage: String?                            //  APIエラー表示
+    //  進行中のBeGit Time（GET /groups/:id の active_challenge）。nil = 進行中なし
+    @Published private(set) var activeChallenge: ActiveChallenge?
+    @Published private(set) var isEndingChallenge = false           //  途中終了API呼び出し中
+    @Published var challengeErrorMessage: String?                   //  途中終了の失敗表示
 
     private let repositoryAPI: any RepositoryAPI
 
     init(
         repository: Repository,
         activities: [RepositoryActivity]? = nil,
+        activeChallenge: ActiveChallenge? = nil,
         repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
     ) {
         self.repository = repository
         self.activities = activities ?? []
+        self.activeChallenge = activeChallenge ?? repository.activeChallenge
         self.repositoryAPI = repositoryAPI
     }
 
@@ -63,6 +69,51 @@ final class RepositoryDashboardViewModel: ObservableObject {
             activities = fetched + mock
         } catch {
             activities = mock
+        }
+    }
+
+    //  進行中のBeGit Timeを取得する（画面表示・復帰・締め切り到達・終了後に呼ぶ）。
+    //  取得失敗時は前回の状態を維持する（バナーの点滅を避ける）。
+    func loadActiveChallenge(accessToken: String?) async {
+        guard let accessToken, let backendID = repository.backendID else {
+            activeChallenge = nil
+            return
+        }
+
+        do {
+            let synced = try await repositoryAPI.getRepository(id: backendID, accessToken: accessToken)
+            activeChallenge = synced.activeChallenge
+        } catch {
+            //  失敗しても既存表示を維持
+        }
+    }
+
+    //  発行者が進行中のBeGit Timeを途中終了する（締め切りを今にする）。成功後はバナーを消す。
+    func endChallenge(accessToken: String?) async {
+        guard isEndingChallenge == false,
+              let accessToken,
+              let backendID = repository.backendID,
+              let challenge = activeChallenge else { return }
+
+        isEndingChallenge = true
+        challengeErrorMessage = nil
+        defer { isEndingChallenge = false }
+
+        do {
+            try await repositoryAPI.endChallenge(
+                repositoryID: backendID,
+                notificationID: challenge.notificationID,
+                accessToken: accessToken
+            )
+            activeChallenge = nil
+        } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
+            //  既に終了済み／1時間経過済み → 最新状態に合わせる
+            await loadActiveChallenge(accessToken: accessToken)
+        } catch BeGitAPIError.requestFailed(statusCode: 403, message: _) {
+            challengeErrorMessage = "発行者だけがBeGit Timeを終了できます。"
+            await loadActiveChallenge(accessToken: accessToken)
+        } catch {
+            challengeErrorMessage = "BeGit Timeの終了に失敗しました。"
         }
     }
 }
