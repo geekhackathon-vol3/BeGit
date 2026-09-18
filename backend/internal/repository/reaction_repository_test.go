@@ -49,25 +49,34 @@ func TestReactionRepository_ListByPostID_Empty(t *testing.T) {
 	}
 }
 
-// TestReactionRepository_Add は INSERT OR IGNORE を実行することを確認する
+// TestReactionRepository_Add は同じユーザーの旧リアクションを削除してから追加することを確認する
 func TestReactionRepository_Add(t *testing.T) {
-	called := false
+	calls := 0
 	mock := &mockD1Client{
 		execFunc: func(ctx context.Context, sql string, params []interface{}) (int64, error) {
-			called = true
-			if len(params) != 3 {
-				t.Errorf("expected 3 params, got %d", len(params))
+			calls++
+			switch calls {
+			case 1:
+				if len(params) != 2 {
+					t.Errorf("expected 2 delete params, got %d", len(params))
+				}
+			case 2:
+				if len(params) != 3 {
+					t.Errorf("expected 3 insert params, got %d", len(params))
+				} else if params[2] != "fire" {
+					t.Errorf("expected fire to be inserted, got %v", params[2])
+				}
 			}
 			return 1, nil
 		},
 	}
 
 	repo := NewReactionRepository(mock)
-	if err := repo.Add(context.Background(), 10, 2, "heart"); err != nil {
+	if err := repo.Add(context.Background(), 10, 2, "fire"); err != nil {
 		t.Fatalf("Add() failed: %v", err)
 	}
-	if !called {
-		t.Error("expected Exec to be called")
+	if calls != 2 {
+		t.Errorf("expected Exec to be called twice, got %d", calls)
 	}
 }
 
