@@ -422,14 +422,6 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         try validateHTTPResponse(response, data: data)
     }
 
-    // POST /groups/:id/notifications/:nid/end : 進行中の BeGit Time を発行者が途中終了する
-    func endChallenge(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws {
-        let output = try await makeClient(accessToken: accessToken).postGroupsIdNotificationsNidEnd(
-            .init(path: .init(id: Int(repositoryID), nid: Int(notificationID)))
-        )
-        guard case .ok = output else { throw BeGitAPIError.invalidResponse }
-    }
-
     // GET /me : Bearer トークンから現在ログイン中ユーザーを取得（GitHub 直叩きの代替）
     func getCurrentUser(accessToken: String) async throws -> GitHubUser {
         let output = try await makeClient(accessToken: accessToken).getMe()

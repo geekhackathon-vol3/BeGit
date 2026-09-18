@@ -15,8 +15,6 @@ final class RepositoryDashboardViewModel: ObservableObject {
     @Published var errorMessage: String?                            //  APIエラー表示
     //  進行中のBeGit Time（GET /groups/:id の active_challenge）。nil = 進行中なし
     @Published private(set) var activeChallenge: ActiveChallenge?
-    @Published private(set) var isEndingChallenge = false           //  途中終了API呼び出し中
-    @Published var challengeErrorMessage: String?                   //  途中終了の失敗表示
 
     private let repositoryAPI: any RepositoryAPI
 
@@ -94,6 +92,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
     func refreshActiveChallenge(accessToken: String?) async {
         guard let accessToken, let repositoryID = repository.backendID else {
             activeBeGitTime = nil
+            activeChallenge = nil
             notificationMemberStatuses = []
             return
         }
@@ -129,11 +128,31 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 notificationMemberStatuses = []
             }
         }
+
+        //  GitHub活動によって作成された下書き（active_challenge.my_post）も
+        //  同じ更新タイミングで再取得する。これがないと、commit後も
+        //  「撮影して投稿」が表示されないままになる。
+        await loadActiveChallenge(accessToken: accessToken)
     }
 
     func stopActiveBeGitTime(accessToken: String?) async throws {
-        guard let repositoryID = repository.backendID,
-              let active = activeBeGitTime else {
+        guard let repositoryID = repository.backendID else {
+            throw BeGitAPIError.invalidResponse
+        }
+
+        //  active_challengeを正の状態管理元にしつつ、旧active APIの
+        //  レスポンスがまだ取れない場合も停止できるようにする。
+        let active: ActiveBeGitTime
+        if let activeBeGitTime {
+            active = activeBeGitTime
+        } else if let challenge = activeChallenge {
+            active = ActiveBeGitTime(
+                notificationID: challenge.notificationID,
+                sentBy: challenge.issuer.userID,
+                sentAt: challenge.sentAt,
+                expiresAt: challenge.endsAt
+            )
+        } else {
             throw BeGitAPIError.invalidResponse
         }
 
@@ -142,6 +161,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
         if NotificationDeliveryMode.current.usesLocalNotificationMock {
             endedBeGitTime = active
             activeBeGitTime = nil
+            activeChallenge = nil
             ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
             notificationMemberStatuses = []
             return
@@ -172,6 +192,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
 
         endedBeGitTime = serverActive
         activeBeGitTime = nil
+        activeChallenge = nil
         ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
         if let statuses = try? await repositoryAPI.getNotificationStatus(
             repositoryID: repositoryID,
@@ -292,32 +313,4 @@ final class RepositoryDashboardViewModel: ObservableObject {
         }
     }
 
-    //  発行者が進行中のBeGit Timeを途中終了する（締め切りを今にする）。成功後はバナーを消す。
-    func endChallenge(accessToken: String?) async {
-        guard isEndingChallenge == false,
-              let accessToken,
-              let backendID = repository.backendID,
-              let challenge = activeChallenge else { return }
-
-        isEndingChallenge = true
-        challengeErrorMessage = nil
-        defer { isEndingChallenge = false }
-
-        do {
-            try await repositoryAPI.endChallenge(
-                repositoryID: backendID,
-                notificationID: challenge.notificationID,
-                accessToken: accessToken
-            )
-            activeChallenge = nil
-        } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
-            //  既に終了済み／1時間経過済み → 最新状態に合わせる
-            await loadActiveChallenge(accessToken: accessToken)
-        } catch BeGitAPIError.requestFailed(statusCode: 403, message: _) {
-            challengeErrorMessage = "発行者だけがBeGit Timeを終了できます。"
-            await loadActiveChallenge(accessToken: accessToken)
-        } catch {
-            challengeErrorMessage = "BeGit Timeの終了に失敗しました。"
-        }
-    }
 }

@@ -196,13 +196,33 @@ struct RepositoryDashboardView: View {
 
     @ViewBuilder
     private var challengeStatusView: some View {
-        if let activeBeGitTime = viewModel.activeBeGitTime {
+        if let challenge = viewModel.activeChallenge {
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                if context.date < challenge.endsAt {
+                    activeChallengeCard(
+                        activeBeGitTime: ActiveBeGitTime(
+                            notificationID: challenge.notificationID,
+                            sentBy: challenge.issuer.userID,
+                            sentAt: challenge.sentAt,
+                            expiresAt: challenge.endsAt
+                        ),
+                        now: context.date,
+                        canStop: challenge.canEnd,
+                        draftPost: challenge.myPost,
+                        onStop: { isShowingStopConfirmation = true }
+                    )
+                }
+            }
+        } else if let activeBeGitTime = viewModel.activeBeGitTime {
+            //  active_challenge APIの反映待ちでも開催中表示は維持する。
+            //  下書き情報が無いため、この状態では撮影導線を表示しない。
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 if context.date < activeBeGitTime.expiresAt {
                     activeChallengeCard(
                         activeBeGitTime: activeBeGitTime,
                         now: context.date,
                         canStop: isNotificationOwner(activeBeGitTime),
+                        draftPost: nil,
                         onStop: { isShowingStopConfirmation = true }
                     )
                 }
@@ -235,14 +255,30 @@ struct RepositoryDashboardView: View {
     @ViewBuilder
     private var timelinePostButton: some View {
         Group {
-            if let activePostNotification {
-                NavigationLink(value: RepositoryNavigationRoute.camera(notification: activePostNotification)) {
+            if let challenge = viewModel.activeChallenge,
+               challenge.hasDraftToCapture,
+               let backendID = viewModel.repository.backendID,
+               let draftPost = challenge.myPost {
+                NavigationLink(
+                    value: RepositoryNavigationRoute.notificationNiceWorkDraft(
+                        groupId: Int(backendID),
+                        draftPostId: Int(draftPost.postID),
+                        status: draftPost.status
+                    )
+                ) {
                     PrimaryCapsuleButtonLabel(
                         title: "撮影して投稿",
                         systemImage: "camera.fill",
                         isEnabled: true
                     )
                 }
+            } else if viewModel.activeChallenge != nil || viewModel.activeBeGitTime != nil {
+                PrimaryCapsuleButtonLabel(
+                    title: "BeGit Time 進行中",
+                    systemImage: "hourglass",
+                    isEnabled: false
+                )
+                .accessibilityLabel("GitHubのcommitを待っています")
             } else {
                 NavigationLink(value: RepositoryNavigationRoute.makeNotification(viewModel.repository)) {
                     PrimaryCapsuleButtonLabel(
@@ -281,6 +317,7 @@ struct RepositoryDashboardView: View {
         activeBeGitTime: ActiveBeGitTime,
         now: Date,
         canStop: Bool,
+        draftPost: ActiveChallenge.MyPost?,
         onStop: @escaping () -> Void
     ) -> some View {
         let accentPurple = Color(red: 0.72, green: 0.58, blue: 0.98)
@@ -329,9 +366,27 @@ struct RepositoryDashboardView: View {
                 }
             }
 
-            if canStop {
-                HStack {
-                    Spacer()
+            HStack(spacing: 10) {
+                if draftPost?.isDraft == true {
+                    Text("Nice Work!が届きました。下のボタンから投稿できます")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppTheme.accent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if draftPost?.isDraft == false {
+                    HStack(spacing: 6) {
+                        Image(systemName: draftPost?.status == "late" ? "clock.badge.exclamationmark" : "checkmark.seal.fill")
+                        Text(draftPost?.status == "late" ? "投稿済み · Late" : "投稿済み · On Time")
+                    }
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(draftPost?.status == "late" ? AppTheme.softPink : AppTheme.accent)
+                } else {
+                    Text("GitHubにcommitすると撮影して投稿できます")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if canStop {
                     Button("停止", action: onStop)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(AppTheme.softPink)
@@ -353,16 +408,6 @@ struct RepositoryDashboardView: View {
     private func remainingTimeText(until expiry: Date, now: Date) -> String {
         let seconds = max(0, Int(expiry.timeIntervalSince(now)))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
-    }
-
-    private var activePostNotification: RepositoryNotification? {
-        guard let active = viewModel.activeBeGitTime else { return nil }
-        return RepositoryNotification(
-            backendID: active.notificationID > 0 ? active.notificationID : nil,
-            repository: viewModel.repository,
-            selectedMembers: viewModel.repository.members,
-            comment: ""
-        )
     }
 
     private func isNotificationOwner(_ active: ActiveBeGitTime) -> Bool {
@@ -390,29 +435,6 @@ struct RepositoryDashboardView: View {
         }
     }
 
-    //  Repository member表示エリア
-    private var memberStrip: some View {
-        HStack(spacing: 10) {
-            //  member avatar一覧
-            MemberAvatarRowView(
-                members: viewModel.repository.members,
-                avatarSpacing: 6,
-                achievedMemberIDs: achievedMemberIDs
-            )
-
-            //  member数表示
-            Text("\(viewModel.repository.memberCount) members")
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.softPink)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    //  Timelineにactivityがあるmember ID一覧
-    private var achievedMemberIDs: Set<UUID> {
-        Set(viewModel.activities.map(\.author.id))
-    }
-
     private var achievedMemberLogins: Set<String> {
         if viewModel.notificationMemberStatuses.isEmpty == false {
             let completedIDs = Set(viewModel.notificationMemberStatuses.compactMap { status -> Int64? in
@@ -427,7 +449,15 @@ struct RepositoryDashboardView: View {
             })
         }
 
-        guard let challenge = viewModel.activeBeGitTime ?? viewModel.endedBeGitTime else {
+        let activeWindow = viewModel.activeChallenge.map {
+            ActiveBeGitTime(
+                notificationID: $0.notificationID,
+                sentBy: $0.issuer.userID,
+                sentAt: $0.sentAt,
+                expiresAt: $0.endsAt
+            )
+        }
+        guard let challenge = activeWindow ?? viewModel.activeBeGitTime ?? viewModel.endedBeGitTime else {
             return []
         }
 
@@ -439,6 +469,7 @@ struct RepositoryDashboardView: View {
     }
 
     private var shouldDimUnachievedMembers: Bool {
+        viewModel.activeChallenge != nil ||
         viewModel.activeBeGitTime != nil ||
         viewModel.endedBeGitTime != nil ||
         viewModel.notificationMemberStatuses.isEmpty == false

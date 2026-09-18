@@ -209,8 +209,6 @@ protocol RepositoryAPI: Sendable {
     func getActiveBeGitTime(repositoryID: Int64, accessToken: String) async throws -> ActiveBeGitTime?
     func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus]
     func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws
-    // 旧チャレンジ終了APIとの互換性を維持する。
-    func endChallenge(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
     func uploadPhotos(
         repositoryID: Int64,
         postID: Int64,
