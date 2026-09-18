@@ -38,6 +38,7 @@ struct NiceWorkDraftCaptureView: View {
                         repoFullName: draft.repoFullName,
                         githubLogin: githubLogin,
                         accessToken: accessToken,
+                        initialPostType: draft.postType,
                         draftPostID: draft.id
                     ) { _ in
                         onPostCompleted()
