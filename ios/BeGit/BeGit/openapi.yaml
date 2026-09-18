@@ -207,6 +207,17 @@ components:
         user_id:
           type: integer
       type: object
+    handler.ActiveNotificationJSON:
+      properties:
+        expires_at:
+          type: string
+        notification_id:
+          type: integer
+        sent_at:
+          type: string
+        sent_by:
+          type: integer
+      type: object
     handler.NotificationJSON:
       properties:
         id:
@@ -878,6 +889,41 @@ paths:
       summary: BeGit Time 通知発行
       tags:
       - notifications
+  /groups/{id}/notifications/active:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ActiveNotificationJSON'
+          description: OK
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 進行中のBeGit Time取得
+      tags:
+      - notifications
   /groups/{id}/notifications/{nid}:
     get:
       parameters:
@@ -927,6 +973,58 @@ paths:
       security:
       - BearerAuth: []
       summary: 通知の達成ステータス（On Time / Late / Missed）
+      tags:
+      - notifications
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 通知 ID
+        in: path
+        name: nid
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: BeGit Time停止
       tags:
       - notifications
   /groups/{id}/posts:
@@ -1021,6 +1119,65 @@ paths:
       security:
       - BearerAuth: []
       summary: 投稿作成
+      tags:
+      - posts
+  /groups/{id}/posts/{postId}:
+    delete:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: 投稿削除
       tags:
       - posts
   /groups/{id}/posts/{postId}/comments:

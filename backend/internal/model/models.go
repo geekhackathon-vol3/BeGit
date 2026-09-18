@@ -61,11 +61,12 @@ type Sprint struct {
 
 // Notification は BeGit Time 通知。1スプリント1ユーザー1回（設定で解除可）はサービス層で判定する
 type Notification struct {
-	ID       int64
-	SprintID int64
-	SentBy   int64
-	Message  string
-	SentAt   time.Time
+	ID        int64
+	SprintID  int64
+	SentBy    int64
+	Message   string
+	SentAt    time.Time
+	StoppedAt *time.Time
 }
 
 // Post は投稿。notification_id でどの通知に応答したかを記録

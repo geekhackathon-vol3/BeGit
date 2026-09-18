@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -14,6 +15,14 @@ import (
 type NotificationStatus struct {
 	NotificationID int64
 	Members        []MemberStatus
+}
+
+// ActiveNotification は現在進行中のBeGit Time情報。
+type ActiveNotification struct {
+	NotificationID int64
+	SentBy         int64
+	SentAt         time.Time
+	ExpiresAt      time.Time
 }
 
 // MemberStatus はメンバーごとの投稿ステータス
@@ -27,7 +36,9 @@ type MemberStatus struct {
 // NotificationService は BeGit Time 通知サービスインターフェース
 type NotificationService interface {
 	SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error)
+	GetActiveNotification(ctx context.Context, groupID int64) (*ActiveNotification, error)
 	GetNotificationStatus(ctx context.Context, notifID, groupID int64) (*NotificationStatus, error)
+	StopNotification(ctx context.Context, groupID, notifID, userID int64) error
 }
 
 // notificationService は NotificationService インターフェースの実装
@@ -127,6 +138,68 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 	}
 
 	return notif, nil
+}
+
+// GetActiveNotification はグループの現在進行中のBeGit Timeを返す。
+func (s *notificationService) GetActiveNotification(ctx context.Context, groupID int64) (*ActiveNotification, error) {
+	sprint, err := s.sprintRepo.GetCurrentSprint(ctx, groupID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("notification_service: get current sprint failed: %w", err)
+	}
+
+	notif, err := s.notifRepo.GetActiveInSprint(ctx, sprint.ID, time.Now().UTC())
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("notification_service: get active notification failed: %w", err)
+	}
+
+	return &ActiveNotification{
+		NotificationID: notif.ID,
+		SentBy:         notif.SentBy,
+		SentAt:         notif.SentAt,
+		ExpiresAt:      notif.SentAt.Add(challengeWindow),
+	}, nil
+}
+
+// StopNotification は通知発行者本人のBeGit Timeを停止する。
+func (s *notificationService) StopNotification(ctx context.Context, groupID, notifID, userID int64) error {
+	notif, err := s.notifRepo.GetByID(ctx, notifID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("notification_service: get notification for stop failed: %w", err)
+	}
+
+	sprint, err := s.sprintRepo.GetByID(ctx, notif.SprintID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("notification_service: get sprint for stop failed: %w", err)
+	}
+	if sprint.GroupID != groupID {
+		return ErrNotFound
+	}
+	if notif.SentBy != userID {
+		return ErrForbidden
+	}
+	if notif.StoppedAt != nil || !time.Now().UTC().Before(notif.SentAt.Add(challengeWindow)) {
+		return ErrConflict
+	}
+
+	if err := s.notifRepo.Stop(ctx, notifID, userID); err != nil {
+		if errors.Is(err, repository.ErrConstraintViolation) {
+			return ErrConflict
+		}
+		return fmt.Errorf("notification_service: stop notification failed: %w", err)
+	}
+	return nil
 }
 
 // GetNotificationStatus はメンバーごとの投稿ステータス（On Time/Late/Missed）を算出する
