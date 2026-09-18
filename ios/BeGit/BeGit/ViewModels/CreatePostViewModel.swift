@@ -192,6 +192,9 @@ final class CreatePostViewModel: ObservableObject {
                 body: trimmedBody.isEmpty ? nil : trimmedBody,
                 accessToken: accessToken
             )
+            // Result画面へ遷移した直後から、この下書き投稿に対して
+            // リアクションAPIを呼べるようバックエンドの投稿IDを保持する。
+            postedActivity = makeDemoActivity(backendPostID: draftPostID)
             return
         }
 
@@ -213,7 +216,8 @@ final class CreatePostViewModel: ObservableObject {
 
         // Result画面へ戻った直後にも、選択した投稿タイプを表示する。
         // 次のフィード取得が完了すると、サーバーの正規データへ置き換わる。
-        postedActivity = makeDemoActivity()
+        // createPostが返したIDを渡し、即時表示中もリアクションAPIの対象にする。
+        postedActivity = makeDemoActivity(backendPostID: postID)
     }
 
     //  写真アップロードを失敗時に1回だけ再試行する
@@ -244,7 +248,7 @@ final class CreatePostViewModel: ObservableObject {
     }
 
     //  デモ用：撮影画像を temp ファイルに保存して即時表示できる RepositoryActivity を生成
-    private func makeDemoActivity() -> RepositoryActivity {
+    private func makeDemoActivity(backendPostID: Int64? = nil) -> RepositoryActivity {
         let tmp = FileManager.default.temporaryDirectory
         var mainURL: URL? = nil
         var frontURL: URL? = nil
@@ -260,6 +264,7 @@ final class CreatePostViewModel: ObservableObject {
         }
         let avatarURL = URL(string: "https://github.com/\(githubLogin).png")
         return RepositoryActivity(
+            backendPostID: backendPostID,
             type: selectedType,
             title: selectedGitHubActivityTitle ?? (bodyText.isEmpty ? repoFullName : bodyText),
             comment: bodyText.isEmpty ? nil : bodyText,
