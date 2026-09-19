@@ -143,5 +143,13 @@
 
 ---
 
+:bust_in_silhouette: Name:Shimamura
+
+:round_pushpin: From:shibuya
+
+:computer: What I'm building:practicelog
+
+:speech_balloon: Comment:haraheri
+
 
 //ココに追加してね
