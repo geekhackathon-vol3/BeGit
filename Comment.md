@@ -42,4 +42,15 @@
 
 ---
 
+:bust_in_silhouette: Name: Riochin
+
+:round_pushpin: From: 生まれも育ちも埼玉県！！！！！
+
+:computer: What I'm building: BeGit;のバックエンド・インフラ！！！
+
+:speech_balloon: Comment: ハッカソン大好きです！！！
+
+--- 
+
 //ココに追加してね
+
