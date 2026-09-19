@@ -62,4 +62,22 @@
 
 ---
 
+:bust_in_silhouette: Name: まがりん
+
+:round_pushpin: From: 東京
+
+:computer: What I'm building: Railsプロダクト
+
+:speech_balloon: Comment: 技育博最高〜〜〜！
+
+---
+
+:bust_in_silhouette: Name: つじい（241）
+
+:round_pushpin: From:東京
+
+:computer: What I'm building:いい感じにみんなが生き生き働けるチーム
+
+:speech_balloon: Comment:楽しく開発できるの最高〜
+
 //ココに追加してね
