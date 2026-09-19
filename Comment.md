@@ -151,5 +151,25 @@
 
 :speech_balloon: Comment:haraheri
 
+---
+
+:bust_in_silhouette: Name:o8n
+
+:round_pushpin: From:tokyo
+
+:computer: What I'm building:tokium
+
+:speech_balloon: Comment:ぎいくさい最高
+
+---
+
+:bust_in_silhouette: Name:oyu
+
+:round_pushpin: From:tokyo
+
+:computer: What I'm building:tokium
+
+:speech_balloon: Comment:giiiiiikuhaku!
+
 
 //ココに追加してね
