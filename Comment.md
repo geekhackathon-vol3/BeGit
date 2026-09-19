@@ -120,6 +120,16 @@
 
 :speech_balloon: Comment:このプロダクト最強！！
 
+---
+
+:bust_in_silhouette: Name:高嶋かほ
+
+:round_pushpin: From:DMM
+
+:computer: What I'm building:HR
+
+:speech_balloon: Comment:｀プロダクト可愛い最高！
+
 
 ---
 
