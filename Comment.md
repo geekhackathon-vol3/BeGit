@@ -90,5 +90,15 @@
 
 :speech_balloon: Comment:とても面白いアプリでした！目指せ一位！！！
 
+---
+
+:bust_in_silhouette: Name:kataoka
+
+:round_pushpin: From: tokyo
+
+:computer: What I'm building: video platform
+
+:speech_balloon: Comment:おもしろい！
+
 
 //ココに追加してね
