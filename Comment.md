@@ -100,5 +100,17 @@
 
 :speech_balloon: Comment:おもしろい！
 
+---
+
+:bust_in_silhouette: Name:kotomin
+
+:round_pushpin: From:神奈川県
+
+:computer: What I'm building:app
+
+:speech_balloon: Comment:頑張って！
+
+---
+
 
 //ココに追加してね
