@@ -80,4 +80,15 @@
 
 :speech_balloon: Comment:楽しく開発できるの最高〜
 
+---
+
+:bust_in_silhouette: Name:Shoko
+
+:round_pushpin: From:東京
+
+:computer: What I'm building:火おこしアプリ
+
+:speech_balloon: Comment:とても面白いアプリでした！目指せ一位！！！
+
+
 //ココに追加してね
