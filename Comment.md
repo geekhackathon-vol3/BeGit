@@ -52,4 +52,14 @@
 
 ---
 
+:bust_in_silhouette: Name: とーくん
+
+:round_pushpin: From: 東京
+
+:computer: What I'm building: 機械学習用のモデル
+
+:speech_balloon: Comment: アロハ参上！
+
+---
+
 //ココに追加してね
