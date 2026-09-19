@@ -171,5 +171,15 @@
 
 :speech_balloon: Comment:giiiiiikuhaku!
 
+---
+
+:bust_in_silhouette: Name:大瀧
+
+:round_pushpin: From🗼
+
+:computer: What I'm building:team
+
+:speech_balloon: Comment:enjoy agile!!
+
 
 //ココに追加してね
