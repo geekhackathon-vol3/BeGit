@@ -112,5 +112,16 @@
 
 ---
 
+:bust_in_silhouette: Name:りょうすけ
+
+:round_pushpin: From:MIXI
+
+:computer: What I'm building:HR
+
+:speech_balloon: Comment:このプロダクト最強！！
+
+
+---
+
 
 //ココに追加してね
