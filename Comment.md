@@ -130,6 +130,16 @@
 
 :speech_balloon: Comment:｀プロダクト可愛い最高！
 
+---
+
+:bust_in_silhouette: Name:takato araya 
+
+:round_pushpin: From:株式会社Relic
+
+:computer: What I'm building:HRサービス
+
+:speech_balloon: Comment:面白いサービスです！
+
 
 ---
 
