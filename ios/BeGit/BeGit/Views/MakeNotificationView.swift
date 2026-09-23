@@ -31,8 +31,13 @@ struct MakeNotificationView: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        if viewModel.activeBeGitTime != nil {
-                            activeChallengeBanner
+                        if let endDate = viewModel.activeBeGitTimeEndDate,
+                           let endTimeText = viewModel.activeBeGitTimeEndTimeText {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                if context.date < endDate {
+                                    activeChallengeBanner(endTimeText: endTimeText)
+                                }
+                            }
                         }
                         makeNotificationHeader
 
@@ -143,8 +148,7 @@ struct MakeNotificationView: View {
         }
     }
 
-    // TODO: 一時確認用。アクティブなBeGit Time取得API実装後に表示条件を追加する。
-    private var activeChallengeBanner: some View {
+    private func activeChallengeBanner(endTimeText: String) -> some View {
         let darkPurple = Color(red: 0.30, green: 0.18, blue: 0.52)
         let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
 
@@ -154,9 +158,9 @@ struct MakeNotificationView: View {
                 .foregroundStyle(darkPurple)
                 .frame(width: 28)
 
-            (Text("BeGit Time開催中！").bold() + Text("\n13:37までみんなの投稿タイムです。"))
+            (Text("BeGit Time開催中！").bold() + Text("\n\(endTimeText)までみんなの投稿タイムです。"))
                 .appFont(.body)
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
                 .lineSpacing(4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
