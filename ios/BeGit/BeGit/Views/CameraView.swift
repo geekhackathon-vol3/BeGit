@@ -70,15 +70,7 @@ struct CameraView: View {
 
                 Spacer()
 
-                // Front camera ON/OFF
-                HStack {
-                    Toggle(isOn: $camera.useFrontCamera) {
-                        Label("Front Camera", systemImage: "camera.rotate")
-                            .foregroundStyle(AppTheme.Text.primary)
-                            .appFont(.subheadline)
-                    }
-                    .tint(AppTheme.accent)
-                }
+                frontCameraToggle
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
 
@@ -96,6 +88,9 @@ struct CameraView: View {
                             .frame(width: 68, height: 68)
                     }
                 }
+                .disabled(camera.isCapturing)
+                .opacity(camera.isCapturing ? 0.55 : 1)
+                .accessibilityLabel(camera.isCapturing ? "撮影中" : "写真を撮影")
                 .padding(.bottom, 34)
             }
         }
@@ -110,6 +105,10 @@ struct CameraView: View {
             camera.stopSession()
         }
 
+        .onChange(of: camera.captureState) { _, state in
+            playFeedback(for: state)
+        }
+
         // MARK: - Show Preview
 
         .onReceive(camera.$captureCompleted) { completed in
@@ -119,7 +118,10 @@ struct CameraView: View {
 
         // MARK: - Preview Screen
 
-        .fullScreenCover(isPresented: $showPreview) {
+        .fullScreenCover(isPresented: $showPreview, onDismiss: {
+            camera.resetForRetake()
+            camera.startSession()
+        }) {
             if let mainImage = camera.capturedImage {
                 let vm = CreatePostViewModel(
                     mainImage: mainImage,
@@ -140,6 +142,42 @@ struct CameraView: View {
             } else {
                 ProgressView()
             }
+        }
+    }
+
+    private var frontCameraToggle: some View {
+        HStack {
+            Toggle(isOn: Binding(
+                get: { camera.captureOrder == .frontThenBack },
+                set: { shouldUseFrontCameraFirst in
+                    let isFrontCameraFirst = camera.captureOrder == .frontThenBack
+                    if shouldUseFrontCameraFirst != isFrontCameraFirst {
+                        camera.toggleCaptureOrder()
+                    }
+                }
+            )) {
+                Label("Front Camera", systemImage: "camera.rotate")
+                    .foregroundStyle(AppTheme.Text.primary)
+                    .appFont(.subheadline)
+            }
+            .tint(AppTheme.accent)
+            .disabled(camera.isCapturing)
+            .accessibilityHint("オンでは内カメ、オフでは外カメから撮影します")
+        }
+    }
+
+    private func playFeedback(for state: DualCaptureState) {
+        switch state {
+        case .capturingFirst, .capturingSecond:
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        case .countdown:
+            UISelectionFeedbackGenerator().selectionChanged()
+        case .completed:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .failed:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        default:
+            break
         }
     }
 
