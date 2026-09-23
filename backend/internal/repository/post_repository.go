@@ -135,11 +135,12 @@ func (r *postRepository) Create(ctx context.Context, post *model.Post) (*model.P
 }
 
 // ListByGroupID はグループのフィード一覧を投稿日時の降順で取得する。
-// draft（is_draft=1）は確定前のためフィードから除外する。
+// draft（is_draft=1）と missed（期限内に投稿されなかったことを示す管理レコード）は
+// ユーザー投稿ではないためフィードから除外する。
 func (r *postRepository) ListByGroupID(ctx context.Context, groupID int64) ([]model.Post, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
-		 FROM posts WHERE group_id = ? AND is_draft = 0 ORDER BY created_at DESC`,
+		 FROM posts WHERE group_id = ? AND is_draft = 0 AND (status IS NULL OR status != 'missed') ORDER BY created_at DESC`,
 		[]interface{}{groupID},
 	)
 	if err != nil {

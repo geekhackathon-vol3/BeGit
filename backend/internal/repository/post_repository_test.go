@@ -9,8 +9,8 @@ import (
 	"github.com/irj0927/begit/pkg/d1"
 )
 
-// TestPostRepository_ListByGroupID_ExcludesDraft はフィード一覧クエリが is_draft = 0 で絞ることを確認する
-func TestPostRepository_ListByGroupID_ExcludesDraft(t *testing.T) {
+// TestPostRepository_ListByGroupID_ExcludesNonFeedPosts はフィード一覧クエリが下書きと missed 管理レコードを除外することを確認する。
+func TestPostRepository_ListByGroupID_ExcludesNonFeedPosts(t *testing.T) {
 	var capturedSQL string
 	mock := &mockD1Client{
 		queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
@@ -25,6 +25,9 @@ func TestPostRepository_ListByGroupID_ExcludesDraft(t *testing.T) {
 	}
 	if !strings.Contains(capturedSQL, "is_draft = 0") {
 		t.Errorf("expected ListByGroupID to filter is_draft = 0, got SQL: %s", capturedSQL)
+	}
+	if !strings.Contains(capturedSQL, "status != 'missed'") {
+		t.Errorf("expected ListByGroupID to exclude missed records, got SQL: %s", capturedSQL)
 	}
 }
 

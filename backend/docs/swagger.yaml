@@ -312,10 +312,14 @@ components:
           type: integer
         id:
           type: integer
+        is_locked:
+          type: boolean
         latest_commit_message:
           type: string
         login:
           type: string
+        notification_id:
+          type: integer
         photos:
           items:
             $ref: '#/components/schemas/handler.PhotoJSON'
@@ -346,6 +350,8 @@ components:
           type: integer
         latest_commit_message:
           type: string
+        notification_id:
+          type: integer
         post_type:
           type: string
         repo_full_name:

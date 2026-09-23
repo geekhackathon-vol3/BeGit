@@ -8,6 +8,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
     let id: UUID                        //  activity識別子
     let backendPostID: Int64?           //  Backend上の投稿ID（削除・リアクションに使用）
+    let notificationID: Int64?          //  投稿が属するBeGit Time通知
+    var isLocked: Bool                  //  同じ通知回へ投稿するまで内容を隠す
     
     let type: RepositoryActivityType    //  activity種別
     let title: String                   //  activityタイトル
@@ -23,6 +25,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     init(
         id: UUID = UUID(),
         backendPostID: Int64? = nil,
+        notificationID: Int64? = nil,
+        isLocked: Bool = false,
         type: RepositoryActivityType,
         title: String,
         comment: String? = nil,
@@ -36,6 +40,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     ) {
         self.id = id
         self.backendPostID = backendPostID
+        self.notificationID = notificationID
+        self.isLocked = isLocked
         self.type = type
         self.title = title
         self.comment = comment

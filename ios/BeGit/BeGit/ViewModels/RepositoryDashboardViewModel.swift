@@ -53,10 +53,8 @@ final class RepositoryDashboardViewModel: ObservableObject {
     }
 
     func loadActivities(accessToken: String?, currentUserID: Int64? = nil) async {
-        let mock = RepositoryActivity.mockActivities(for: repository)
-
         guard let accessToken, repository.backendID != nil else {
-            activities = mock
+            activities = []
             return
         }
 
@@ -67,22 +65,33 @@ final class RepositoryDashboardViewModel: ObservableObject {
         do {
             var fetched = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
             if let repositoryID = repository.backendID {
-                for index in fetched.indices {
-                    guard let postID = fetched[index].backendPostID else { continue }
-                    if let reactions = try? await repositoryAPI.listReactions(
-                        repositoryID: repositoryID,
-                        postID: postID,
-                        currentUserID: currentUserID,
-                        accessToken: accessToken
-                    ) {
-                        fetched[index].reactions = reactions
+                await withTaskGroup(of: (Int, [ActivityReaction]?).self) { group in
+                    for index in fetched.indices {
+                        // ロック中はリアクションを操作・表示しないため、追加API取得も行わない。
+                        guard fetched[index].isLocked == false,
+                              let postID = fetched[index].backendPostID else { continue }
+                        group.addTask {
+                            let reactions = try? await self.repositoryAPI.listReactions(
+                                repositoryID: repositoryID,
+                                postID: postID,
+                                currentUserID: currentUserID,
+                                accessToken: accessToken
+                            )
+                            return (index, reactions)
+                        }
+                    }
+
+                    for await (index, reactions) in group {
+                        if let reactions {
+                            fetched[index].reactions = reactions
+                        }
                     }
                 }
             }
-            //  実投稿（新しい順）をモックの上に積み重ねる
-            activities = fetched + mock
+
+            activities = fetched
         } catch {
-            activities = mock
+            errorMessage = "投稿を取得できませんでした"
         }
 
         //  フィード取得に失敗しても、BeGit Timeの表示取得は継続する。
@@ -112,8 +121,9 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 ) {
                     notificationMemberStatuses = statuses
                 }
-            } else if let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
-                //  APIが未反映の環境でも、送信直後の有効なキャッシュで表示する。
+            } else if NotificationDeliveryMode.current.usesLocalNotificationMock,
+                      let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
+                // ローカルモック時だけ端末内のBeGit Timeを表示する。
                 activeBeGitTime = cached
             } else {
                 activeBeGitTime = nil
@@ -123,7 +133,15 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 }
             }
         } catch {
-            activeBeGitTime = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+            // 実APIモードでは、通知IDを持つ送信直後のキャッシュだけをフォールバックに使う。
+            // 旧ローカルモックの notificationID=0 を復元すると、存在しない通知の停止を
+            // 試みてしまうため除外する。
+            let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+            activeBeGitTime = cached.flatMap { cached in
+                NotificationDeliveryMode.current.usesLocalNotificationMock || cached.notificationID > 0
+                    ? cached
+                    : nil
+            }
             if activeBeGitTime == nil && endedBeGitTime == nil {
                 notificationMemberStatuses = []
             }
