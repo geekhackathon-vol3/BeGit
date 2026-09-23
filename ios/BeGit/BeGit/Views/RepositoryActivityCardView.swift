@@ -6,17 +6,23 @@ import SwiftUI
 struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
     let currentUserLogin: String?
+    let lockedPostRoute: RepositoryNavigationRoute?
+    let activeNotificationID: Int64?
     let onDeleteRequested: ((RepositoryActivity) -> Void)?
     let onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)?
 
     init(
         activities: [RepositoryActivity],
         currentUserLogin: String? = nil,
+        lockedPostRoute: RepositoryNavigationRoute? = nil,
+        activeNotificationID: Int64? = nil,
         onDeleteRequested: ((RepositoryActivity) -> Void)? = nil,
         onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activities = activities
         self.currentUserLogin = currentUserLogin
+        self.lockedPostRoute = lockedPostRoute
+        self.activeNotificationID = activeNotificationID
         self.onDeleteRequested = onDeleteRequested
         self.onReactionTapped = onReactionTapped
     }
@@ -37,6 +43,7 @@ struct RepositoryActivityTimelineView: View {
 
                 RepositoryActivityCardView(
                     activity: activity,
+                    lockedPostRoute: activity.notificationID == activeNotificationID ? lockedPostRoute : nil,
                     canDelete: canDelete(activity),
                     onDelete: {
                         onDeleteRequested?(activity)
@@ -84,6 +91,7 @@ struct RepositoryActivityTimelineView: View {
 
 struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity
+    let lockedPostRoute: RepositoryNavigationRoute?
     let canDelete: Bool
     let onDelete: (() -> Void)?
     var onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
@@ -98,11 +106,13 @@ struct RepositoryActivityCardView: View {
 
     init(
         activity: RepositoryActivity,
+        lockedPostRoute: RepositoryNavigationRoute? = nil,
         canDelete: Bool = false,
         onDelete: (() -> Void)? = nil,
         onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activity = activity
+        self.lockedPostRoute = lockedPostRoute
         self.canDelete = canDelete
         self.onDelete = onDelete
         self.onReactionTapped = onReactionTapped
@@ -179,6 +189,17 @@ struct RepositoryActivityCardView: View {
     //  「写真」と「その下の投稿テキスト」を縦に並べる。
     //  テキストは写真に重ねず、写真の明るさに左右されず読めるようにする。
     private var cardContent: some View {
+        Group {
+            if activity.isLocked {
+                lockedContent
+            } else {
+                unlockedCardContent
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var unlockedCardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
             ZStack(alignment: .bottomTrailing) {
@@ -205,7 +226,66 @@ struct RepositoryActivityCardView: View {
         .alert("リアクションの更新に失敗しました", isPresented: $showReactionError) {
             Button("OK", role: .cancel) {}
         }
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var lockedContent: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.05, green: 0.04, blue: 0.07),
+                    Color(red: 0.28, green: 0.25, blue: 0.30),
+                    Color(red: 0.26, green: 0.15, blue: 0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(Color.white.opacity(0.18))
+                .frame(width: 260, height: 260)
+                .blur(radius: 70)
+                .offset(x: -90, y: -40)
+
+            Circle()
+                .fill(activity.type.tint.opacity(0.20))
+                .frame(width: 240, height: 240)
+                .blur(radius: 78)
+                .offset(x: 105, y: 220)
+
+            VStack(spacing: 18) {
+                Image(systemName: "eye.slash.fill")
+                    .font(.system(size: 42, weight: .semibold))
+
+                Text("投稿して表示")
+                    .font(.system(size: 25, weight: .bold))
+
+                Text("あなたの進捗をシェアして\nメンバーの投稿を見てみましょう。")
+                    .font(.system(size: 16, weight: .regular))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .foregroundStyle(.white.opacity(0.88))
+
+                if let lockedPostRoute {
+                    NavigationLink(value: lockedPostRoute) {
+                        Text("進捗を投稿する")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 28)
+                            .frame(height: 50)
+                            .background(.white)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(28)
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(3/4, contentMode: .fit)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("投稿内容は非表示です。自分の進捗を投稿すると表示されます")
     }
 
     private var photoArea: some View {

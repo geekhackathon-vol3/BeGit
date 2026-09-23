@@ -17,14 +17,12 @@ enum NotificationDeliveryMode: String {
             return .remotePush
         }
 
-        //  既定：Xcode から Run する Debug ビルドはローカルモック、
-        //  TestFlight / App Store 向けの Release ビルドはサーバー経由の Push。
-        //  （Scheme の環境変数は Run 時しか効かないため、配布ビルドはここで決める）
-        #if DEBUG
-        return .localMock
-        #else
+        //  既定はDebug/ReleaseともにバックエンドのBeGit Timeを発行する。
+        //  これにより、Xcodeから動かす開発版でもnotification_id付きの投稿になり、
+        //  タイムラインの「投稿して表示」ロックを正しく解除できる。
+        //  端末内だけで試したい場合は Scheme の環境変数
+        //  BEGIT_NOTIFICATION_DELIVERY_MODE=localMock を明示的に指定する。
         return .remotePush
-        #endif
     }
 
     var usesLocalNotificationMock: Bool {

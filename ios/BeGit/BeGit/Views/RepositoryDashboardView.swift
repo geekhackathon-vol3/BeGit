@@ -136,7 +136,8 @@ struct RepositoryDashboardView: View {
                 await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
             }
         }
-        //  表示のたび（通知作成・撮影から戻ったときを含む）に進行中のBeGit Timeを取り直す
+        //  投稿一覧は上の .task だけで取得する。ここでも loadActivities を呼ぶと、
+        //  初回表示時に同じ一覧・リアクションAPIが二重実行される。
         .onAppear {
             Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
         }
@@ -236,6 +237,8 @@ struct RepositoryDashboardView: View {
         RepositoryActivityTimelineView(
             activities: viewModel.activities,
             currentUserLogin: authState.githubUser?.login,
+            lockedPostRoute: lockedPostRoute,
+            activeNotificationID: activeNotificationID,
             onDeleteRequested: {
                 activityToDelete = $0
                 isShowingDeleteConfirmation = true
@@ -250,6 +253,37 @@ struct RepositoryDashboardView: View {
             }
         )
         .padding(.horizontal, -20)
+    }
+
+    private var activeNotificationID: Int64? {
+        viewModel.activeChallenge?.notificationID ?? viewModel.activeBeGitTime?.notificationID
+    }
+
+    private var lockedPostRoute: RepositoryNavigationRoute? {
+        if let challenge = viewModel.activeChallenge {
+            if challenge.hasDraftToCapture,
+               let backendID = viewModel.repository.backendID,
+               let draftPost = challenge.myPost {
+                return .notificationNiceWorkDraft(
+                    groupId: Int(backendID),
+                    draftPostId: Int(draftPost.postID),
+                    status: draftPost.status
+                )
+            }
+
+            return cameraRoute(for: ActiveBeGitTime(
+                notificationID: challenge.notificationID,
+                sentBy: challenge.issuer.userID,
+                sentAt: challenge.sentAt,
+                expiresAt: challenge.endsAt
+            ))
+        }
+
+        if let activeBeGitTime = viewModel.activeBeGitTime {
+            return cameraRoute(for: activeBeGitTime)
+        }
+
+        return nil
     }
 
     @ViewBuilder

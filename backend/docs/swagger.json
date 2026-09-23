@@ -466,11 +466,17 @@
                     "id": {
                         "type": "integer"
                     },
+                    "is_locked": {
+                        "type": "boolean"
+                    },
                     "latest_commit_message": {
                         "type": "string"
                     },
                     "login": {
                         "type": "string"
+                    },
+                    "notification_id": {
+                        "type": "integer"
                     },
                     "photos": {
                         "items": {
@@ -516,6 +522,9 @@
                     },
                     "latest_commit_message": {
                         "type": "string"
+                    },
+                    "notification_id": {
+                        "type": "integer"
                     },
                     "post_type": {
                         "type": "string"

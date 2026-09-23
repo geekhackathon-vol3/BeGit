@@ -88,24 +88,22 @@ func TestPostService_ConfirmPost_Idempotent(t *testing.T) {
 	}
 }
 
-// TestPostService_ListPosts_Blurred はリクエストユーザーが未投稿の場合に他メンバーの sensitive フィールドが nil で返ることを確認する
+// TestPostService_ListPosts_Blurred は同じ通知回へ未投稿の場合に他メンバーの sensitive フィールドが nil で返ることを確認する
 func TestPostService_ListPosts_Blurred(t *testing.T) {
 	requestUserID := int64(1)
 	otherUserID := int64(2)
+	notificationID := int64(10)
 
 	body := "コードを書きました"
 	repo := "owner/repo"
 	msg := "Fix bug"
 
-	sprintRepo := &mockSprintRepository{}
 	postRepo := &mockPostRepository{
-		hasPostedInSprintFunc: func(ctx context.Context, userID, sprintID int64) (bool, error) {
-			return false, nil // リクエストユーザーは未投稿
-		},
 		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
 			return []model.Post{
 				{
 					ID:                  1,
+					NotificationID:      &notificationID,
 					UserID:              otherUserID,
 					GroupID:             1,
 					PostType:            "commit",
@@ -126,7 +124,7 @@ func TestPostService_ListPosts_Blurred(t *testing.T) {
 		},
 	}
 
-	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo, nil, nil)
+	svc := NewPostService(nil, nil, postRepo, groupRepo, nil, nil)
 
 	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
 	if err != nil {
@@ -152,24 +150,22 @@ func TestPostService_ListPosts_Blurred(t *testing.T) {
 	}
 }
 
-// TestPostService_ListPosts_NotBlurred はリクエストユーザーが投稿済みの場合に全フィールドが公開されることを確認する
+// TestPostService_ListPosts_NotBlurred は同じ通知回へ投稿済みの場合に全フィールドが公開されることを確認する
 func TestPostService_ListPosts_NotBlurred(t *testing.T) {
 	requestUserID := int64(1)
 	otherUserID := int64(2)
+	notificationID := int64(10)
 
 	body := "コードを書きました"
 	repo := "owner/repo"
 	msg := "Fix bug"
 
-	sprintRepo := &mockSprintRepository{}
 	postRepo := &mockPostRepository{
-		hasPostedInSprintFunc: func(ctx context.Context, userID, sprintID int64) (bool, error) {
-			return true, nil // リクエストユーザーは投稿済み
-		},
 		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
 			return []model.Post{
 				{
 					ID:                  1,
+					NotificationID:      &notificationID,
 					UserID:              otherUserID,
 					GroupID:             1,
 					PostType:            "commit",
@@ -178,6 +174,14 @@ func TestPostService_ListPosts_NotBlurred(t *testing.T) {
 					LatestCommitMessage: &msg,
 					CommitCount:         3,
 					CreatedAt:           time.Now(),
+				},
+				{
+					ID:             2,
+					NotificationID: &notificationID,
+					UserID:         requestUserID,
+					GroupID:        1,
+					PostType:       "memo",
+					CreatedAt:      time.Now(),
 				},
 			}, nil
 		},
@@ -190,7 +194,7 @@ func TestPostService_ListPosts_NotBlurred(t *testing.T) {
 		},
 	}
 
-	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo, nil, nil)
+	svc := NewPostService(nil, nil, postRepo, groupRepo, nil, nil)
 
 	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
 	if err != nil {
@@ -214,11 +218,7 @@ func TestPostService_ListPosts_OwnPost(t *testing.T) {
 	repo := "owner/repo"
 	msg := "My commit"
 
-	sprintRepo := &mockSprintRepository{}
 	postRepo := &mockPostRepository{
-		hasPostedInSprintFunc: func(ctx context.Context, userID, sprintID int64) (bool, error) {
-			return false, nil // 未投稿（だが自分の投稿は常に公開）
-		},
 		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
 			return []model.Post{
 				{
@@ -242,7 +242,7 @@ func TestPostService_ListPosts_OwnPost(t *testing.T) {
 		},
 	}
 
-	svc := NewPostService(nil, sprintRepo, postRepo, groupRepo, nil, nil)
+	svc := NewPostService(nil, nil, postRepo, groupRepo, nil, nil)
 
 	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
 	if err != nil {
@@ -255,6 +255,214 @@ func TestPostService_ListPosts_OwnPost(t *testing.T) {
 	}
 	if post.Body == nil || *post.Body != "自分のコード" {
 		t.Errorf("expected own post Body to be visible, got %v", post.Body)
+	}
+}
+
+// TestPostService_ListPosts_PreNotificationPostStaysVisible は通知に紐づかない既存投稿を再ロックしないことを確認する。
+func TestPostService_ListPosts_PreNotificationPostStaysVisible(t *testing.T) {
+	body := "以前から表示されていた投稿"
+	postRepo := &mockPostRepository{
+		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
+			return []model.Post{{
+				ID:        1,
+				UserID:    2,
+				GroupID:   groupID,
+				PostType:  "memo",
+				Body:      &body,
+				CreatedAt: time.Now(),
+			}}, nil
+		},
+	}
+
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	posts, err := svc.ListPosts(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("ListPosts() failed: %v", err)
+	}
+	if len(posts) != 1 || posts[0].Blurred {
+		t.Fatalf("notification以前の投稿は表示されるべき: %+v", posts)
+	}
+	if posts[0].Body == nil || *posts[0].Body != body {
+		t.Errorf("expected historical post body to remain visible, got %v", posts[0].Body)
+	}
+}
+
+// TestPostService_ListPosts_MissedDoesNotUnlock は missed レコードでは同じ通知回を解除しないことを確認する。
+func TestPostService_ListPosts_MissedDoesNotUnlock(t *testing.T) {
+	notificationID := int64(10)
+	status := "missed"
+	postRepo := &mockPostRepository{
+		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
+			return []model.Post{
+				{
+					ID:             1,
+					NotificationID: &notificationID,
+					UserID:         2,
+					GroupID:        groupID,
+					PostType:       "commit",
+				},
+				{
+					ID:             2,
+					NotificationID: &notificationID,
+					UserID:         1,
+					GroupID:        groupID,
+					PostType:       "memo",
+					Status:         &status,
+				},
+			}, nil
+		},
+	}
+
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	posts, err := svc.ListPosts(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("ListPosts() failed: %v", err)
+	}
+	if len(posts) != 2 || !posts[0].Blurred {
+		t.Fatalf("missed post must not unlock notification: %+v", posts)
+	}
+}
+
+// TestPostService_ListPosts_NewerPostUnlocksPastNotifications は、新しい通知で自分が
+// 投稿すると、それ以前の通知でロックされていた投稿も表示されることを確認する。
+func TestPostService_ListPosts_NewerPostUnlocksPastNotifications(t *testing.T) {
+	previousNotificationID := int64(10)
+	currentNotificationID := int64(11)
+	body := "前回の投稿"
+
+	postRepo := &mockPostRepository{
+		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
+			return []model.Post{
+				{
+					ID:             1,
+					NotificationID: &previousNotificationID,
+					UserID:         2,
+					GroupID:        groupID,
+					PostType:       "memo",
+					Body:           &body,
+				},
+				{
+					ID:             2,
+					NotificationID: &currentNotificationID,
+					UserID:         1,
+					GroupID:        groupID,
+					PostType:       "memo",
+				},
+			}, nil
+		},
+	}
+
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	posts, err := svc.ListPosts(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("ListPosts() failed: %v", err)
+	}
+	if len(posts) != 2 || posts[0].Blurred {
+		t.Fatalf("newer self post should unlock previous notification posts: %+v", posts)
+	}
+	if posts[0].Body == nil || *posts[0].Body != body {
+		t.Errorf("expected previous post body to be visible, got %v", posts[0].Body)
+	}
+}
+
+// TestPostService_ListPosts_NewNotificationStaysLocked は、最後の自分の投稿より新しい
+// 通知に紐づく投稿は、自分がその通知で投稿するまで隠れることを確認する。
+func TestPostService_ListPosts_NewNotificationStaysLocked(t *testing.T) {
+	previousNotificationID := int64(10)
+	currentNotificationID := int64(11)
+
+	postRepo := &mockPostRepository{
+		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
+			return []model.Post{
+				{
+					ID:             1,
+					NotificationID: &currentNotificationID,
+					UserID:         2,
+					GroupID:        groupID,
+					PostType:       "memo",
+				},
+				{
+					ID:             2,
+					NotificationID: &previousNotificationID,
+					UserID:         1,
+					GroupID:        groupID,
+					PostType:       "memo",
+				},
+			}, nil
+		},
+	}
+
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	posts, err := svc.ListPosts(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("ListPosts() failed: %v", err)
+	}
+	if len(posts) != 2 || !posts[0].Blurred {
+		t.Fatalf("post from newer notification should remain locked: %+v", posts)
+	}
+}
+
+// TestPostService_ListPosts_PersistentResponseUnlocksAfterDeletion は、投稿本体が消えても
+// 達成記録が残っていれば、その通知以降の投稿を表示し続けることを確認する。
+func TestPostService_ListPosts_PersistentResponseUnlocksAfterDeletion(t *testing.T) {
+	notificationID := int64(10)
+	body := "削除済みの自分の投稿後にも表示される"
+
+	postRepo := &mockPostRepository{
+		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
+			// 自分の posts レコードは削除済みで、他メンバーの投稿だけが残っている状態。
+			return []model.Post{{
+				ID:             1,
+				NotificationID: &notificationID,
+				UserID:         2,
+				GroupID:        groupID,
+				PostType:       "memo",
+				Body:           &body,
+			}}, nil
+		},
+		latestResponseFunc: func(ctx context.Context, userID, groupID int64) (int64, error) {
+			return notificationID, nil
+		},
+	}
+
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	posts, err := svc.ListPosts(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("ListPosts() failed: %v", err)
+	}
+	if len(posts) != 1 || posts[0].Blurred {
+		t.Fatalf("persistent response should keep post visible after deletion: %+v", posts)
+	}
+	if posts[0].Body == nil || *posts[0].Body != body {
+		t.Errorf("expected post body to remain visible, got %v", posts[0].Body)
+	}
+}
+
+func TestPostService_CreatePost_RecordsNotificationResponse(t *testing.T) {
+	notificationID := int64(10)
+	recorded := false
+	postRepo := &mockPostRepository{
+		createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+			post.ID = 1
+			return post, nil
+		},
+		recordResponseFunc: func(ctx context.Context, notifID, userID, groupID int64) error {
+			recorded = notifID == notificationID && userID == 1 && groupID == 1
+			return nil
+		},
+	}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	body := "進捗を共有しました"
+	if _, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &notificationID,
+		PostType:       "memo",
+		ContentSource:  "manual",
+		Body:           &body,
+	}, 1, 1); err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if !recorded {
+		t.Error("expected notification response to be recorded")
 	}
 }
 

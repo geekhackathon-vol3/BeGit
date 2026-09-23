@@ -182,8 +182,35 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	if err != nil {
 		return nil, fmt.Errorf("post_service: CreatePost failed: %w", err)
 	}
+	if err := s.recordNotificationResponse(ctx, created); err != nil {
+		return nil, err
+	}
 
 	return created, nil
+}
+
+type notificationResponseRecorder interface {
+	RecordNotificationResponse(ctx context.Context, notificationID, userID, groupID int64) error
+}
+
+type notificationResponseReader interface {
+	LatestNotificationResponse(ctx context.Context, userID, groupID int64) (int64, error)
+}
+
+// recordNotificationResponse は確定済み投稿に対応する表示解除記録を残す。
+// テスト用など、対応していないリポジトリ実装では従来の投稿ベース判定を維持する。
+func (s *postService) recordNotificationResponse(ctx context.Context, post *model.Post) error {
+	if post.NotificationID == nil || post.IsDraft {
+		return nil
+	}
+	recorder, ok := s.postRepo.(notificationResponseRecorder)
+	if !ok {
+		return nil
+	}
+	if err := recorder.RecordNotificationResponse(ctx, *post.NotificationID, post.UserID, post.GroupID); err != nil {
+		return fmt.Errorf("post_service: record notification response failed: %w", err)
+	}
+	return nil
 }
 
 // validateNotificationPost は停止・期限切れのBeGit Timeへの新規投稿を拒否する。
@@ -249,6 +276,9 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 
 	// 既に確定済み（is_draft=0）の場合は本文更新をスキップし、現在の状態を返す（べき等）。
 	if !post.IsDraft {
+		if err := s.recordNotificationResponse(ctx, post); err != nil {
+			return nil, err
+		}
 		return post, nil
 	}
 
@@ -268,6 +298,9 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 	confirmed, err := s.postRepo.GetByID(ctx, postID)
 	if err != nil {
 		return nil, fmt.Errorf("post_service: ConfirmPost re-fetch failed: %w", err)
+	}
+	if err := s.recordNotificationResponse(ctx, confirmed); err != nil {
+		return nil, err
 	}
 	return confirmed, nil
 }
@@ -315,33 +348,37 @@ func (s *postService) DeletePost(ctx context.Context, groupID, postID, userID in
 	return nil
 }
 
-// ListPosts はグループのフィードを取得し、リクエストユーザーの投稿状況によってぼかし制御を適用する
+// ListPosts はグループのフィードを取得し、最新の未回答 BeGit Time に対してロック制御を適用する。
+// 自分が最後に投稿した通知より前の投稿は過去分として常に表示する。より新しい通知に紐づく
+// 他メンバーの投稿だけを隠すため、次の通知で自分が投稿すれば、それ以前に隠れていた投稿も表示される。
 func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]model.PostFeed, error) {
-	// Step 1: 現在のスプリントを取得
-	var sprintID int64
-	if s.sprintRepo != nil {
-		sprint, err := s.sprintRepo.GetCurrentSprint(ctx, groupID)
-		if err == nil {
-			sprintID = sprint.ID
-		}
-	}
-
-	// Step 2: リクエストユーザーが現スプリントで投稿済みかどうか確認
-	hasPosted := false
-	if sprintID > 0 && s.postRepo != nil {
-		posted, err := s.postRepo.HasPostedInSprint(ctx, userID, sprintID)
-		if err == nil {
-			hasPosted = posted
-		}
-	}
-
-	// Step 3: グループの投稿一覧を取得
+	// Step 1: グループの投稿一覧を取得
 	posts, err := s.postRepo.ListByGroupID(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("post_service: ListPosts failed: %w", err)
 	}
 
-	// Step 4: グループメンバー情報を取得（Login/AvatarURL 付与のため）
+	// Step 2: 閲覧者が最後に投稿した通知IDを求める。
+	// 本番リポジトリでは投稿削除後も残る達成記録を使う。未対応のテスト実装では、
+	// 後方互換のため取得済み投稿から算出する。
+	latestPostedNotificationID := int64(0)
+	if reader, ok := s.postRepo.(notificationResponseReader); ok {
+		latestPostedNotificationID, err = reader.LatestNotificationResponse(ctx, userID, groupID)
+		if err != nil {
+			return nil, fmt.Errorf("post_service: ListPosts latest notification response failed: %w", err)
+		}
+	} else {
+		for _, post := range posts {
+			if post.UserID != userID || post.NotificationID == nil || isMissedPost(&post) {
+				continue
+			}
+			if *post.NotificationID > latestPostedNotificationID {
+				latestPostedNotificationID = *post.NotificationID
+			}
+		}
+	}
+
+	// Step 3: グループメンバー情報を取得（Login/AvatarURL 付与のため）
 	memberMap := make(map[int64]model.GroupMember)
 	if s.groupRepo != nil {
 		members, err := s.groupRepo.GetMembers(ctx, groupID)
@@ -352,7 +389,7 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		}
 	}
 
-	// Step 5: 投稿に紐づく写真をまとめて取得（N+1 回避）
+	// Step 4: 投稿に紐づく写真をまとめて取得（N+1 回避）
 	photoMap := make(map[int64][]model.Photo)
 	if s.photoRepo != nil && len(posts) > 0 {
 		postIDs := make([]int64, 0, len(posts))
@@ -366,7 +403,7 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		photoMap = m
 	}
 
-	// Step 6: PostFeed を構築し、ぼかし制御を適用
+	// Step 5: PostFeed を構築し、ロック制御を適用
 	feeds := make([]model.PostFeed, 0, len(posts))
 	for _, post := range posts {
 		feed := model.PostFeed{
@@ -380,13 +417,21 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 			feed.AvatarURL = member.AvatarURL
 		}
 
-		// ぼかし制御: リクエストユーザーが未投稿かつ他メンバーの投稿
-		if !hasPosted && post.UserID != userID {
+		// 最後に自分が投稿した通知より新しい投稿のみロックする。
+		// 通知以前の投稿（notification_idなし）と自分の投稿は常に表示する。
+		isLocked := post.UserID != userID && post.NotificationID != nil &&
+			*post.NotificationID > latestPostedNotificationID
+		if isLocked {
 			feed.Blurred = true
 			feed.Body = nil
 			feed.RepoFullName = nil
 			feed.LatestCommitMessage = nil
-			// ぼかし対象は写真も返さない
+			feed.BranchName = nil
+			feed.CommitCount = 0
+			feed.Additions = 0
+			feed.Deletions = 0
+			feed.Status = nil
+			// ロック対象は写真URLも返さない
 		} else {
 			feed.Photos = s.buildFeedPhotos(photoMap[post.ID])
 		}
@@ -395,6 +440,10 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 	}
 
 	return feeds, nil
+}
+
+func isMissedPost(post *model.Post) bool {
+	return post.Status != nil && *post.Status == "missed"
 }
 
 // buildFeedPhotos は写真に presigned GET URL を付与してフィード用に変換する。

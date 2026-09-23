@@ -27,6 +27,7 @@ type CreatePostRequest struct {
 // PostJSON は投稿レスポンス型
 type PostJSON struct {
 	ID                  int64   `json:"id"`
+	NotificationID      *int64  `json:"notification_id"`
 	UserID              int64   `json:"user_id"`
 	PostType            string  `json:"post_type"`
 	Body                *string `json:"body"`
@@ -45,6 +46,7 @@ type PostFeedJSON struct {
 	Login     string      `json:"login"`
 	AvatarURL string      `json:"avatar_url"`
 	Photos    []PhotoJSON `json:"photos"`
+	IsLocked  bool        `json:"is_locked"`
 }
 
 // PostListResponse は GET /groups/:id/posts のレスポンス
@@ -129,6 +131,7 @@ func (h *PostHandler) Create(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, PostJSON{
 		ID:                  post.ID,
+		NotificationID:      post.NotificationID,
 		UserID:              post.UserID,
 		PostType:            post.PostType,
 		Body:                post.Body,
@@ -151,6 +154,7 @@ type ConfirmPostRequest struct {
 func draftPostJSON(p *model.Post) PostJSON {
 	return PostJSON{
 		ID:                  p.ID,
+		NotificationID:      p.NotificationID,
 		UserID:              p.UserID,
 		PostType:            p.PostType,
 		Body:                p.Body,
@@ -295,6 +299,7 @@ func (h *PostHandler) List(c *gin.Context) {
 		result = append(result, PostFeedJSON{
 			PostJSON: PostJSON{
 				ID:                  feed.ID,
+				NotificationID:      feed.NotificationID,
 				UserID:              feed.UserID,
 				PostType:            feed.PostType,
 				Body:                feed.Body,
@@ -309,6 +314,7 @@ func (h *PostHandler) List(c *gin.Context) {
 			Login:     feed.Login,
 			AvatarURL: feed.AvatarURL,
 			Photos:    photos,
+			IsLocked:  feed.Blurred,
 		})
 	}
 

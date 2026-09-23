@@ -22,10 +22,7 @@ final class NotificationResultViewModel: ObservableObject {
     ) {
         self.notification = notification
         self.repositoryAPI = repositoryAPI
-        let mock = RepositoryActivity.mockActivities(for: notification.repository)
-        //  デモ投稿がある場合は先頭に追加して即時表示
-        let initial = justPostedActivity.map { [$0] + mock } ?? mock
-        self.activities = initial
+        self.activities = justPostedActivity.map { [$0] } ?? []
     }
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
     func loadActivities(accessToken: String?, currentUserID: Int64? = nil) async {
@@ -43,25 +40,32 @@ final class NotificationResultViewModel: ObservableObject {
                 accessToken: accessToken
             )
             if let repositoryID = notification.repository.backendID {
-                for index in fetched.indices {
-                    guard let postID = fetched[index].backendPostID else { continue }
-                    if let reactions = try? await repositoryAPI.listReactions(
-                        repositoryID: repositoryID,
-                        postID: postID,
-                        currentUserID: currentUserID,
-                        accessToken: accessToken
-                    ) {
-                        fetched[index].reactions = reactions
+                await withTaskGroup(of: (Int, [ActivityReaction]?).self) { group in
+                    for index in fetched.indices {
+                        // ロック中はリアクションを操作・表示しないため、追加API取得も行わない。
+                        guard fetched[index].isLocked == false,
+                              let postID = fetched[index].backendPostID else { continue }
+                        group.addTask {
+                            let reactions = try? await self.repositoryAPI.listReactions(
+                                repositoryID: repositoryID,
+                                postID: postID,
+                                currentUserID: currentUserID,
+                                accessToken: accessToken
+                            )
+                            return (index, reactions)
+                        }
+                    }
+
+                    for await (index, reactions) in group {
+                        if let reactions {
+                            fetched[index].reactions = reactions
+                        }
                     }
                 }
             }
-            if !fetched.isEmpty {
-                //  実投稿（新しい順）をモックの上に積み重ねる
-                let mock = RepositoryActivity.mockActivities(for: notification.repository)
-                activities = fetched + mock
-            }
+            activities = fetched
         } catch {
-            //  取得失敗時は初期 Mock のまま表示を維持する
+            // 取得失敗時は、直前の実投稿表示を維持する。
         }
 
         //  フィード取得に失敗しても、BeGit Timeと参加状況の表示取得は継続する。
@@ -85,8 +89,9 @@ final class NotificationResultViewModel: ObservableObject {
             if let active, active.notificationID == notificationID {
                 activeBeGitTime = active
                 endedBeGitTime = nil
-            } else if let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
-                //  APIが未反映の環境でも、送信直後の有効なキャッシュで表示する。
+            } else if NotificationDeliveryMode.current.usesLocalNotificationMock,
+                      let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
+                // ローカルモック時だけ端末内のBeGit Timeを表示する。
                 activeBeGitTime = cached
             } else {
                 activeBeGitTime = nil

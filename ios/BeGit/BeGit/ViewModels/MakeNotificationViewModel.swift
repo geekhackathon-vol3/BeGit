@@ -156,13 +156,20 @@ final class MakeNotificationViewModel: ObservableObject {
                 repositoryID: repositoryID,
                 accessToken: accessToken
             )
-            activeBeGitTime = active ?? ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+            activeBeGitTime = active ?? {
+                guard NotificationDeliveryMode.current.usesLocalNotificationMock else { return nil }
+                return ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+            }()
             if activeBeGitTime == nil {
                 ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
             }
         } catch {
-            // 新しいactive APIが未反映の環境では送信直後の互換キャッシュを使う。
-            activeBeGitTime = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
+            // 実APIモードでは通知ID付きのキャッシュのみを使う。
+            activeBeGitTime = ActiveBeGitTimeStore.load(repositoryID: repositoryID).flatMap { cached in
+                NotificationDeliveryMode.current.usesLocalNotificationMock || cached.notificationID > 0
+                    ? cached
+                    : nil
+            }
         }
     }
 

@@ -394,9 +394,10 @@ struct RepositoryListView: View {
         //  通知結果画面へ遷移
         case .notificationResult(let notification):
             NotificationResultView(notification: notification, justPostedActivity: justPostedActivity) {
-                //  NavigationStackをrootまで戻す
+                // 結果画面からはHOMEではなく、投稿先リポジトリのTimelineを開く。
                 justPostedActivity = nil
                 navigationPath.removeLast(navigationPath.count)
+                navigationPath.append(RepositoryNavigationRoute.dashboard(notification.repository))
             }
 
         // MARK: - FCM 通知タップからの遷移（#55・中身は #56/#57 が実装）

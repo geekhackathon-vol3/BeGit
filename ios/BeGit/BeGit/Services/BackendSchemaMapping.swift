@@ -134,6 +134,8 @@ extension Components.Schemas.Handler_PostFeedJSON {
 
            return RepositoryActivity(
                backendPostID: id.map(Int64.init),
+               notificationID: notificationId.map(Int64.init),
+               isLocked: isLocked ?? false,
                type: typeOverride ?? activityType,
                title: activityTitle(fallbackRepository: fallbackRepository),
                comment: {
@@ -143,8 +145,9 @@ extension Components.Schemas.Handler_PostFeedJSON {
                date: createdAt.flatMap {
                    sharedISO8601DateFormatter.date(from: $0)
                } ?? Date(),
-               //  実写真が無い投稿のみ Mock 背景にフォールバックする
-               imageName: mainURL == nil ? "begit_timeline_mock" : nil,
+               // 実投稿の写真が無い場合も、デモ用画像には差し替えない。
+               // Card側の中立なアイコン表示に任せ、実データとモックを混在させない。
+               imageName: nil,
                mainPhotoURL: mainURL,
                frontPhotoURL: frontURL,
                author: RepositoryMember(
