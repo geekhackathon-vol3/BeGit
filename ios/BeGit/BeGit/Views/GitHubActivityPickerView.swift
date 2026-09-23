@@ -96,10 +96,10 @@ struct GitHubActivityPickerView: View {
         } label: {
             Label("GitHubデータを使わずコメントのみ", systemImage: "text.bubble")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(.black.opacity(0.82))
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
-                .background(Color.white.opacity(0.09))
+                .background(AppTheme.accent)
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)

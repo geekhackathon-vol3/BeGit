@@ -576,10 +576,16 @@ struct RepositoryActivityCardView: View {
 
     private var typeBadge: some View {
         HStack(spacing: 5) {
-            Image(activity.type.badgeIconName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 17, height: 17)
+            if activity.type == .memo {
+                Image(systemName: activity.type.systemImage)
+                    .font(.system(size: 15, weight: .bold))
+                    .frame(width: 17, height: 17)
+            } else {
+                Image(activity.type.badgeIconName)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 17, height: 17)
+            }
 
             Text(activity.type.badgeTitle)
                 .appFont(.label)
@@ -653,7 +659,7 @@ private extension RepositoryActivityType {
         switch self {
         case .commit:      "checkmark.seal"
         case .pullRequest: "arrow.triangle.pull"
-        case .memo:        "hand.raised"
+        case .memo:        "pencil.and.list.clipboard"
         }
     }
 }

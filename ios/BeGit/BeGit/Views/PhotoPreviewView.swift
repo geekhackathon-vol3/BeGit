@@ -35,7 +35,7 @@ struct PhotoPreviewView: View {
                     Spacer()
 
                     Color.clear
-                        .frame(height: commentPlaceholderHeight)
+                        .frame(height: commentSlotHeight)
                         .padding(.horizontal, 20)
                         .padding(.bottom, 16)
 
@@ -49,18 +49,29 @@ struct PhotoPreviewView: View {
                     Spacer()
 
                     postControls
-                        .padding(.horizontal, 30)
                         .padding(.bottom, 6)
 
-                    commentSection
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 16)
+                    Group {
+                        if shouldShowCommentSection {
+                            commentSection
+                        } else if shouldShowGitHubSelection {
+                            githubAttachmentButton
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .frame(height: commentSlotHeight)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
 
                     bottomActions
                         .padding(.horizontal, 20)
                         .padding(.bottom, 40)
                 }
-                .offset(y: -keyboardOffset(safeAreaBottom: geometry.safeAreaInsets.bottom))
+                .offset(
+                    y: -(keyboardOffset(safeAreaBottom: geometry.safeAreaInsets.bottom)
+                         + controlsVerticalLift)
+                )
             }
         }
         .ignoresSafeArea(.keyboard)
@@ -147,15 +158,8 @@ struct PhotoPreviewView: View {
     }
 
     private var postControls: some View {
-        VStack(spacing: 8) {
-            postTypePicker
-
-            if viewModel.isPostTypeSelectionEnabled,
-               viewModel.selectedType != .memo,
-               viewModel.contentSource == .github {
-                githubAttachmentButton
-            }
-        }
+        postTypePicker
+            .padding(.horizontal, 30)
     }
 
     private var commentSection: some View {
@@ -179,24 +183,25 @@ struct PhotoPreviewView: View {
             Spacer(minLength: 0)
 
             if viewModel.isPostTypeSelectionEnabled,
-               viewModel.selectedType != .memo,
-               viewModel.contentSource == .manual {
+               viewModel.selectedType != .memo {
                 Button {
                     presentGitHubPicker()
                 } label: {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.system(size: 15, weight: .bold))
+                    Text("変更")
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(viewModel.selectedType.pickerTint)
-                        .frame(width: 32, height: 32)
+                        .padding(.horizontal, 10)
+                        .frame(height: 32)
                         .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
+                        .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("GitHubデータを選ぶ")
+                .accessibilityLabel("GitHubデータの選択を変更")
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
+        .frame(height: commentSlotHeight)
         .background(commentBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
@@ -246,6 +251,24 @@ struct PhotoPreviewView: View {
         keyboardHeight > 0
     }
 
+    private var controlsVerticalLift: CGFloat {
+        20
+    }
+
+    private var shouldShowCommentSection: Bool {
+        if viewModel.selectedType == .memo || viewModel.contentSource == .manual {
+            return true
+        }
+        return viewModel.selectedGitHubActivityTitle != nil
+    }
+
+    private var shouldShowGitHubSelection: Bool {
+        viewModel.isPostTypeSelectionEnabled
+            && viewModel.selectedType != .memo
+            && viewModel.contentSource == .github
+            && viewModel.selectedGitHubActivityTitle == nil
+    }
+
     private var commentBackground: Color {
         isKeyboardVisible
             ? Color(red: 0.12, green: 0.12, blue: 0.12)
@@ -269,13 +292,8 @@ struct PhotoPreviewView: View {
         isKeyboardVisible || viewModel.canSubmit ? 1 : 0.45
     }
 
-    private var commentPlaceholderHeight: CGFloat {
-        if viewModel.isPostTypeSelectionEnabled,
-           viewModel.selectedType != .memo,
-           viewModel.contentSource == .manual {
-            return 56
-        }
-        return 43
+    private var commentSlotHeight: CGFloat {
+        56
     }
 
     private func keyboardOffset(safeAreaBottom: CGFloat) -> CGFloat {
@@ -371,8 +389,10 @@ struct PhotoPreviewView: View {
                 .padding(.leading, 13)
                 .padding(.trailing, viewModel.selectedGitHubActivityTitle == nil ? 13 : 6)
                 .frame(maxWidth: .infinity, minHeight: 38)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
             if viewModel.selectedGitHubActivityTitle != nil {
                 Button {
@@ -388,7 +408,7 @@ struct PhotoPreviewView: View {
             }
         }
         .background(Color.white.opacity(0.92))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func presentGitHubPicker() {
@@ -402,10 +422,14 @@ struct PhotoPreviewView: View {
     }
 
     private var commentPrompt: String {
-        if viewModel.selectedType == .memo || viewModel.contentSource == .manual {
-            return "Add comment (required)..."
+        switch viewModel.selectedType {
+        case .commit:
+            return "例：ログイン機能のAPI連携まで完了しました"
+        case .pullRequest:
+            return "例：画面デザインを修正しました。レビューお願いします"
+        case .memo:
+            return "例：DB設計を整理し、テーブル構成を決めました"
         }
-        return "Add comment..."
     }
 }
 
@@ -422,7 +446,7 @@ extension RepositoryActivityType {
         switch self {
         case .commit: "checkmark.seal"
         case .pullRequest: "arrow.triangle.pull"
-        case .memo: "hand.raised"
+        case .memo: "pencil.and.list.clipboard"
         }
     }
 }
