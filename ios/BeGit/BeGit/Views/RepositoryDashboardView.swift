@@ -416,23 +416,40 @@ struct RepositoryDashboardView: View {
     }
 
     private var endedChallengeCard: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("BeGit Time 終了")
-                .font(.system(size: 17, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.primary)
+        let accentPurple = Color(red: 0.72, green: 0.58, blue: 0.98)
+        let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
+
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(accentPurple)
+                    .frame(width: 24)
+
+                Text("BeGit Time")
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Text("終了")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(accentPurple)
+
+                Spacer(minLength: 8)
+            }
 
             Text("このTimeは停止されました。投稿された内容はTimelineに残っています。")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(AppTheme.Text.high)
+                .foregroundStyle(.white.opacity(0.68))
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(AppTheme.accent)
-                .frame(width: 4)
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(lightPurple, lineWidth: 2)
+        )
     }
 
     private var achievedMemberLogins: Set<String> {

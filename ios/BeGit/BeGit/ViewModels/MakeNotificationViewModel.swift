@@ -6,6 +6,13 @@ import Combine
 
 @MainActor
 final class MakeNotificationViewModel: ObservableObject {
+    private static let endTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     let repository: Repository                      //  通知対象Repository
 
     @Published var members: [RepositoryMember]      //  Repository member一覧
@@ -45,19 +52,31 @@ final class MakeNotificationViewModel: ObservableObject {
         selectedMembers.isEmpty == false && isSending == false && activeChallenge == nil
     }
 
+    // Dashboardの開催中カードと同じBeGit Time終了日時を表示に使う。
+    // active_challengeを優先し、API反映待ちの間は旧active API／端末キャッシュへフォールバックする。
+    var activeBeGitTimeEndDate: Date? {
+        activeChallenge?.endsAt ?? activeBeGitTime?.expiresAt
+    }
+
+    var activeBeGitTimeEndTimeText: String? {
+        activeBeGitTimeEndDate.map(Self.formatEndTime)
+    }
+
     //  進行中のBeGit Timeの説明文（送信不可の理由）
     var activeChallengeMessage: String? {
         guard let activeChallenge else { return nil }
         let issuer = activeChallenge.issuer.login.isEmpty ? "メンバー" : activeChallenge.issuer.login
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ja_JP")
-        formatter.dateFormat = "HH:mm"
-        let endsAt = formatter.string(from: activeChallenge.endsAt)
+        let endsAt = Self.formatEndTime(activeChallenge.endsAt)
         if activeChallenge.canEnd {
             return "あなたが発行したBeGit Timeが進行中です（\(endsAt) まで）。Dashboardから終了すると、すぐに再発行できます。"
         }
         return "\(issuer) が発行したBeGit Timeが進行中です（\(endsAt) まで）。終了後に発行できます。"
     }
+
+    private static func formatEndTime(_ date: Date) -> String {
+        endTimeFormatter.string(from: date)
+    }
+
     // MARK: - Actions
     //  member選択状態切り替え
     func toggleSelection(for member: RepositoryMember) {
