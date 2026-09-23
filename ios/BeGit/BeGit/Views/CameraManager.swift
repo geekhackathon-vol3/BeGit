@@ -68,7 +68,7 @@ final class CameraManager: NSObject, ObservableObject {
 
     private static let captureOrderDefaultsKey = "camera.captureOrder"
     private let cameraStabilizationDelay: TimeInterval = 0.5
-    private let secondShotCountdownSeconds = 3
+    private let secondShotCountdownSeconds = 2
 
     var isCapturing: Bool {
         switch captureState {
