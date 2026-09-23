@@ -17,18 +17,18 @@ struct NotificationResultView: View {
     @State private var isShowingStopConfirmation = false
     @State private var stopErrorMessage = ""
     @State private var isShowingStopError = false
-    let onReturnHome: () -> Void    //  通知結果画面の状態を管理するViewModel
+    let onReturnToTimeline: () -> Void
 
     //  通知モデルからViewModelを生成
-    init(notification: RepositoryNotification, justPostedActivity: RepositoryActivity? = nil, onReturnHome: @escaping () -> Void) {
+    init(notification: RepositoryNotification, justPostedActivity: RepositoryActivity? = nil, onReturnToTimeline: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: NotificationResultViewModel(notification: notification, justPostedActivity: justPostedActivity))
-        self.onReturnHome = onReturnHome
+        self.onReturnToTimeline = onReturnToTimeline
     }
 
     //  外部ViewModel注入用
-    init(viewModel: NotificationResultViewModel, onReturnHome: @escaping () -> Void) {
+    init(viewModel: NotificationResultViewModel, onReturnToTimeline: @escaping () -> Void) {
         _viewModel = StateObject(wrappedValue: viewModel)
-        self.onReturnHome = onReturnHome
+        self.onReturnToTimeline = onReturnToTimeline
     }
 
     var body: some View {
@@ -95,7 +95,7 @@ struct NotificationResultView: View {
                     }
 
                     //  Timelineへ戻るbutton
-                    PrimaryButton("Timelineに戻る", systemImage: "list.bullet", action: onReturnHome)
+                    PrimaryButton("Timelineに戻る", systemImage: "list.bullet", action: onReturnToTimeline)
                         .padding(.horizontal, 20)
                         .padding(.top, 14)
                         .padding(.bottom, 18)
@@ -408,7 +408,7 @@ struct NotificationResultView_Previews: PreviewProvider {
                     selectedMembers: Repository.mockRepositories[0].members,
                     comment: "Mock notification comment"
                 ),
-                onReturnHome: {}
+                onReturnToTimeline: {}
             )
             .environmentObject(AuthState.shared)
         }
