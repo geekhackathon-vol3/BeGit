@@ -52,8 +52,13 @@ struct BeGitToolbarLogoView: View {
 
 struct BeGitBackButton: View {
     @Environment(\.dismiss) private var dismiss
-    var color: Color = AppTheme.softPink
-    private let titleKey = LocalizedStringKey("Back")
+    private let titleKey: LocalizedStringKey
+    private let color: Color
+
+    init(title: LocalizedStringKey = "Back", color: Color = AppTheme.softPink) {
+        self.titleKey = title
+        self.color = color
+    }
 
     var body: some View {
         Button(action: dismiss.callAsFunction) {

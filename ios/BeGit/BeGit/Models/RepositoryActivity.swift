@@ -59,7 +59,7 @@ enum RepositoryActivityType: String, CaseIterable, Hashable, Sendable {
         switch self {
         case .commit: "commit"
         case .pullRequest: "PR"
-        case .memo: "sorry"
+        case .memo: "進捗"
         }
     }
 

@@ -94,8 +94,8 @@ struct NotificationResultView: View {
                         .padding(.bottom, 104)  //  下部固定button領域分の余白
                     }
 
-                    //  ホームへ戻るbutton
-                    PrimaryButton("ホームへ戻る", systemImage: "house.fill", action: onReturnHome)
+                    //  Timelineへ戻るbutton
+                    PrimaryButton("Timelineに戻る", systemImage: "list.bullet", action: onReturnHome)
                         .padding(.horizontal, 20)
                         .padding(.top, 14)
                         .padding(.bottom, 18)
