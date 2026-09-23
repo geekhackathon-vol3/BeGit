@@ -182,8 +182,35 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	if err != nil {
 		return nil, fmt.Errorf("post_service: CreatePost failed: %w", err)
 	}
+	if err := s.recordNotificationResponse(ctx, created); err != nil {
+		return nil, err
+	}
 
 	return created, nil
+}
+
+type notificationResponseRecorder interface {
+	RecordNotificationResponse(ctx context.Context, notificationID, userID, groupID int64) error
+}
+
+type notificationResponseReader interface {
+	LatestNotificationResponse(ctx context.Context, userID, groupID int64) (int64, error)
+}
+
+// recordNotificationResponse は確定済み投稿に対応する表示解除記録を残す。
+// テスト用など、対応していないリポジトリ実装では従来の投稿ベース判定を維持する。
+func (s *postService) recordNotificationResponse(ctx context.Context, post *model.Post) error {
+	if post.NotificationID == nil || post.IsDraft {
+		return nil
+	}
+	recorder, ok := s.postRepo.(notificationResponseRecorder)
+	if !ok {
+		return nil
+	}
+	if err := recorder.RecordNotificationResponse(ctx, *post.NotificationID, post.UserID, post.GroupID); err != nil {
+		return fmt.Errorf("post_service: record notification response failed: %w", err)
+	}
+	return nil
 }
 
 // validateNotificationPost は停止・期限切れのBeGit Timeへの新規投稿を拒否する。
@@ -249,6 +276,9 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 
 	// 既に確定済み（is_draft=0）の場合は本文更新をスキップし、現在の状態を返す（べき等）。
 	if !post.IsDraft {
+		if err := s.recordNotificationResponse(ctx, post); err != nil {
+			return nil, err
+		}
 		return post, nil
 	}
 
@@ -268,6 +298,9 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 	confirmed, err := s.postRepo.GetByID(ctx, postID)
 	if err != nil {
 		return nil, fmt.Errorf("post_service: ConfirmPost re-fetch failed: %w", err)
+	}
+	if err := s.recordNotificationResponse(ctx, confirmed); err != nil {
+		return nil, err
 	}
 	return confirmed, nil
 }
@@ -326,15 +359,22 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 	}
 
 	// Step 2: 閲覧者が最後に投稿した通知IDを求める。
-	// notification ID は発行順に増えるため、これより前の通知に紐づく投稿は過去分として公開する。
-	// 取得済み投稿だけで判定するので追加DB問い合わせは不要。
+	// 本番リポジトリでは投稿削除後も残る達成記録を使う。未対応のテスト実装では、
+	// 後方互換のため取得済み投稿から算出する。
 	latestPostedNotificationID := int64(0)
-	for _, post := range posts {
-		if post.UserID != userID || post.NotificationID == nil || isMissedPost(&post) {
-			continue
+	if reader, ok := s.postRepo.(notificationResponseReader); ok {
+		latestPostedNotificationID, err = reader.LatestNotificationResponse(ctx, userID, groupID)
+		if err != nil {
+			return nil, fmt.Errorf("post_service: ListPosts latest notification response failed: %w", err)
 		}
-		if *post.NotificationID > latestPostedNotificationID {
-			latestPostedNotificationID = *post.NotificationID
+	} else {
+		for _, post := range posts {
+			if post.UserID != userID || post.NotificationID == nil || isMissedPost(&post) {
+				continue
+			}
+			if *post.NotificationID > latestPostedNotificationID {
+				latestPostedNotificationID = *post.NotificationID
+			}
 		}
 	}
 

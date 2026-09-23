@@ -173,6 +173,35 @@ type mockPostRepository struct {
 	confirmDraftFunc      func(ctx context.Context, postID int64) error
 	createMissedFunc      func(ctx context.Context, notifID, userID, groupID int64) error
 	updateBodyFunc        func(ctx context.Context, postID int64, body string) error
+	recordResponseFunc    func(ctx context.Context, notifID, userID, groupID int64) error
+	latestResponseFunc    func(ctx context.Context, userID, groupID int64) (int64, error)
+}
+
+func (m *mockPostRepository) RecordNotificationResponse(ctx context.Context, notifID, userID, groupID int64) error {
+	if m.recordResponseFunc != nil {
+		return m.recordResponseFunc(ctx, notifID, userID, groupID)
+	}
+	return nil
+}
+
+func (m *mockPostRepository) LatestNotificationResponse(ctx context.Context, userID, groupID int64) (int64, error) {
+	if m.latestResponseFunc != nil {
+		return m.latestResponseFunc(ctx, userID, groupID)
+	}
+	posts, err := m.ListByGroupID(ctx, groupID)
+	if err != nil {
+		return 0, err
+	}
+	latestNotificationID := int64(0)
+	for _, post := range posts {
+		if post.UserID != userID || post.NotificationID == nil || isMissedPost(&post) {
+			continue
+		}
+		if *post.NotificationID > latestNotificationID {
+			latestNotificationID = *post.NotificationID
+		}
+	}
+	return latestNotificationID, nil
 }
 
 func (m *mockPostRepository) CreateMissed(ctx context.Context, notifID, userID, groupID int64) error {

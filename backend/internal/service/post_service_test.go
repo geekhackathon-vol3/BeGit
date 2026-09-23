@@ -402,6 +402,70 @@ func TestPostService_ListPosts_NewNotificationStaysLocked(t *testing.T) {
 	}
 }
 
+// TestPostService_ListPosts_PersistentResponseUnlocksAfterDeletion は、投稿本体が消えても
+// 達成記録が残っていれば、その通知以降の投稿を表示し続けることを確認する。
+func TestPostService_ListPosts_PersistentResponseUnlocksAfterDeletion(t *testing.T) {
+	notificationID := int64(10)
+	body := "削除済みの自分の投稿後にも表示される"
+
+	postRepo := &mockPostRepository{
+		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
+			// 自分の posts レコードは削除済みで、他メンバーの投稿だけが残っている状態。
+			return []model.Post{{
+				ID:             1,
+				NotificationID: &notificationID,
+				UserID:         2,
+				GroupID:        groupID,
+				PostType:       "memo",
+				Body:           &body,
+			}}, nil
+		},
+		latestResponseFunc: func(ctx context.Context, userID, groupID int64) (int64, error) {
+			return notificationID, nil
+		},
+	}
+
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	posts, err := svc.ListPosts(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatalf("ListPosts() failed: %v", err)
+	}
+	if len(posts) != 1 || posts[0].Blurred {
+		t.Fatalf("persistent response should keep post visible after deletion: %+v", posts)
+	}
+	if posts[0].Body == nil || *posts[0].Body != body {
+		t.Errorf("expected post body to remain visible, got %v", posts[0].Body)
+	}
+}
+
+func TestPostService_CreatePost_RecordsNotificationResponse(t *testing.T) {
+	notificationID := int64(10)
+	recorded := false
+	postRepo := &mockPostRepository{
+		createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+			post.ID = 1
+			return post, nil
+		},
+		recordResponseFunc: func(ctx context.Context, notifID, userID, groupID int64) error {
+			recorded = notifID == notificationID && userID == 1 && groupID == 1
+			return nil
+		},
+	}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+	body := "進捗を共有しました"
+	if _, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &notificationID,
+		PostType:       "memo",
+		ContentSource:  "manual",
+		Body:           &body,
+	}, 1, 1); err != nil {
+		t.Fatalf("CreatePost() failed: %v", err)
+	}
+	if !recorded {
+		t.Error("expected notification response to be recorded")
+	}
+}
+
 // TestPostService_CreatePost_GitHubAPIFailed は GitHub API 失敗時に ErrExternalAPI を返すことを確認する
 func TestPostService_CreatePost_GitHubAPIFailed(t *testing.T) {
 	githubClientFail := &mockGitHubClient{
