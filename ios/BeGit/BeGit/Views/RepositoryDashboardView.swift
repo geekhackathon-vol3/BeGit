@@ -40,7 +40,7 @@ struct RepositoryDashboardView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                BeGitBackButton()
+                BeGitBackButton(title: "HOME")
             }
 
             ToolbarItem(placement: .principal) {
@@ -359,10 +359,6 @@ struct RepositoryDashboardView: View {
                     Text("\(issuerLogin) がスタート")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
-
-                    Text("pushしたら投稿できるよ")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.68))
                 }
             }
 
@@ -380,7 +376,7 @@ struct RepositoryDashboardView: View {
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundStyle(draftPost?.status == "late" ? AppTheme.softPink : AppTheme.accent)
                 } else {
-                    Text("GitHubにcommitすると撮影して投稿できます")
+                    Text("GitHubにcommit/PRすると投稿できるよ")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.68))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -393,6 +389,39 @@ struct RepositoryDashboardView: View {
                         .buttonStyle(.plain)
                 }
             }
+
+            if draftPost == nil {
+                NavigationLink(value: cameraRoute(for: activeBeGitTime)) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .frame(width: 30, height: 30)
+                            .background(Color.black.opacity(0.10))
+                            .clipShape(Circle())
+
+                        Text("撮影する")
+                            .font(.system(size: 15, weight: .bold))
+
+                        Spacer(minLength: 8)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(.black.opacity(0.82))
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(AppTheme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                    }
+                    .shadow(color: accentPurple.opacity(0.24), radius: 10, y: 5)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("写真を撮影して進捗を投稿")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
@@ -403,6 +432,22 @@ struct RepositoryDashboardView: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(lightPurple, lineWidth: 2)
         )
+    }
+
+    private func cameraRoute(for activeBeGitTime: ActiveBeGitTime) -> RepositoryNavigationRoute {
+        let notificationID = activeBeGitTime.notificationID > 0
+            ? activeBeGitTime.notificationID
+            : nil
+
+        let notification = RepositoryNotification(
+            backendID: notificationID,
+            repository: viewModel.repository,
+            selectedMembers: viewModel.repository.members,
+            comment: "",
+            createdAt: activeBeGitTime.sentAt
+        )
+
+        return .camera(notification: notification)
     }
 
     private func remainingTimeText(until expiry: Date, now: Date) -> String {
