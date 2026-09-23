@@ -233,13 +233,13 @@ struct RepositoryListView: View {
             }
                 .accessibilityIdentifier("add_repository_button")
         }
-        .alert("GitHubに再接続してください", isPresented: $isShowingAuthExpiredAlert) {
+        .alert("GitHubに再接続してね", isPresented: $isShowingAuthExpiredAlert) {
             Button("GitHubで再ログイン") {
                 oauthManager.startLogin()
             }
             Button("キャンセル", role: .cancel) {}
         } message: {
-            Text("セッションの有効期限が切れています。GitHubに再ログインすると続行できます。")
+            Text("セッションの有効期限が切れています。GitHubに再ログインすると続行できるよ！")
         }
         // alert より外側で指定し、アクション文字へ黒を継承させる。
         .tint(.black)
