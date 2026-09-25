@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -28,8 +29,11 @@ func notifyPostAuthor(
 	post *model.Post,
 	actorID int64,
 	buildPayload func(groupID, postID int64, actorLogin string) Payload,
+	externalEventType string,
+	groupRepo repository.GroupRepository,
+	externalPublisher ExternalNotificationPublisher,
 ) {
-	if userRepo == nil || fcmTokenRepo == nil || fcmClient == nil || post == nil {
+	if post == nil || (userRepo == nil) || ((fcmTokenRepo == nil || fcmClient == nil) && externalPublisher == nil) {
 		return
 	}
 	// 自己抑制
@@ -43,17 +47,29 @@ func notifyPostAuthor(
 		return
 	}
 
-	tokens, err := fcmTokenRepo.GetTokensByUserID(ctx, post.UserID)
-	if err != nil {
-		log.Printf("social: GetTokensByUserID author %d failed: %v", post.UserID, err)
-		return
-	}
-	if len(tokens) == 0 {
-		return
-	}
-
 	payload := buildPayload(post.GroupID, post.ID, actor.GitHubLogin)
-	logFCMSend(payload.Data["type"], len(tokens), fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
+	if fcmTokenRepo != nil && fcmClient != nil {
+		tokens, err := fcmTokenRepo.GetTokensByUserID(ctx, post.UserID)
+		if err != nil {
+			log.Printf("social: GetTokensByUserID author %d failed: %v", post.UserID, err)
+		} else if len(tokens) > 0 {
+			logFCMSend(payload.Data["type"], len(tokens), fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
+		}
+	}
+	if externalEventType != "" && externalPublisher != nil && groupRepo != nil {
+		group, err := groupRepo.GetByID(ctx, post.GroupID)
+		if err == nil {
+			event := model.NotificationEvent{
+				Key: fmt.Sprintf("%s:%d:%d:%d", externalEventType, post.ID, actorID, time.Now().UnixNano()), Type: externalEventType,
+				GroupID: post.GroupID, GroupName: group.Name, Title: payload.Notification.Title,
+				Body: payload.Notification.Body, AccentColor: "#39D353",
+				Fields: map[string]string{"投稿": fmt.Sprintf("#%d", post.ID), "メンバー": "@" + actor.GitHubLogin}, OccurredAt: time.Now().UTC(),
+			}
+			if err := externalPublisher.Publish(ctx, event); err != nil {
+				log.Printf("social: external publish failed event=%s: %v", event.Key, err)
+			}
+		}
+	}
 }
 
 // allowedReactionTypes は許可されたリアクションタイプのセット
@@ -83,9 +99,11 @@ type reactionService struct {
 	reactionRepo repository.ReactionRepository
 	postRepo     repository.PostRepository
 	// ⑦ 通知用の依存（nil 可。未設定なら通知を送らない）
-	userRepo     userByIDRepo
-	fcmTokenRepo repository.FCMTokenRepository
-	fcmClient    fcm.Client
+	userRepo          userByIDRepo
+	fcmTokenRepo      repository.FCMTokenRepository
+	fcmClient         fcm.Client
+	groupRepo         repository.GroupRepository
+	externalPublisher ExternalNotificationPublisher
 }
 
 // NewReactionService は ReactionService を作成する（通知無し。既存配線互換）
@@ -93,9 +111,15 @@ func NewReactionService(
 	reactionRepo repository.ReactionRepository,
 	postRepo repository.PostRepository,
 ) ReactionService {
+	return &reactionService{reactionRepo: reactionRepo, postRepo: postRepo}
+}
+
+func NewReactionServiceWithExternalNotifications(reactionRepo repository.ReactionRepository, postRepo repository.PostRepository, userRepo userByIDRepo, fcmTokenRepo repository.FCMTokenRepository, fcmClient fcm.Client, groupRepo repository.GroupRepository, publisher ExternalNotificationPublisher) ReactionService {
 	return &reactionService{
 		reactionRepo: reactionRepo,
 		postRepo:     postRepo,
+		userRepo:     userRepo, fcmTokenRepo: fcmTokenRepo, fcmClient: fcmClient,
+		groupRepo: groupRepo, externalPublisher: publisher,
 	}
 }
 
@@ -152,7 +176,8 @@ func (s *reactionService) AddReaction(ctx context.Context, groupID, postID, user
 	}
 
 	// ⑦ 投稿者本人へ reaction 通知（自己抑制・ベストエフォート）
-	notifyPostAuthor(ctx, s.userRepo, s.fcmTokenRepo, s.fcmClient, post, userID, BuildReaction)
+	// リアクションはアプリ内/FCM通知のみ。Discord・Slackへの外部通知は送らない。
+	notifyPostAuthor(ctx, s.userRepo, s.fcmTokenRepo, s.fcmClient, post, userID, BuildReaction, "", s.groupRepo, s.externalPublisher)
 
 	return s.reactionRepo.ListByPostID(ctx, postID)
 }

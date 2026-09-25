@@ -25,9 +25,11 @@ type commentService struct {
 	commentRepo repository.CommentRepository
 	postRepo    repository.PostRepository
 	// ⑦ 通知用の依存（nil 可。未設定なら通知を送らない）
-	userRepo     userByIDRepo
-	fcmTokenRepo repository.FCMTokenRepository
-	fcmClient    fcm.Client
+	userRepo          userByIDRepo
+	fcmTokenRepo      repository.FCMTokenRepository
+	fcmClient         fcm.Client
+	groupRepo         repository.GroupRepository
+	externalPublisher ExternalNotificationPublisher
 }
 
 // NewCommentService は CommentService を作成する（通知無し。既存配線互換）
@@ -49,12 +51,18 @@ func NewCommentServiceWithNotifications(
 	fcmTokenRepo repository.FCMTokenRepository,
 	fcmClient fcm.Client,
 ) CommentService {
+	return NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, nil, nil)
+}
+
+func NewCommentServiceWithExternalNotifications(commentRepo repository.CommentRepository, postRepo repository.PostRepository, userRepo userByIDRepo, fcmTokenRepo repository.FCMTokenRepository, fcmClient fcm.Client, groupRepo repository.GroupRepository, publisher ExternalNotificationPublisher) CommentService {
 	return &commentService{
-		commentRepo:  commentRepo,
-		postRepo:     postRepo,
-		userRepo:     userRepo,
-		fcmTokenRepo: fcmTokenRepo,
-		fcmClient:    fcmClient,
+		commentRepo:       commentRepo,
+		postRepo:          postRepo,
+		userRepo:          userRepo,
+		fcmTokenRepo:      fcmTokenRepo,
+		fcmClient:         fcmClient,
+		groupRepo:         groupRepo,
+		externalPublisher: publisher,
 	}
 }
 
@@ -91,7 +99,7 @@ func (s *commentService) CreateComment(ctx context.Context, groupID, postID, use
 	}
 
 	// ⑦ 投稿者本人へ comment 通知（自己抑制・ベストエフォート）
-	notifyPostAuthor(ctx, s.userRepo, s.fcmTokenRepo, s.fcmClient, post, userID, BuildComment)
+	notifyPostAuthor(ctx, s.userRepo, s.fcmTokenRepo, s.fcmClient, post, userID, BuildComment, model.EventComment, s.groupRepo, s.externalPublisher)
 
 	return comment, nil
 }

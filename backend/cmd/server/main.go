@@ -44,6 +44,8 @@ type Config struct {
 	// CronSecret は内部 Cron エンドポイント（POST /internal/cron）の起動シークレット。
 	// Workers scheduled() が X-Cron-Secret ヘッダーで付与する。未設定なら Cron 経路は常に 403。
 	CronSecret string
+	// NotificationQueueSecret は Worker の Queue producer / consumer と Go コンテナ間の内部認証に使う。
+	NotificationQueueSecret string
 
 	// BeGitTimeAllowMultiplePerSprint が true のとき BeGit Time! の「1スプリント1人1回」を適用しない。
 	// 未設定は従来どおり制限あり（wrangler.toml の vars で本番・dev とも true）。1時間の時間的非共存ルールは常に適用する。
@@ -74,6 +76,7 @@ func loadConfig() (*Config, error) {
 		AppBaseURL:                      os.Getenv("APP_BASE_URL"),
 		GitHubAppIOSRedirectURI:         os.Getenv("GITHUB_APP_IOS_REDIRECT_URI"),
 		CronSecret:                      os.Getenv("CRON_SECRET"),
+		NotificationQueueSecret:         os.Getenv("NOTIFICATION_QUEUE_SECRET"),
 		DevMode:                         os.Getenv("DEV_MODE") == "true",
 		BeGitTimeAllowMultiplePerSprint: os.Getenv("BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT") == "true",
 	}
@@ -165,6 +168,9 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	if v := r.Header.Get("X-Internal-Cron-Secret"); v != "" {
 		cfg.CronSecret = v
 	}
+	if v := r.Header.Get("X-Internal-Notification-Queue-Secret"); v != "" {
+		cfg.NotificationQueueSecret = v
+	}
 	if v := r.Header.Get("X-Internal-Dev-Mode"); v != "" {
 		cfg.DevMode = v == "true"
 	}
@@ -194,6 +200,7 @@ var internalConfigHeaders = []string{
 	"X-Internal-App-Base-URL",
 	"X-Internal-Github-App-Ios-Redirect-Uri",
 	"X-Internal-Cron-Secret",
+	"X-Internal-Notification-Queue-Secret",
 	"X-Internal-Dev-Mode",
 	"X-Internal-Begit-Time-Allow-Multiple-Per-Sprint",
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/irj0927/begit/internal/model"
@@ -57,12 +58,13 @@ type NotificationService interface {
 
 // notificationService は NotificationService インターフェースの実装
 type notificationService struct {
-	sprintRepo   repository.SprintRepository
-	notifRepo    repository.NotificationRepository
-	fcmTokenRepo repository.FCMTokenRepository
-	fcmClient    fcm.Client
-	groupRepo    repository.GroupRepository
-	postRepo     repository.PostRepository
+	sprintRepo        repository.SprintRepository
+	notifRepo         repository.NotificationRepository
+	fcmTokenRepo      repository.FCMTokenRepository
+	fcmClient         fcm.Client
+	groupRepo         repository.GroupRepository
+	postRepo          repository.PostRepository
+	externalPublisher ExternalNotificationPublisher
 	// allowMultiplePerSprint が true なら「1スプリント1人1回」を適用しない（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT）。
 	// ゼロ値 false = 制限あり。1時間の時間的非共存ルールは常に適用する。
 	allowMultiplePerSprint bool
@@ -119,6 +121,24 @@ func NewNotificationServiceFull(
 	}
 }
 
+// NewNotificationServiceFullWithPublisher はスマホ Push に加えて外部チャネルへも通知する。
+func NewNotificationServiceFullWithPublisher(
+	sprintRepo repository.SprintRepository,
+	notifRepo repository.NotificationRepository,
+	fcmTokenRepo repository.FCMTokenRepository,
+	fcmClient fcm.Client,
+	groupRepo repository.GroupRepository,
+	postRepo repository.PostRepository,
+	allowMultiplePerSprint bool,
+	externalPublisher ExternalNotificationPublisher,
+) NotificationService {
+	return &notificationService{
+		sprintRepo: sprintRepo, notifRepo: notifRepo, fcmTokenRepo: fcmTokenRepo, fcmClient: fcmClient,
+		groupRepo: groupRepo, postRepo: postRepo, allowMultiplePerSprint: allowMultiplePerSprint,
+		externalPublisher: externalPublisher,
+	}
+}
+
 // SendNotification は現スプリントの取得/作成 → 時間非共存判定 → 通知 INSERT → FCM 送信を行う
 func (s *notificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
 	// Step 1: 現在のスプリントを取得または作成
@@ -148,6 +168,32 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		if err == nil && len(tokens) > 0 {
 			payload := BuildBeGitTime(groupID, notif.ID, sprint.ID)
 			logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
+		}
+	}
+
+	// 外部通知は Push と独立したベストエフォート経路。ジョブ作成後は Queue が再試行する。
+	if s.externalPublisher != nil && s.groupRepo != nil {
+		group, groupErr := s.groupRepo.GetByID(ctx, groupID)
+		if groupErr == nil {
+			issuer := "チームメンバー"
+			if members, membersErr := s.groupRepo.GetMembers(ctx, groupID); membersErr == nil {
+				for _, member := range members {
+					if member.UserID == userID {
+						issuer = "@" + member.Login
+						break
+					}
+				}
+			}
+			event := model.NotificationEvent{
+				Key: fmt.Sprintf("begit_time:%d", notif.ID), Type: model.EventBeGitTime,
+				GroupID: groupID, GroupName: group.Name, Title: "⏰ BeGit Time!",
+				Body:        "今、なに作ってる？ 1時間だけ、みんなで進捗を草にしよう。",
+				AccentColor: "#39D353", Fields: map[string]string{"発行者": issuer, "残り時間": "60分"},
+				OccurredAt: notif.SentAt,
+			}
+			if publishErr := s.externalPublisher.Publish(ctx, event); publishErr != nil {
+				log.Printf("notification_service: external publish failed event=%s: %v", event.Key, publishErr)
+			}
 		}
 	}
 

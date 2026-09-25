@@ -49,6 +49,15 @@ func (m *mockUserByID) GetByID(ctx context.Context, id int64) (*model.User, erro
 	return &model.User{ID: id, GitHubLogin: "actor"}, nil
 }
 
+type recordingExternalNotificationPublisher struct {
+	events []model.NotificationEvent
+}
+
+func (p *recordingExternalNotificationPublisher) Publish(_ context.Context, event model.NotificationEvent) error {
+	p.events = append(p.events, event)
+	return nil
+}
+
 // TestReaction_NotifiesAuthor_OnOtherUser は他者操作で投稿者へ reaction を送ることを確認する
 func TestReaction_NotifiesAuthor_OnOtherUser(t *testing.T) {
 	postRepo := &mockPostRepository{
@@ -80,6 +89,30 @@ func TestReaction_NotifiesAuthor_OnOtherUser(t *testing.T) {
 	c := fc.withDataCalls[0]
 	if c.data["type"] != "reaction" || c.data["post_id"] != "890" || c.data["actor_login"] != "octocat" || c.tokens[0] != "author-tok" {
 		t.Errorf("unexpected reaction data/tokens: %v %v", c.data, c.tokens)
+	}
+}
+
+func TestReaction_DoesNotPublishExternalNotification(t *testing.T) {
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
+			return &model.Post{ID: postID, GroupID: 12, UserID: 99}, nil
+		},
+	}
+	publisher := &recordingExternalNotificationPublisher{}
+	groupRepo := &mockGroupRepository{
+		getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
+			return &model.Group{ID: groupID, Name: "team"}, nil
+		},
+	}
+	svc := NewReactionServiceWithExternalNotifications(
+		&mockReactionRepository{}, postRepo, &mockUserByID{}, nil, nil, groupRepo, publisher,
+	)
+
+	if _, err := svc.AddReaction(context.Background(), 12, 890, 2, "heart"); err != nil {
+		t.Fatalf("AddReaction() failed: %v", err)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("expected no external notifications, got %d", len(publisher.events))
 	}
 }
 

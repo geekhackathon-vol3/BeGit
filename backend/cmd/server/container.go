@@ -14,8 +14,10 @@ import (
 	"github.com/irj0927/begit/internal/service"
 	"github.com/irj0927/begit/pkg/crypto"
 	"github.com/irj0927/begit/pkg/d1"
+	"github.com/irj0927/begit/pkg/externalnotify"
 	"github.com/irj0927/begit/pkg/fcm"
 	githubpkg "github.com/irj0927/begit/pkg/github"
+	"github.com/irj0927/begit/pkg/notificationqueue"
 	"github.com/irj0927/begit/pkg/r2"
 )
 
@@ -89,6 +91,14 @@ func (s *server) buildHandler() (http.Handler, error) {
 	commentRepo := repository.NewCommentRepository(d1Client)
 	photoRepo := repository.NewPhotoRepository(d1Client)
 	deliveryRepo := repository.NewNotificationDeliveryRepository(d1Client)
+	notificationChannelRepo := repository.NewNotificationChannelRepository(d1Client)
+	notificationDeliveryJobRepo := repository.NewNotificationDeliveryJobRepository(d1Client)
+
+	externalSender := externalnotify.NewClient()
+	queueClient := notificationqueue.NewClient(cfg.AppBaseURL, cfg.NotificationQueueSecret)
+	externalPublisher := service.NewExternalNotificationPublisher(notificationChannelRepo, notificationDeliveryJobRepo, queueClient)
+	notificationChannelSvc := service.NewNotificationChannelService(notificationChannelRepo, groupRepo, encryptor, externalSender)
+	externalDeliverySvc := service.NewExternalNotificationDeliveryService(notificationChannelRepo, notificationDeliveryJobRepo, encryptor, externalSender)
 
 	// Service 層の初期化
 	authSvc := service.NewAuthService(
@@ -101,7 +111,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 		encryptor,
 	)
 
-	notifSvc := service.NewNotificationServiceFull(
+	notifSvc := service.NewNotificationServiceFullWithPublisher(
 		sprintRepo,
 		notifRepo,
 		fcmTokenRepo,
@@ -109,6 +119,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 		groupRepo,
 		postRepo,
 		cfg.BeGitTimeAllowMultiplePerSprint,
+		externalPublisher,
 	)
 
 	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client, notifRepo)
@@ -116,19 +127,19 @@ func (s *server) buildHandler() (http.Handler, error) {
 	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo)
 
 	// ② Nice Work! 発火サービス（webhook_service から委譲される）
-	niceWorkSvc := service.NewNiceWorkService(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient)
+	niceWorkSvc := service.NewNiceWorkServiceWithPublisher(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient, externalPublisher)
 
 	webhookSvc := service.NewWebhookServiceWithNiceWork(groupRepo, sprintRepo, niceWorkSvc)
 
 	fcmTokenSvc := service.NewFCMTokenService(fcmTokenRepo)
 
 	// ⑦ ソーシャル通知付き（fcm 依存注入）
-	reactionSvc := service.NewReactionServiceWithNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient)
+	reactionSvc := service.NewReactionServiceWithExternalNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
-	commentSvc := service.NewCommentServiceWithNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient)
+	commentSvc := service.NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
 	// ③④⑤⑥ Cron サービス
-	cronSvc := service.NewCronService(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient)
+	cronSvc := service.NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient, externalPublisher)
 
 	appInstallationClient, ok := githubClient.(githubpkg.AppInstallationClient)
 	if !ok {
@@ -181,6 +192,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 	githubHandler := handler.NewGitHubHandler(githubSvc)
 	githubAppHandler := handler.NewGitHubAppHandler(githubAppInstallationSvc, cfg.GitHubAppIOSRedirectURI)
 	cronHandler := handler.NewCronHandler(cronSvc, cfg.CronSecret)
+	notificationChannelHandler := handler.NewNotificationChannelHandler(notificationChannelSvc)
+	externalDeliveryHandler := handler.NewNotificationDeliveryHandler(externalDeliverySvc, cfg.NotificationQueueSecret)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -220,6 +233,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// 内部 Cron エンドポイント（bearer 不要。X-Cron-Secret 一致時のみ受理。
 	// Workers scheduled() 経由でのみ到達する想定で公開はしない）。
 	r.POST("/internal/cron", cronHandler.Run)
+	r.POST("/internal/notification-deliveries/:jobId", externalDeliveryHandler.Deliver)
 
 	// dev 専用ログイン（DEV_MODE=true のときだけ登録。false なら未登録＝404）
 	if cfg.DevMode {
@@ -258,6 +272,11 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.DELETE("/groups/:id/posts/:postId/comments/:commentId", bearerAuth, groupMember, commentHandler.Delete)
 	r.GET("/groups/:id/commits", bearerAuth, groupMember, githubHandler.ListCommits)
 	r.GET("/groups/:id/pull-requests", bearerAuth, groupMember, githubHandler.ListPullRequests)
+	r.GET("/groups/:id/notification-channels", bearerAuth, groupMember, notificationChannelHandler.List)
+	r.POST("/groups/:id/notification-channels", bearerAuth, groupMember, notificationChannelHandler.Create)
+	r.PATCH("/groups/:id/notification-channels/:channelId", bearerAuth, groupMember, notificationChannelHandler.Update)
+	r.DELETE("/groups/:id/notification-channels/:channelId", bearerAuth, groupMember, notificationChannelHandler.Delete)
+	r.POST("/groups/:id/notification-channels/:channelId/test", bearerAuth, groupMember, notificationChannelHandler.Test)
 
 	return r, nil
 }

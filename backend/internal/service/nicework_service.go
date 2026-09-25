@@ -54,13 +54,14 @@ type NiceWorkService interface {
 
 // niceWorkService は NiceWorkService インターフェースの実装
 type niceWorkService struct {
-	userRepo     userByLoginRepo
-	groupRepo    repository.GroupRepository
-	sprintRepo   repository.SprintRepository
-	notifRepo    repository.NotificationRepository
-	postRepo     repository.PostRepository
-	fcmTokenRepo repository.FCMTokenRepository
-	fcmClient    fcm.Client
+	userRepo          userByLoginRepo
+	groupRepo         repository.GroupRepository
+	sprintRepo        repository.SprintRepository
+	notifRepo         repository.NotificationRepository
+	postRepo          repository.PostRepository
+	fcmTokenRepo      repository.FCMTokenRepository
+	fcmClient         fcm.Client
+	externalPublisher ExternalNotificationPublisher
 }
 
 // NewNiceWorkService は NiceWorkService を作成する
@@ -73,14 +74,29 @@ func NewNiceWorkService(
 	fcmTokenRepo repository.FCMTokenRepository,
 	fcmClient fcm.Client,
 ) NiceWorkService {
+	return NewNiceWorkServiceWithPublisher(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient, nil)
+}
+
+// NewNiceWorkServiceWithPublisher は Nice Work の外部通知も有効にする。
+func NewNiceWorkServiceWithPublisher(
+	userRepo userByLoginRepo,
+	groupRepo repository.GroupRepository,
+	sprintRepo repository.SprintRepository,
+	notifRepo repository.NotificationRepository,
+	postRepo repository.PostRepository,
+	fcmTokenRepo repository.FCMTokenRepository,
+	fcmClient fcm.Client,
+	externalPublisher ExternalNotificationPublisher,
+) NiceWorkService {
 	return &niceWorkService{
-		userRepo:     userRepo,
-		groupRepo:    groupRepo,
-		sprintRepo:   sprintRepo,
-		notifRepo:    notifRepo,
-		postRepo:     postRepo,
-		fcmTokenRepo: fcmTokenRepo,
-		fcmClient:    fcmClient,
+		userRepo:          userRepo,
+		groupRepo:         groupRepo,
+		sprintRepo:        sprintRepo,
+		notifRepo:         notifRepo,
+		postRepo:          postRepo,
+		fcmTokenRepo:      fcmTokenRepo,
+		fcmClient:         fcmClient,
+		externalPublisher: externalPublisher,
 	}
 }
 
@@ -175,6 +191,20 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 		} else if len(tokens) > 0 {
 			payload := BuildNiceWork(groupID, anchor.ID, created.ID, status)
 			logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
+		}
+	}
+	if s.externalPublisher != nil {
+		group, groupErr := s.groupRepo.GetByID(ctx, groupID)
+		if groupErr == nil {
+			event := model.NotificationEvent{
+				Key: fmt.Sprintf("nice_work:%d", created.ID), Type: model.EventNiceWork,
+				GroupID: groupID, GroupName: group.Name, Title: "🎉 Nice Work!",
+				Body: fmt.Sprintf("@%s が進捗を投稿しました。", senderLogin), AccentColor: "#39D353",
+				Fields: map[string]string{"リポジトリ": detected.RepoFullName, "ステータス": statusStr}, OccurredAt: detectionTime,
+			}
+			if publishErr := s.externalPublisher.Publish(ctx, event); publishErr != nil {
+				log.Printf("nicework_service: external publish failed event=%s: %v", event.Key, publishErr)
+			}
 		}
 	}
 

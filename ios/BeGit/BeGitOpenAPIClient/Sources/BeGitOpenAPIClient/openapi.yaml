@@ -143,6 +143,20 @@ components:
           example: owner/repo
           type: string
       type: object
+    handler.CreateNotificationChannelRequest:
+      properties:
+        display_name:
+          type: string
+        event_types:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        platform:
+          type: string
+        webhook_url:
+          type: string
+      type: object
     handler.CreatePostRequest:
       properties:
         body:
@@ -263,6 +277,36 @@ components:
           type: string
         user_id:
           type: integer
+      type: object
+    handler.NotificationChannelJSON:
+      properties:
+        connected:
+          type: boolean
+        created_at:
+          type: string
+        display_name:
+          type: string
+        enabled:
+          type: boolean
+        event_types:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        id:
+          type: integer
+        platform:
+          type: string
+        updated_at:
+          type: string
+      type: object
+    handler.NotificationChannelListResponse:
+      properties:
+        channels:
+          items:
+            $ref: '#/components/schemas/handler.NotificationChannelJSON'
+          type: array
+          uniqueItems: false
       type: object
     handler.NotificationJSON:
       properties:
@@ -446,6 +490,20 @@ components:
       properties:
         fcm_token:
           example: fcm-device-token
+          type: string
+      type: object
+    handler.UpdateNotificationChannelRequest:
+      properties:
+        display_name:
+          type: string
+        enabled:
+          type: boolean
+        event_types:
+          items:
+            type: string
+          type: array
+          uniqueItems: false
+        webhook_url:
           type: string
       type: object
     handler.UploadPhotosResponse:
@@ -904,6 +962,159 @@ paths:
       summary: コミット一覧
       tags:
       - github
+  /groups/{id}/notification-channels:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.NotificationChannelListResponse'
+          description: OK
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: 外部通知チャネル一覧
+      tags:
+      - notification-channels
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.CreateNotificationChannelRequest'
+                description: 通知先
+                summary: request
+        description: 通知先
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.NotificationChannelJSON'
+          description: Created
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
+      security:
+      - BearerAuth: []
+      summary: 外部通知チャネル作成
+      tags:
+      - notification-channels
+  /groups/{id}/notification-channels/{channelId}:
+    delete:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: チャネル ID
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+      security:
+      - BearerAuth: []
+      summary: 外部通知チャネル削除
+      tags:
+      - notification-channels
+    patch:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: チャネル ID
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.UpdateNotificationChannelRequest'
+                description: 更新内容
+                summary: request
+        description: 更新内容
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.NotificationChannelJSON'
+          description: OK
+      security:
+      - BearerAuth: []
+      summary: 外部通知チャネル更新
+      tags:
+      - notification-channels
+  /groups/{id}/notification-channels/{channelId}/test:
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: チャネル ID
+        in: path
+        name: channelId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: 外部通知チャネルのテスト送信
+      tags:
+      - notification-channels
   /groups/{id}/notifications:
     post:
       description: アクティブなチャレンジ（発行から 1 時間）中は発行不可。既定では 1 スプリント 1 人 1 回まで（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -31,13 +32,14 @@ type CronService interface {
 
 // cronService は CronService インターフェースの実装
 type cronService struct {
-	notifRepo    repository.NotificationRepository
-	sprintRepo   repository.SprintRepository
-	groupRepo    repository.GroupRepository
-	postRepo     repository.PostRepository
-	deliveryRepo repository.NotificationDeliveryRepository
-	fcmTokenRepo repository.FCMTokenRepository
-	fcmClient    fcm.Client
+	notifRepo         repository.NotificationRepository
+	sprintRepo        repository.SprintRepository
+	groupRepo         repository.GroupRepository
+	postRepo          repository.PostRepository
+	deliveryRepo      repository.NotificationDeliveryRepository
+	fcmTokenRepo      repository.FCMTokenRepository
+	fcmClient         fcm.Client
+	externalPublisher ExternalNotificationPublisher
 }
 
 // NewCronService は CronService を作成する
@@ -58,6 +60,24 @@ func NewCronService(
 		deliveryRepo: deliveryRepo,
 		fcmTokenRepo: fcmTokenRepo,
 		fcmClient:    fcmClient,
+	}
+}
+
+// NewCronServiceWithPublisher は時刻起点イベントを Push と外部チャネルへ配送する。
+func NewCronServiceWithPublisher(
+	notifRepo repository.NotificationRepository,
+	sprintRepo repository.SprintRepository,
+	groupRepo repository.GroupRepository,
+	postRepo repository.PostRepository,
+	deliveryRepo repository.NotificationDeliveryRepository,
+	fcmTokenRepo repository.FCMTokenRepository,
+	fcmClient fcm.Client,
+	externalPublisher ExternalNotificationPublisher,
+) CronService {
+	return &cronService{
+		notifRepo: notifRepo, sprintRepo: sprintRepo, groupRepo: groupRepo, postRepo: postRepo,
+		deliveryRepo: deliveryRepo, fcmTokenRepo: fcmTokenRepo, fcmClient: fcmClient,
+		externalPublisher: externalPublisher,
 	}
 }
 
@@ -82,6 +102,7 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 
 	for i := range due {
 		notif := due[i]
+		externalFields := map[string]string{}
 		sprint, err := s.sprintRepo.GetByID(ctx, notif.SprintID)
 		if err != nil {
 			log.Printf("cron_service: GetByID sprint %d failed: %v", notif.SprintID, err)
@@ -98,6 +119,8 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 				log.Printf("cron_service: computeMemberStatuses notif=%d failed: %v", notif.ID, err)
 			} else {
 				log.Printf("cron_service: challenge_end summary notif=%d %s", notif.ID, summarize(statuses))
+				onTime, late, missed := countStatuses(statuses)
+				externalFields["達成"] = fmt.Sprintf("🌱 %d On Time  ·  %d Late  ·  %d Missed", onTime, late, missed)
 			}
 		}
 
@@ -105,6 +128,7 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 		if err := s.sendToGroupIfNotSent(ctx, deliveryChallengeEnd, notif.ID, sprint.GroupID, BuildChallengeEnd(sprint.GroupID, notif.ID)); err != nil {
 			log.Printf("cron_service: sendToGroupIfNotSent challenge_end %d failed: %v", notif.ID, err)
 		}
+		s.publishExternal(ctx, deliveryChallengeEnd, notif.ID, sprint.GroupID, externalFields)
 	}
 
 	return nil
@@ -163,6 +187,57 @@ func (s *cronService) fireSprintNotification(ctx context.Context, kind string, s
 	if err := s.sendToGroupIfNotSent(ctx, kind, sp.ID, sp.GroupID, payload); err != nil {
 		log.Printf("cron_service: sendToGroupIfNotSent %s sprint %d failed: %v", kind, sp.ID, err)
 	}
+	s.publishExternal(ctx, kind, sp.ID, sp.GroupID, map[string]string{
+		"期間": fmt.Sprintf("%s – %s", sp.StartedAt.Format("1/2"), sp.EndsAt.Format("1/2")),
+	})
+}
+
+func (s *cronService) publishExternal(ctx context.Context, eventType string, refID, groupID int64, extraFields map[string]string) {
+	if s.externalPublisher == nil {
+		return
+	}
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		log.Printf("cron_service: external group lookup failed: %v", err)
+		return
+	}
+	title, body := "🌱 BeGit", "チームの新しいお知らせです。"
+	fields := make(map[string]string, len(extraFields)+1)
+	for key, value := range extraFields {
+		fields[key] = value
+	}
+	switch eventType {
+	case model.EventChallengeEnd:
+		title, body = "✨ BeGit Time終了！", "みんなの1時間が草になりました。結果を見て、お互いの進捗を讃えよう。"
+	case model.EventSprintReminder:
+		title, body = "🌿 Sprint終了まであと3日", "ラストスパート。小さな進捗も、今日の草にしよう。"
+		fields["残り時間"] = "3日"
+	case model.EventSprintEnd:
+		title, body = "🏁 Sprint完了！", "今週もおつかれさまでした。チームで育てた草を振り返ろう。"
+	case model.EventSprintStart:
+		title, body = "🌱 New Sprint", "新しいSprintが始まりました。今週も、つくったものを残していこう。"
+	}
+	event := model.NotificationEvent{
+		Key: fmt.Sprintf("%s:%d", eventType, refID), Type: eventType, GroupID: groupID,
+		GroupName: group.Name, Title: title, Body: body, AccentColor: "#39D353", Fields: fields, OccurredAt: time.Now().UTC(),
+	}
+	if err := s.externalPublisher.Publish(ctx, event); err != nil {
+		log.Printf("cron_service: external publish failed event=%s: %v", event.Key, err)
+	}
+}
+
+func countStatuses(statuses []MemberStatus) (onTime, late, missed int) {
+	for _, status := range statuses {
+		switch status.Status {
+		case "On Time":
+			onTime++
+		case "Late":
+			late++
+		default:
+			missed++
+		}
+	}
+	return
 }
 
 // finalizeMissed は終了スプリントの各通知について未投稿メンバーを missed として確定する。
