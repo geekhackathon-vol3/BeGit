@@ -54,7 +54,7 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
     }
 }
 
-struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
+struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChannelAPI {
     private let baseURL: URL
     private let session: URLSession
     
@@ -631,12 +631,136 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI {
         let output = try await makeClient(accessToken: accessToken).postAuthLogout()
         guard case .noContent = output else { throw BeGitAPIError.invalidResponse }
     }
+
+    func listNotificationChannels(repositoryID: Int64, accessToken: String) async throws -> [NotificationChannel] {
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/notification-channels",
+            method: "GET",
+            accessToken: accessToken
+        )
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(NotificationChannelListDTO.self, from: data).channels.map(\.model)
+    }
+
+    func createNotificationChannel(
+        repositoryID: Int64,
+        platform: NotificationChannelPlatform,
+        displayName: String,
+        webhookURL: String,
+        accessToken: String
+    ) async throws -> NotificationChannel {
+        let body = try JSONEncoder().encode(CreateNotificationChannelDTO(
+            platform: platform.rawValue,
+            displayName: displayName,
+            webhookURL: webhookURL,
+            eventTypes: ["begit_time", "challenge_end", "sprint_reminder", "sprint_end", "sprint_start"]
+        ))
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/notification-channels",
+            method: "POST",
+            accessToken: accessToken,
+            body: body
+        )
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(NotificationChannelDTO.self, from: data).model
+    }
+
+    func setNotificationChannelEnabled(repositoryID: Int64, channelID: Int64, enabled: Bool, accessToken: String) async throws -> NotificationChannel {
+        let body = try JSONEncoder().encode(UpdateNotificationChannelDTO(enabled: enabled))
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/notification-channels/\(channelID)",
+            method: "PATCH",
+            accessToken: accessToken,
+            body: body
+        )
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(NotificationChannelDTO.self, from: data).model
+    }
+
+    func testNotificationChannel(repositoryID: Int64, channelID: Int64, accessToken: String) async throws {
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/notification-channels/\(channelID)/test",
+            method: "POST",
+            accessToken: accessToken
+        )
+        try validateHTTPResponse(response, data: data)
+    }
+
+    func deleteNotificationChannel(repositoryID: Int64, channelID: Int64, accessToken: String) async throws {
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/notification-channels/\(channelID)",
+            method: "DELETE",
+            accessToken: accessToken
+        )
+        try validateHTTPResponse(response, data: data)
+    }
+
+    private func notificationChannelRequest(
+        path: String,
+        method: String,
+        accessToken: String,
+        body: Data? = nil
+    ) async throws -> (Data, URLResponse) {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method
+        request.httpBody = body
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+        return try await session.data(for: request)
+    }
 }
 
 // nonisolated 指定：アプリは MainActor 既定隔離のため、これを付けないと Decodable 適合も
 // MainActor 隔離になり、上の nonisolated な ErrorThrowingMiddleware から decode できない。
 private nonisolated struct ErrorResponseDTO: Decodable {
     let error: String
+}
+
+private nonisolated struct NotificationChannelListDTO: Decodable {
+    let channels: [NotificationChannelDTO]
+}
+
+private nonisolated struct NotificationChannelDTO: Decodable {
+    let id: Int64
+    let platform: String
+    let displayName: String
+    let enabled: Bool
+    let eventTypes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id, platform, enabled
+        case displayName = "display_name"
+        case eventTypes = "event_types"
+    }
+
+    var model: NotificationChannel {
+        NotificationChannel(
+            id: id,
+            platform: NotificationChannelPlatform(rawValue: platform) ?? .slack,
+            displayName: displayName,
+            isEnabled: enabled,
+            eventTypes: eventTypes
+        )
+    }
+}
+
+private nonisolated struct CreateNotificationChannelDTO: Encodable {
+    let platform: String
+    let displayName: String
+    let webhookURL: String
+    let eventTypes: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case platform
+        case displayName = "display_name"
+        case webhookURL = "webhook_url"
+        case eventTypes = "event_types"
+    }
+}
+
+private nonisolated struct UpdateNotificationChannelDTO: Encodable {
+    let enabled: Bool
 }
 
 private nonisolated struct ReactionCreateRequestDTO: Encodable {
