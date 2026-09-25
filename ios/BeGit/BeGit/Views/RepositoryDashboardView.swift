@@ -8,7 +8,7 @@ struct RepositoryDashboardView: View {
     @EnvironmentObject private var authState: AuthState
     //  Dashboard画面の状態を管理するViewModel
     @StateObject private var viewModel: RepositoryDashboardViewModel
-    @State private var isShowingGallery = false
+    @State private var selectedView: RepositoryDashboardDisplayMode = .timeline
     @State private var isShowingRepoSetting = false
     @State private var activityToDelete: RepositoryActivity?
     @State private var isShowingDeleteConfirmation = false
@@ -34,7 +34,7 @@ struct RepositoryDashboardView: View {
                 .ignoresSafeArea()
             dashboardContent
         }
-        .animation(.easeInOut(duration: 0.20), value: isShowingGallery)
+        .animation(.easeInOut(duration: 0.20), value: selectedView)
         .animation(.easeInOut(duration: 0.20), value: viewModel.activeChallenge)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
@@ -50,14 +50,14 @@ struct RepositoryDashboardView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 0) {
                     Button {
-                        isShowingGallery.toggle()
+                        selectedView = selectedView.next
                     } label: {
-                        Image(systemName: isShowingGallery ? "list.bullet" : "square.grid.3x3.fill")
+                        Image(systemName: selectedView.nextSystemImage)
                             .foregroundStyle(AppTheme.softPink)
                             .frame(width: 44, height: 44)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isShowingGallery ? "タイムラインに戻る" : "投稿写真一覧")
+                    .accessibilityLabel(selectedView.nextAccessibilityLabel)
 
                     Button {
                         isShowingRepoSetting = true
@@ -133,6 +133,7 @@ struct RepositoryDashboardView: View {
             while Task.isCancelled == false {
                 try? await Task.sleep(for: .seconds(5))
                 if Task.isCancelled { break }
+                await viewModel.refreshActivities(accessToken: authState.accessToken)
                 await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
             }
         }
@@ -145,14 +146,21 @@ struct RepositoryDashboardView: View {
 
     @ViewBuilder
     private var dashboardContent: some View {
-        if isShowingGallery {
+        switch selectedView {
+        case .timeline:
+            timelineScreen
+        case .photos:
             RepositoryPhotoGalleryContentView(
                 repository: viewModel.repository,
                 activities: viewModel.activities
             )
             .transition(.opacity)
-        } else {
-            timelineScreen
+        case .calendar:
+            RepositoryContributionCalendarView(
+                repository: viewModel.repository,
+                activities: viewModel.activities
+            )
+            .transition(.opacity)
         }
     }
 

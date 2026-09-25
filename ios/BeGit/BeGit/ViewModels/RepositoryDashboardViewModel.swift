@@ -98,6 +98,34 @@ final class RepositoryDashboardViewModel: ObservableObject {
         await refreshActiveChallenge(accessToken: accessToken)
     }
 
+    //  他メンバーの新着投稿を定期反映する軽量更新。
+    //  リアクションAPIの再取得は行わず、取得済みの状態を投稿IDごとに引き継ぐ。
+    func refreshActivities(accessToken: String?) async {
+        guard let accessToken, repository.backendID != nil else { return }
+
+        do {
+            let reactionsByPostID = activities.reduce(into: [Int64: [ActivityReaction]]()) {
+                result, activity in
+                guard let postID = activity.backendPostID else { return }
+                result[postID] = activity.reactions
+            }
+            var fetched = try await repositoryAPI.listActivities(
+                repository: repository,
+                accessToken: accessToken
+            )
+
+            for index in fetched.indices {
+                guard let postID = fetched[index].backendPostID,
+                      let reactions = reactionsByPostID[postID] else { continue }
+                fetched[index].reactions = reactions
+            }
+
+            activities = fetched
+        } catch {
+            //  バックグラウンド更新失敗時は、現在表示中の投稿を維持する。
+        }
+    }
+
     func refreshActiveChallenge(accessToken: String?) async {
         guard let accessToken, let repositoryID = repository.backendID else {
             activeBeGitTime = nil
