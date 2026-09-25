@@ -127,16 +127,16 @@ func (s *server) buildHandler() (http.Handler, error) {
 	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo)
 
 	// ② Nice Work! 発火サービス（webhook_service から委譲される）
-	niceWorkSvc := service.NewNiceWorkService(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient)
+	niceWorkSvc := service.NewNiceWorkServiceWithPublisher(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient, externalPublisher)
 
 	webhookSvc := service.NewWebhookServiceWithNiceWork(groupRepo, sprintRepo, niceWorkSvc)
 
 	fcmTokenSvc := service.NewFCMTokenService(fcmTokenRepo)
 
 	// ⑦ ソーシャル通知付き（fcm 依存注入）
-	reactionSvc := service.NewReactionServiceWithNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient)
+	reactionSvc := service.NewReactionServiceWithExternalNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
-	commentSvc := service.NewCommentServiceWithNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient)
+	commentSvc := service.NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
 	// ③④⑤⑥ Cron サービス
 	cronSvc := service.NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient, externalPublisher)

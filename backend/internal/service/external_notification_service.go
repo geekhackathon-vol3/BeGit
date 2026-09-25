@@ -21,6 +21,8 @@ var AllExternalNotificationEventTypes = []string{
 	model.EventSprintReminder,
 	model.EventSprintEnd,
 	model.EventSprintStart,
+	model.EventNiceWork,
+	model.EventComment,
 }
 
 type CreateNotificationChannelInput struct {
@@ -176,7 +178,7 @@ func (s *notificationChannelService) Test(ctx context.Context, groupID, channelI
 	}
 	return s.sender.Send(ctx, channel.Platform, webhookURL, model.NotificationEvent{
 		Key: fmt.Sprintf("test:%d:%d", channel.ID, time.Now().UnixNano()), Type: "test", GroupID: group.ID,
-		GroupName: group.Name, Title: "🌱 BeGitとつながりました！", Body: "これからチームの進捗を、ここへ可愛くお届けします。",
+		GroupName: group.Name, Title: "🌱 BeGitとつながりました！", Body: "チームの通知をここへ通知します",
 		AccentColor: "#39D353", Fields: map[string]string{"通知先": channel.DisplayName}, OccurredAt: time.Now().UTC(),
 	})
 }
@@ -189,6 +191,8 @@ func validateEventTypes(values []string) ([]string, error) {
 	for _, value := range AllExternalNotificationEventTypes {
 		allowed[value] = true
 	}
+	// reaction は旧クライアント互換で保存要求を受け付けるが、外部通知には使わない。
+	allowed[model.EventReaction] = true
 	seen := make(map[string]bool)
 	result := make([]string, 0, len(values))
 	for _, value := range values {
@@ -266,6 +270,10 @@ func (s *externalNotificationDeliveryService) Deliver(ctx context.Context, jobID
 	}
 	if job.Status == "delivered" || job.Status == "failed" {
 		return nil
+	}
+	if job.EventType == model.EventReaction {
+		// 古いQueueメッセージも含め、リアクションをDiscord/Slackへ送信しない。
+		return s.jobs.MarkFailed(ctx, jobID, "external reaction notifications are disabled")
 	}
 	channel, err := s.channels.GetByID(ctx, job.ChannelID)
 	if err != nil {

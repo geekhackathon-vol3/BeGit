@@ -653,7 +653,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChan
             platform: platform.rawValue,
             displayName: displayName,
             webhookURL: webhookURL,
-            eventTypes: ["begit_time", "challenge_end", "sprint_reminder", "sprint_end", "sprint_start"]
+            eventTypes: ["begit_time", "challenge_end", "sprint_reminder", "sprint_end", "sprint_start", "nice_work", "comment"]
         ))
         let (data, response) = try await notificationChannelRequest(
             path: "groups/\(repositoryID)/notification-channels",

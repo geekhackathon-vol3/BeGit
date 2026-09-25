@@ -11,6 +11,9 @@ const (
 	EventSprintReminder = "sprint_reminder"
 	EventSprintEnd      = "sprint_end"
 	EventSprintStart    = "sprint_start"
+	EventNiceWork       = "nice_work"
+	EventReaction       = "reaction"
+	EventComment        = "comment"
 )
 
 // NotificationChannel はグループに接続された外部通知先。
