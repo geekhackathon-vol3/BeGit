@@ -142,9 +142,7 @@ extension Components.Schemas.Handler_PostFeedJSON {
                    let trimmed = body?.trimmingCharacters(in: .whitespacesAndNewlines)
                    return (trimmed?.isEmpty == false) ? trimmed : nil
                }(),
-               date: createdAt.flatMap {
-                   sharedISO8601DateFormatter.date(from: $0)
-               } ?? Date(),
+               date: createdAt.flatMap(parseBackendDate) ?? Date(),
                // 実投稿の写真が無い場合も、デモ用画像には差し替えない。
                // Card側の中立なアイコン表示に任せ、実データとモックを混在させない。
                imageName: nil,
