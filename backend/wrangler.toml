@@ -27,6 +27,11 @@ crons = ["* * * * *", "0 0 * * *"]
 # CRON_SECRET は内部 Cron 起動シークレット。本番は var に平文で置かず secret で登録する:
 #   cd backend && npx wrangler secret put CRON_SECRET
 # scheduled() が X-Cron-Secret ヘッダーで Go コンテナへ転送し cron_handler が定数時間比較する。
+# 外部通知 Queue の内部認証シークレットも本番は secret で登録する:
+#   cd backend && npx wrangler secret put NOTIFICATION_QUEUE_SECRET
+# 初回デプロイ前に Queue / DLQ を作成する:
+#   cd backend && npx wrangler queues create begit-external-notifications
+#   cd backend && npx wrangler queues create begit-external-notifications-dlq
 
 # R2 への S3 互換アクセス用シークレット（CF_API_TOKEN とは別物）。
 # R2 ダッシュボード「Manage R2 API Tokens」で Access Key を発行し、本番に登録する:
@@ -56,6 +61,16 @@ database_id = "9629cd07-59c2-4b35-a795-d91a6b43fd02"
 binding = "PHOTOS"
 bucket_name = "begit-photos"
 
+[[queues.producers]]
+binding = "NOTIFICATION_QUEUE"
+queue = "begit-external-notifications"
+
+[[queues.consumers]]
+queue = "begit-external-notifications"
+dead_letter_queue = "begit-external-notifications-dlq"
+max_batch_size = 10
+max_retries = 5
+
 # ── dev 環境（フロント共有用・DEV_MODE=true）────────────────────────────
 # 本番（デフォルト env）とは別 Worker(begit-dev) + 別 D1(begit-db-dev) に隔離する。
 # DEV_MODE はこの env にのみ存在するため、本番デプロイには絶対に乗らない。
@@ -80,6 +95,8 @@ DB_ENCRYPTION_KEY = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1
 GITHUB_CLIENT_ID = "Ov23lilFdIRDnZUp0ai7"
 GITHUB_WEBHOOK_SECRET = "dev-webhook-secret"  # webhook は dev で未検証のためダミー
 CRON_SECRET = "dev-cron-secret"  # dev 用の Cron 起動シークレット（本番は secret で登録: npx wrangler secret put CRON_SECRET --env <prod>）
+# Queue の内部認証シークレットは平文で置かず、dev Worker に secret 登録する:
+#   cd backend && npx wrangler secret put NOTIFICATION_QUEUE_SECRET --env dev
 #   cd backend && npx wrangler secret put CF_API_TOKEN --env dev
 #
 # R2 access key は dev でも secret として登録する（var に平文で置かない）。
@@ -118,6 +135,16 @@ database_id = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 binding = "PHOTOS"
 bucket_name = "begit-photos"
 
+[[env.dev.queues.producers]]
+binding = "NOTIFICATION_QUEUE"
+queue = "begit-dev-external-notifications"
+
+[[env.dev.queues.consumers]]
+queue = "begit-dev-external-notifications"
+dead_letter_queue = "begit-dev-external-notifications-dlq"
+max_batch_size = 10
+max_retries = 5
+
 # ── minimal 環境（既存 begit / D1 から分離した検証用）────────────────────
 # 新しく作成したD1のID・Account ID・Workersサブドメインに置き換えてからデプロイする。
 # 既存のトップレベル環境と env.dev のD1は変更しない。
@@ -152,3 +179,13 @@ new_sqlite_classes = ["BeGitAPI"]
 binding = "DB"
 database_name = "begit-minimal-db"
 database_id = "6eb5ab31-c2df-4c5e-84c4-609d7382c784"
+
+[[env.minimal.queues.producers]]
+binding = "NOTIFICATION_QUEUE"
+queue = "begit-minimal-external-notifications"
+
+[[env.minimal.queues.consumers]]
+queue = "begit-minimal-external-notifications"
+dead_letter_queue = "begit-minimal-external-notifications-dlq"
+max_batch_size = 10
+max_retries = 5
