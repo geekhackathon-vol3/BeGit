@@ -122,7 +122,8 @@ export default {
   },
 
   async queue(batch: MessageBatch<{ job_id: number }>, env: Env): Promise<void> {
-    const container = getContainer(env.BEGIT_API, "begit-api-singleton");
+    // API trafficと配信処理を別のContainerに分離し、APIの起動枠競合を避ける。
+    const container = getContainer(env.BEGIT_API, "begit-background-singleton");
     for (const message of batch.messages) {
       try {
         const response = await container.fetch(new Request(
@@ -135,12 +136,21 @@ export default {
             },
           },
         ));
-        if (response.ok || (response.status >= 400 && response.status < 500)) {
+        if (response.ok) {
           message.ack();
         } else {
-          message.retry();
+          const responseBody = (await response.text().catch(() => "")).slice(0, 500);
+          console.error(
+            `[notification-queue] delivery failed job_id=${message.body.job_id} status=${response.status} body=${responseBody}`,
+          );
+          if (response.status >= 400 && response.status < 500) {
+            message.ack();
+          } else {
+            message.retry();
+          }
         }
-      } catch {
+      } catch (error) {
+        console.error(`[notification-queue] delivery request failed job_id=${message.body.job_id}`, error);
         message.retry();
       }
     }
@@ -165,7 +175,7 @@ export default {
     });
 
     ctx.waitUntil(
-      getContainer(env.BEGIT_API, "begit-api-singleton").fetch(req).then(async (response) => {
+      getContainer(env.BEGIT_API, "begit-background-singleton").fetch(req).then(async (response) => {
         if (!response.ok) {
           // 失敗理由（コンテナの応答本文）をログに残す。コンテナの標準出力は Workers Logs に出ないため。
           const body = (await response.text().catch(() => "")).slice(0, 500);

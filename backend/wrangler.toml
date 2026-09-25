@@ -42,7 +42,7 @@ crons = ["* * * * *", "0 0 * * *"]
 name = "begit-begitapi"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
-max_instances = 1
+max_instances = 2
 
 [[durable_objects.bindings]]
 name = "BEGIT_API"
@@ -69,6 +69,7 @@ queue = "begit-external-notifications"
 queue = "begit-external-notifications"
 dead_letter_queue = "begit-external-notifications-dlq"
 max_batch_size = 10
+max_batch_timeout = 1
 max_retries = 5
 
 # ── dev 環境（フロント共有用・DEV_MODE=true）────────────────────────────
@@ -114,7 +115,7 @@ crons = ["* * * * *", "0 0 * * *"]
 name = "begit-dev-begitapi-dev"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
-max_instances = 1
+max_instances = 2
 
 [[env.dev.durable_objects.bindings]]
 name = "BEGIT_API"
@@ -143,6 +144,7 @@ queue = "begit-dev-external-notifications"
 queue = "begit-dev-external-notifications"
 dead_letter_queue = "begit-dev-external-notifications-dlq"
 max_batch_size = 10
+max_batch_timeout = 1
 max_retries = 5
 
 # ── minimal 環境（既存 begit / D1 から分離した検証用）────────────────────
@@ -165,7 +167,7 @@ GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
 name = "begit-minimal-begitapi-minimal"
 class_name = "BeGitAPI"
 image = "./Dockerfile"
-max_instances = 1
+max_instances = 2
 
 [[env.minimal.durable_objects.bindings]]
 name = "BEGIT_API"
@@ -188,4 +190,5 @@ queue = "begit-minimal-external-notifications"
 queue = "begit-minimal-external-notifications"
 dead_letter_queue = "begit-minimal-external-notifications-dlq"
 max_batch_size = 10
+max_batch_timeout = 1
 max_retries = 5
