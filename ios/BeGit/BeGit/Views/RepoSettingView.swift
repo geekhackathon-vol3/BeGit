@@ -24,6 +24,18 @@ struct RepoSettingView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Settings")
+                                .font(.custom("Bitcount", size: 34))
+                                .foregroundStyle(AppTheme.Text.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text(repository.name)
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(AppTheme.Text.low)
+                                .lineLimit(1)
+                        }
+
                         // MARK: リポジトリ情報
                         settingSection(
                             title: "■ GitHub Repository",
@@ -66,11 +78,6 @@ struct RepoSettingView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("設定")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismiss()
@@ -221,13 +228,9 @@ struct RepoSettingView: View {
     private func notificationChannelRow(_ channel: NotificationChannel) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(channel.platform == .slack ? AppTheme.softPink.opacity(0.16) : AppTheme.accent.opacity(0.18))
-                    Image(systemName: channel.platform.symbolName)
-                        .foregroundStyle(channel.platform == .slack ? AppTheme.softPink : AppTheme.accent)
-                }
-                .frame(width: 42, height: 42)
+                Image(systemName: channel.platform.symbolName)
+                    .foregroundStyle(channel.platform == .slack ? AppTheme.softPink : AppTheme.accent)
+                    .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(channel.displayName)
@@ -248,13 +251,7 @@ struct RepoSettingView: View {
                 .tint(AppTheme.checkmarkGreen)
             }
 
-            HStack(spacing: 8) {
-                Button("テスト送信") {
-                    Task { await notificationChannels.sendTest(channel: channel, accessToken: authState.accessToken) }
-                }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.checkmarkGreen)
-
+            HStack {
                 Spacer()
 
                 Button(role: .destructive) {
@@ -304,7 +301,7 @@ struct RepoSettingView_Previews: PreviewProvider {
 private struct NotificationChannelSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var platform: NotificationChannelPlatform = .slack
-    @State private var displayName = "team-progress"
+    @State private var displayName = "BeGit"
     @State private var webhookURL = ""
     @State private var isSaving = false
 
@@ -316,19 +313,16 @@ private struct NotificationChannelSetupView: View {
                 AppTheme.background.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
-                        VStack(spacing: 8) {
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 30))
-                                .foregroundStyle(AppTheme.checkmarkGreen)
-                            Text("いつもの場所に、進捗の芽を。")
-                                .font(.system(size: 17, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.white)
-                            Text("Incoming Webhookを貼るだけで接続できます")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(AppTheme.Text.medium)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Add Channel")
+                                .font(.custom("Bitcount", size: 30))
+                                .foregroundStyle(AppTheme.Text.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text("Incoming Webhookで接続")
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(AppTheme.Text.low)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
 
                         Picker("通知先", selection: $platform) {
                             ForEach(NotificationChannelPlatform.allCases, id: \.self) { item in
@@ -336,14 +330,19 @@ private struct NotificationChannelSetupView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        .environment(\.colorScheme, .dark)
 
-                        setupField("表示名", text: $displayName, placeholder: "team-progress")
+                        setupField("■ Display Name", text: $displayName, placeholder: "BeGit")
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Webhook URL")
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .foregroundStyle(AppTheme.Text.high)
-                            SecureField(platform.webhookPlaceholder, text: $webhookURL)
+                            Text("■ Webhook URL")
+                                .font(.system(size: 20, weight: .regular, design: .monospaced))
+                                .foregroundStyle(AppTheme.sectionYellow)
+                            SecureField(
+                                platform.webhookPlaceholder,
+                                text: $webhookURL,
+                                prompt: Text(platform.webhookPlaceholder).foregroundColor(AppTheme.Text.medium)
+                            )
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .font(.system(size: 12, design: .monospaced))
@@ -365,7 +364,7 @@ private struct NotificationChannelSetupView: View {
                                 Text("接続する")
                             }
                             .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.black.opacity(0.82))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .background(AppTheme.checkmarkGreen)
@@ -373,16 +372,21 @@ private struct NotificationChannelSetupView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || webhookURL.isEmpty || isSaving)
-                        .opacity(displayName.isEmpty || webhookURL.isEmpty ? 0.45 : 1)
+                        .opacity(displayName.isEmpty || webhookURL.isEmpty ? 0.72 : 1)
                     }
                     .padding(20)
                 }
             }
-            .navigationTitle("通知先を追加")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("閉じる") { dismiss() }.foregroundStyle(AppTheme.softPink)
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(AppTheme.softPink)
+                    .accessibilityLabel("閉じる")
                 }
             }
             .toolbarBackground(AppTheme.background, for: .navigationBar)
@@ -393,9 +397,9 @@ private struct NotificationChannelSetupView: View {
     private func setupField(_ title: String, text: Binding<String>, placeholder: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.Text.high)
-            TextField(placeholder, text: text)
+                .font(.system(size: 20, weight: .regular, design: .monospaced))
+                .foregroundStyle(AppTheme.sectionYellow)
+            TextField(title, text: text, prompt: Text(placeholder).foregroundColor(AppTheme.Text.medium))
                 .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(.white)
                 .padding(14)
