@@ -236,6 +236,8 @@ components:
           type: string
         name:
           type: string
+        owner_verified:
+          type: boolean
         read_only:
           type: boolean
         repo_full_name:
@@ -251,6 +253,8 @@ components:
           type: integer
         name:
           type: string
+        owner_verified:
+          type: boolean
         read_only:
           type: boolean
         repo_full_name:
@@ -995,6 +999,53 @@ paths:
       summary: BeGit Time 自動開催設定を更新
       tags:
       - begit-time-schedule
+  /groups/{id}/claim-ownership:
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: リポジトリ管理権の引き取り
+      tags:
+      - groups
   /groups/{id}/commits:
     get:
       description: グループに紐づく GitHub リポジトリのコミット履歴を返す（GET /repos/{owner}/{repo}/commits
