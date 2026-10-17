@@ -23,8 +23,8 @@ struct RepositoryCardView: View {
                         .lineLimit(2)
                         .minimumScaleFactor(0.82)
 
-                    if repository.isReadOnly {
-                        Text("表示専用")
+                    if repository.myRole == .viewer || repository.isReadOnly {
+                        Text(repository.myRole == .viewer ? "表示専用" : "公開")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(.black.opacity(0.78))
                             .padding(.horizontal, 6)
