@@ -29,7 +29,7 @@ type GroupRepository interface {
 	AddMember(ctx context.Context, groupID, userID int64, role string) error
 	BatchAddMembers(ctx context.Context, groupID int64, userIDs []int64, role string) error
 	UpdateMemberRole(ctx context.Context, groupID, userID int64, role string) error
-	ClaimOwnership(ctx context.Context, groupID, userID int64) error
+	ClaimOwnership(ctx context.Context, groupID, userID int64, replaceVerified bool) error
 	RemoveMember(ctx context.Context, groupID, userID int64) error
 	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
 	GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
@@ -252,22 +252,27 @@ func (r *groupRepository) UpdateMemberRole(ctx context.Context, groupID, userID 
 	return nil
 }
 
-// ClaimOwnership は未確認グループの既存ownerをviewerへ戻し、GitHubで確認済みの
-// ユーザーへownerを付け替える。複数文を同じD1バッチで実行し、途中状態を公開しない。
-func (r *groupRepository) ClaimOwnership(ctx context.Context, groupID, userID int64) error {
+// ClaimOwnership は既存ownerをviewerへ戻し、GitHubで確認済みのユーザーへ
+// ownerを付け替える。replaceVerifiedはGitHub上の実ownerと確認できた場合だけtrueにする。
+func (r *groupRepository) ClaimOwnership(ctx context.Context, groupID, userID int64, replaceVerified bool) error {
+	replaceVerifiedValue := boolToSQLite(replaceVerified)
 	_, err := r.db.Exec(ctx,
 		`UPDATE group_members
 		 SET role = 'viewer'
 		 WHERE group_id = ? AND role = 'owner'
-		   AND EXISTS (SELECT 1 FROM groups WHERE id = ? AND owner_verified = 0);
+		   AND EXISTS (SELECT 1 FROM groups WHERE id = ? AND (owner_verified = 0 OR ? = 1));
 		 INSERT INTO group_members (group_id, user_id, role)
 		 SELECT ?, ?, 'owner'
-		 WHERE EXISTS (SELECT 1 FROM groups WHERE id = ? AND owner_verified = 0)
+		 WHERE EXISTS (SELECT 1 FROM groups WHERE id = ? AND (owner_verified = 0 OR ? = 1))
 		 ON CONFLICT(group_id, user_id) DO UPDATE SET role = 'owner';
 		 UPDATE groups
 		 SET owner_user_id = ?, owner_verified = 1, owner_claimed_at = datetime('now'), read_only = 0
-		 WHERE id = ? AND owner_verified = 0`,
-		[]interface{}{groupID, groupID, groupID, userID, groupID, userID, groupID},
+		 WHERE id = ? AND (owner_verified = 0 OR ? = 1)`,
+		[]interface{}{
+			groupID, groupID, replaceVerifiedValue,
+			groupID, userID, groupID, replaceVerifiedValue,
+			userID, groupID, replaceVerifiedValue,
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("group_repository: ClaimOwnership failed: %w", err)

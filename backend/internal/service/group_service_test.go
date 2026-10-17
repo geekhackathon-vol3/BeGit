@@ -31,7 +31,7 @@ type mockGroupRepository struct {
 	addMemberFunc         func(ctx context.Context, groupID, userID int64, role string) error
 	batchAddMembersFunc   func(ctx context.Context, groupID int64, userIDs []int64, role string) error
 	updateMemberRoleFunc  func(ctx context.Context, groupID, userID int64, role string) error
-	claimOwnershipFunc    func(ctx context.Context, groupID, userID int64) error
+	claimOwnershipFunc    func(ctx context.Context, groupID, userID int64, replaceVerified bool) error
 	removeMemberFunc      func(ctx context.Context, groupID, userID int64) error
 	isMemberFunc          func(ctx context.Context, groupID, userID int64) (bool, error)
 	getMemberFunc         func(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
@@ -87,9 +87,9 @@ func (m *mockGroupRepository) UpdateMemberRole(ctx context.Context, groupID, use
 	return nil
 }
 
-func (m *mockGroupRepository) ClaimOwnership(ctx context.Context, groupID, userID int64) error {
+func (m *mockGroupRepository) ClaimOwnership(ctx context.Context, groupID, userID int64, replaceVerified bool) error {
 	if m.claimOwnershipFunc != nil {
-		return m.claimOwnershipFunc(ctx, groupID, userID)
+		return m.claimOwnershipFunc(ctx, groupID, userID, replaceVerified)
 	}
 	return nil
 }
@@ -407,7 +407,14 @@ func TestGroupService_CreateGroup_WebhookForbidden(t *testing.T) {
 func TestGroupService_CreateGroup_ExistingGroupAddsMember(t *testing.T) {
 	addedMember := false
 
-	githubClient := &mockGitHubClient{}
+	githubClient := &mockGitHubClient{
+		getRepoInfoFunc: func(_ context.Context, repoFullName, _ string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: repoFullName, OwnerID: 99, OwnerLogin: "owner",
+				OwnerType: "User", CanPush: true,
+			}, nil
+		},
+	}
 	groupRepo := &mockGroupRepository{
 		createFunc: func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
 			return nil, repository.ErrConflict
@@ -535,8 +542,8 @@ func TestGroupService_CreateGroup_GitHubOwnerClaimsExistingGroup(t *testing.T) {
 		getByRepoFullNameFunc: func(context.Context, string) (*model.Group, error) {
 			return &model.Group{ID: 42, RepoFullName: "octocat/Hello-World", OwnerVerified: false}, nil
 		},
-		claimOwnershipFunc: func(_ context.Context, groupID, userID int64) error {
-			claimed = groupID == 42 && userID == 7
+		claimOwnershipFunc: func(_ context.Context, groupID, userID int64, replaceVerified bool) error {
+			claimed = groupID == 42 && userID == 7 && replaceVerified
 			return nil
 		},
 		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
@@ -626,6 +633,39 @@ func TestGroupService_CreateGroup_GitHubOwnerCanManagePublicSearchResult(t *test
 			"ownerVerified=%v readOnly=%v role=%q webhook=%v; want true/false/owner/true",
 			ownerVerified, createdReadOnly, creatorRole, webhookRegistered,
 		)
+	}
+}
+
+func TestGroupService_ClaimOwnership_ExactOwnerReplacesVerifiedOwner(t *testing.T) {
+	claimed := false
+	githubClient := &mockGitHubClient{
+		getUserFunc: func(context.Context, string) (*githubpkg.User, error) {
+			return &githubpkg.User{ID: 99, Login: "palm7710"}, nil
+		},
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: "palm7710/palm7710", OwnerID: 99, OwnerLogin: "palm7710",
+				OwnerType: "User", CanPush: true, CanAdmin: true,
+			}, nil
+		},
+	}
+	groups := &mockGroupRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{
+				ID: 8, RepoFullName: "palm7710/palm7710", OwnerUserID: 1, OwnerVerified: true,
+			}, nil
+		},
+		claimOwnershipFunc: func(_ context.Context, groupID, userID int64, replaceVerified bool) error {
+			claimed = groupID == 8 && userID == 42 && replaceVerified
+			return nil
+		},
+	}
+	service := NewGroupService(GroupServiceConfig{}, githubClient, groups, &mockUserRepository{})
+	if err := service.ClaimOwnership(context.Background(), 8, 42, "token"); err != nil {
+		t.Fatalf("exact GitHub owner should reclaim ownership: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected verified ownership to be replaced")
 	}
 }
 

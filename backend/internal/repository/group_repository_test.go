@@ -182,7 +182,7 @@ func TestGroupRepository_ClaimOwnership(t *testing.T) {
 	}
 
 	repo := NewGroupRepository(mock)
-	if err := repo.ClaimOwnership(context.Background(), 8, 42); err != nil {
+	if err := repo.ClaimOwnership(context.Background(), 8, 42, true); err != nil {
 		t.Fatalf("ClaimOwnership() failed: %v", err)
 	}
 	for _, fragment := range []string{
@@ -195,7 +195,11 @@ func TestGroupRepository_ClaimOwnership(t *testing.T) {
 			t.Fatalf("claim SQL does not contain %q: %s", fragment, capturedSQL)
 		}
 	}
-	wantParams := []interface{}{int64(8), int64(8), int64(8), int64(42), int64(8), int64(42), int64(8)}
+	wantParams := []interface{}{
+		int64(8), int64(8), 1,
+		int64(8), int64(42), int64(8), 1,
+		int64(42), int64(8), 1,
+	}
 	if len(capturedParams) != len(wantParams) {
 		t.Fatalf("unexpected params: %#v", capturedParams)
 	}

@@ -192,6 +192,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 			return nil, fmt.Errorf("%w: get user repository permissions failed: %v", ErrExternalAPI, err)
 		}
 	}
+	isExactOwner := isRepositoryOwner(verifiedUser, userRepoInfo)
 	canManage := canManageRepository(verifiedUser, userRepoInfo)
 	if req.ReadOnly && repoInfo.Private {
 		return nil, fmt.Errorf("%w: read-only mode is available only for public repositories", ErrForbidden)
@@ -233,8 +234,9 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 			if getErr != nil {
 				return nil, fmt.Errorf("group_service: GetByRepoFullName after conflict failed: %w", getErr)
 			}
-			if canManage && !existingGroup.OwnerVerified {
-				if claimErr := s.groupRepo.ClaimOwnership(ctx, existingGroup.ID, userID); claimErr != nil {
+			canReplaceExistingOwner := isExactOwner && existingGroup.OwnerUserID != userID
+			if canManage && (!existingGroup.OwnerVerified || canReplaceExistingOwner) {
+				if claimErr := s.groupRepo.ClaimOwnership(ctx, existingGroup.ID, userID, isExactOwner); claimErr != nil {
 					if errors.Is(claimErr, repository.ErrConflict) {
 						return nil, ErrConflict
 					}
@@ -311,6 +313,14 @@ func canManageRepository(user *githubpkg.User, repo *githubpkg.RepoInfo) bool {
 		// GitHub Enterpriseや古いfixtureでtypeが無い場合も、ID一致またはadmin権限を要求する。
 		return (repo.OwnerID != 0 && repo.OwnerID == user.ID) || repo.CanAdmin
 	}
+}
+
+func isRepositoryOwner(user *githubpkg.User, repo *githubpkg.RepoInfo) bool {
+	if user == nil || repo == nil || repo.OwnerID == 0 || repo.OwnerID != user.ID {
+		return false
+	}
+	ownerType := strings.ToLower(strings.TrimSpace(repo.OwnerType))
+	return ownerType == "" || ownerType == "user"
 }
 
 func normalizeRepoFullName(input string) (string, error) {
@@ -509,7 +519,7 @@ func (s *groupService) UpdateMemberRole(ctx context.Context, groupID, requesterU
 }
 
 // ClaimOwnership はGitHub上のowner/admin権限をOAuth Tokenで再確認し、
-// 既存の未確認グループの管理権をログイン中ユーザーへ移す。
+// 未確認グループ、または個人リポジトリの実ownerへ管理権を移す。
 func (s *groupService) ClaimOwnership(ctx context.Context, groupID, userID int64, accessToken string) error {
 	group, err := s.groupRepo.GetByID(ctx, groupID)
 	if err != nil {
@@ -518,11 +528,8 @@ func (s *groupService) ClaimOwnership(ctx context.Context, groupID, userID int64
 		}
 		return fmt.Errorf("group_service: ClaimOwnership group lookup failed: %w", err)
 	}
-	if group.OwnerVerified {
-		if group.OwnerUserID == userID {
-			return nil
-		}
-		return ErrConflict
+	if group.OwnerVerified && group.OwnerUserID == userID {
+		return nil
 	}
 	if strings.TrimSpace(accessToken) == "" {
 		return ErrUnauthorized
@@ -545,8 +552,12 @@ func (s *groupService) ClaimOwnership(ctx context.Context, groupID, userID int64
 		}
 		return fmt.Errorf("%w: get repository permissions failed: %v", ErrExternalAPI, err)
 	}
+	isExactOwner := isRepositoryOwner(user, repoInfo)
 	if !canManageRepository(user, repoInfo) {
 		return ErrForbidden
+	}
+	if group.OwnerVerified && !isExactOwner {
+		return ErrConflict
 	}
 
 	if group.ReadOnly {
@@ -557,7 +568,7 @@ func (s *groupService) ClaimOwnership(ctx context.Context, groupID, userID int64
 			}
 		}
 	}
-	if err := s.groupRepo.ClaimOwnership(ctx, groupID, userID); err != nil {
+	if err := s.groupRepo.ClaimOwnership(ctx, groupID, userID, isExactOwner); err != nil {
 		if errors.Is(err, repository.ErrConflict) {
 			return ErrConflict
 		}
