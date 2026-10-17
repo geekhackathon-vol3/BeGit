@@ -261,7 +261,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
 	r.POST("/groups/:id/sync-members", bearerAuth, groupOwner, groupHandler.SyncMembers)
 	r.PATCH("/groups/:id/members/:userId", bearerAuth, groupOwner, groupHandler.UpdateMemberRole)
-	r.POST("/groups/:id/notifications", bearerAuth, groupOwner, notifHandler.Send)
+	r.POST("/groups/:id/notifications", bearerAuth, groupPoster, notifHandler.Send)
 	r.GET("/groups/:id/notifications/active", bearerAuth, groupMember, notifHandler.GetActive)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
 	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupOwner, notifHandler.Stop)
