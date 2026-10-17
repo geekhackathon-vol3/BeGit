@@ -54,7 +54,7 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
     }
 }
 
-struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChannelAPI, BeGitTimeScheduleAPI {
+struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserAPI, NotificationChannelAPI, BeGitTimeScheduleAPI {
     private let baseURL: URL
     private let session: URLSession
     
@@ -211,6 +211,31 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChan
             if httpResponse.statusCode == 401 {
                 throw BeGitAPIError.authenticationRequired
             }
+            let message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
+            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
+        }
+    }
+
+    func updateMemberRole(
+        repositoryID: Int64,
+        userID: Int64,
+        role: RepositoryRole,
+        accessToken: String
+    ) async throws {
+        guard role == .viewer || role == .poster else { throw BeGitAPIError.invalidResponse }
+        let url = baseURL.appending(path: "groups/\(repositoryID)/members/\(userID)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.httpBody = try JSONEncoder().encode(UpdateMemberRoleRequestDTO(role: role.rawValue))
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 { throw BeGitAPIError.authenticationRequired }
             let message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
             throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
         }
@@ -917,6 +942,10 @@ private nonisolated struct CreatePostRequestDTO: Encodable {
         case githubLogin = "github_login"
         case repoFullName = "repo_full_name"
     }
+}
+
+private nonisolated struct UpdateMemberRoleRequestDTO: Encodable {
+    let role: String
 }
 
 private nonisolated struct CreatePostResponseDTO: Decodable {
