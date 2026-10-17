@@ -24,7 +24,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         memberCount: Int,
         members: [RepositoryMember],
         isReadOnly: Bool = false,
-        myRole: RepositoryRole = .owner,
+        myRole: RepositoryRole = .viewer,
         ownerVerified: Bool = true,
         activeChallenge: ActiveChallenge? = nil
     ) {
