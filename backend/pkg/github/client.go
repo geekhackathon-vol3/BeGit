@@ -43,6 +43,8 @@ type RepoInfo struct {
 	FullName  string `json:"full_name"`
 	AvatarURL string // owner.avatar_url
 	Private   bool
+	CanPush   bool
+	CanAdmin  bool
 }
 
 // AppInstallation は GitHub App のインストール先アカウント情報。
@@ -400,6 +402,14 @@ func (c *githubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToke
 	if owner, ok := raw["owner"].(map[string]interface{}); ok {
 		if avatarURL, ok := owner["avatar_url"].(string); ok {
 			info.AvatarURL = avatarURL
+		}
+	}
+	if permissions, ok := raw["permissions"].(map[string]interface{}); ok {
+		if canPush, ok := permissions["push"].(bool); ok {
+			info.CanPush = canPush
+		}
+		if canAdmin, ok := permissions["admin"].(bool); ok {
+			info.CanAdmin = canAdmin
 		}
 	}
 
