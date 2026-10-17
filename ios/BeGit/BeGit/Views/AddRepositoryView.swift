@@ -157,6 +157,7 @@ struct AddRepositoryView: View {
     private var repositoryPickerBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             repositorySearchBar
+            publicRepositoryLookupSection
 
             if viewModel.isLoadingRepositories {
                 repositoryLoadingRow
@@ -204,7 +205,7 @@ struct AddRepositoryView: View {
                     get: { viewModel.repositorySearchText },
                     set: { viewModel.updateRepositorySearchText($0) }
                 ),
-                prompt: Text("Search repositories").foregroundColor(.white.opacity(0.72))
+                prompt: Text("URL or owner/repo").foregroundColor(.white.opacity(0.72))
             )
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
@@ -235,6 +236,39 @@ struct AddRepositoryView: View {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var publicRepositoryLookupSection: some View {
+        if viewModel.canLookupPublicRepository || viewModel.isLookingUpPublicRepository {
+            Button {
+                Task { await viewModel.lookupPublicRepository() }
+            } label: {
+                HStack(spacing: 8) {
+                    if viewModel.isLookingUpPublicRepository {
+                        ProgressView().tint(.black)
+                    } else {
+                        Image(systemName: "globe")
+                    }
+                    Text("公開リポジトリを検索")
+                }
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(AppTheme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isLookingUpPublicRepository)
+        }
+
+        if let message = viewModel.publicRepositoryLookupError {
+            Text(message)
+                .appFont(.label)
+                .foregroundStyle(AppTheme.softPink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     //  Repository読み込み中表示
@@ -338,7 +372,7 @@ struct AddRepositoryView: View {
                         }
 
                         if repository.isReadOnly {
-                            Text("表示専用")
+                            Text("公開")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(.black.opacity(0.78))
                                 .padding(.horizontal, 7)
