@@ -240,6 +240,25 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
             throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
         }
     }
+
+    func claimOwnership(repositoryID: Int64, accessToken: String) async throws -> Repository {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/claim-ownership")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BeGitAPIError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            if httpResponse.statusCode == 401 { throw BeGitAPIError.authenticationRequired }
+            let message = (try? JSONDecoder().decode(ErrorResponseDTO.self, from: data))?.error
+            throw BeGitAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
+        }
+        return try await getRepository(id: repositoryID, accessToken: accessToken)
+    }
     
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity] {
         guard let backendID = repository.backendID else { return [] }

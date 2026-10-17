@@ -219,6 +219,7 @@ protocol RepositoryAPI: Sendable {
 }
 
 protocol GroupMemberRoleAPI: Sendable {
+    func claimOwnership(repositoryID: Int64, accessToken: String) async throws -> Repository
     func updateMemberRole(
         repositoryID: Int64,
         userID: Int64,
