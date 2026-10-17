@@ -247,6 +247,8 @@ struct RepositoryDashboardView: View {
             currentUserLogin: authState.githubUser?.login,
             lockedPostRoute: lockedPostRoute,
             activeNotificationID: activeNotificationID,
+            allowsDeletion: viewModel.repository.canPost,
+            allowsReactions: viewModel.repository.canPost,
             onDeleteRequested: {
                 activityToDelete = $0
                 isShowingDeleteConfirmation = true
@@ -297,7 +299,13 @@ struct RepositoryDashboardView: View {
     @ViewBuilder
     private var timelinePostButton: some View {
         Group {
-            if let challenge = viewModel.activeChallenge,
+            if viewModel.repository.canPost == false {
+                PrimaryCapsuleButtonLabel(
+                    title: "表示専用",
+                    systemImage: "eye.fill",
+                    isEnabled: false
+                )
+            } else if let challenge = viewModel.activeChallenge,
                challenge.hasDraftToCapture,
                let backendID = viewModel.repository.backendID,
                let draftPost = challenge.myPost {
