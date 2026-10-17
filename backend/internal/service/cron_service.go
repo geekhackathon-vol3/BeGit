@@ -21,6 +21,7 @@ const (
 	deliverySprintReminder = "sprint_reminder"
 	deliverySprintEnd      = "sprint_end"
 	deliverySprintStart    = "sprint_start"
+	deliveryReleaseTimeout = 5 * time.Second
 )
 
 // ErrInvalidCronKind は kind が不正な場合に返す（400 にマップ）
@@ -198,11 +199,11 @@ func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time)
 
 		if err := s.sendToGroupIfNotSent(ctx, deliveryBeGitTime, notif.ID, schedule.GroupID, BuildBeGitTime(schedule.GroupID, notif.ID, sprint.ID)); err != nil {
 			log.Printf("cron_service: scheduled begit_time delivery %d failed: %v", notif.ID, err)
-			continue
+		} else {
+			s.publishExternal(ctx, model.EventBeGitTime, notif.ID, schedule.GroupID, map[string]string{
+				"開始時刻": schedule.LocalTime,
+			})
 		}
-		s.publishExternal(ctx, model.EventBeGitTime, notif.ID, schedule.GroupID, map[string]string{
-			"開始時刻": schedule.LocalTime,
-		})
 		s.advanceSchedule(ctx, schedule, now)
 	}
 }
@@ -405,7 +406,7 @@ func (s *cronService) sendToGroupIfNotSent(ctx context.Context, kind string, ref
 	}
 	tokens, err := s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
 	if err != nil {
-		s.releaseDelivery(ctx, kind, refID)
+		s.releaseDelivery(kind, refID)
 		return fmt.Errorf("GetTokensByGroupID failed: %w", err)
 	}
 	if len(tokens) == 0 {
@@ -414,7 +415,7 @@ func (s *cronService) sendToGroupIfNotSent(ctx context.Context, kind string, ref
 
 	if err := s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data); err != nil {
 		log.Printf("cron_service: FCM send failed (type=%s, tokens=%d): %v (will retry next run)", payload.Data["type"], len(tokens), err)
-		s.releaseDelivery(ctx, kind, refID)
+		s.releaseDelivery(kind, refID)
 		return fmt.Errorf("FCM send failed: %w", err)
 	}
 	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
@@ -434,22 +435,24 @@ func (s *cronService) sendToUnpostedIfNotSent(ctx context.Context, kind string, 
 	}
 	tokens, err := s.fcmTokenRepo.GetTokensByGroupIDExcludingResponders(ctx, groupID, refID)
 	if err != nil {
-		s.releaseDelivery(ctx, kind, refID)
+		s.releaseDelivery(kind, refID)
 		return fmt.Errorf("GetTokensByGroupIDExcludingResponders failed: %w", err)
 	}
 	if len(tokens) == 0 {
 		return nil
 	}
 	if err := s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data); err != nil {
-		s.releaseDelivery(ctx, kind, refID)
+		s.releaseDelivery(kind, refID)
 		return fmt.Errorf("FCM send failed: %w", err)
 	}
 	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
 	return nil
 }
 
-func (s *cronService) releaseDelivery(ctx context.Context, kind string, refID int64) {
-	if err := s.deliveryRepo.Release(ctx, kind, refID); err != nil {
+func (s *cronService) releaseDelivery(kind string, refID int64) {
+	releaseCtx, cancel := context.WithTimeout(context.Background(), deliveryReleaseTimeout)
+	defer cancel()
+	if err := s.deliveryRepo.Release(releaseCtx, kind, refID); err != nil {
 		log.Printf("cron_service: release delivery kind=%s ref=%d failed: %v", kind, refID, err)
 	}
 }

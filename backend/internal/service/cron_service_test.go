@@ -12,7 +12,8 @@ import (
 // mockDeliveryRepo は notification_deliveries の冪等を模す。
 // 同一 (kind, ref_id) の2回目以降は alreadySent=true を返す。
 type mockDeliveryRepo struct {
-	sent map[string]bool
+	sent        map[string]bool
+	releaseFunc func(context.Context, string, int64) error
 }
 
 func newMockDeliveryRepo() *mockDeliveryRepo {
@@ -34,6 +35,9 @@ func (m *mockDeliveryRepo) HasBeenSent(ctx context.Context, kind string, refID i
 }
 
 func (m *mockDeliveryRepo) Release(ctx context.Context, kind string, refID int64) error {
+	if m.releaseFunc != nil {
+		return m.releaseFunc(ctx, kind, refID)
+	}
 	delete(m.sent, kind+":"+itoa(refID))
 	return nil
 }
@@ -141,6 +145,86 @@ func TestCron_Minutely_AutomaticallyStartsScheduledBeGitTime(t *testing.T) {
 	}
 	if len(fc.withDataCalls) != 1 || fc.withDataCalls[0].data["type"] != "begit_time" {
 		t.Fatalf("unexpected sends: %+v", fc.withDataCalls)
+	}
+}
+
+func TestCron_Minutely_AdvancesScheduledBeGitTimeWhenDeliveryFails(t *testing.T) {
+	dueAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	advanced := false
+	schedules := &mockBeGitTimeScheduleRepository{
+		listDueFunc: func(context.Context, time.Time) ([]model.BeGitTimeSchedule, error) {
+			return []model.BeGitTimeSchedule{{
+				GroupID: 12, Enabled: true, LocalTime: "09:00", Timezone: "Asia/Tokyo",
+				Weekdays: []int{1, 2, 3, 4, 5, 6, 7}, NextRunAt: &dueAt,
+			}}, nil
+		},
+		advanceFunc: func(context.Context, int64, time.Time, time.Time) (bool, error) {
+			advanced = true
+			return true, nil
+		},
+	}
+	notifRepo := &mockNotificationRepository{createIfNoActiveFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+		notif.ID = 88
+		return notif, nil
+	}}
+	sprintRepo := &mockSprintRepository{getOrCreateFunc: func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error) {
+		return &model.Sprint{ID: 7, GroupID: groupID}, nil
+	}}
+	groupRepo := &mockGroupRepository{getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
+		return &model.Group{ID: groupID, OwnerUserID: 5, SprintDurationDays: 7}, nil
+	}}
+	tokens := &mockFCMTokenRepository{getTokensByGroupIDFunc: func(context.Context, int64) ([]string, error) {
+		return []string{"device"}, nil
+	}}
+	delivery := newMockDeliveryRepo()
+	publisher := &recordingExternalNotificationPublisher{}
+	svc := NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, &mockPostRepository{}, delivery, tokens, &failingFCMClient{}, publisher, schedules)
+
+	if err := svc.RunCron(context.Background(), "minutely"); err != nil {
+		t.Fatalf("RunCron() failed: %v", err)
+	}
+	if !advanced {
+		t.Fatal("expected schedule to advance after notification creation")
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("expected no external publish after FCM failure, got %d", len(publisher.events))
+	}
+	if delivery.sent[deliveryBeGitTime+":88"] {
+		t.Fatal("expected failed delivery claim to be released")
+	}
+}
+
+func TestCron_SendToUnpostedIfNotSent_ReleasesDeliveryWithIndependentContext(t *testing.T) {
+	ctx, cancelSend := context.WithCancel(context.Background())
+	delivery := newMockDeliveryRepo()
+	releaseCalled := false
+	delivery.releaseFunc = func(ctx context.Context, kind string, refID int64) error {
+		releaseCalled = true
+		if ctx.Err() != nil {
+			t.Fatalf("release context is already canceled: %v", ctx.Err())
+		}
+		if _, ok := ctx.Deadline(); !ok {
+			t.Fatal("release context has no deadline")
+		}
+		delete(delivery.sent, kind+":"+itoa(refID))
+		return nil
+	}
+	tokens := &mockFCMTokenRepository{getUnpostedTokensFunc: func(context.Context, int64, int64) ([]string, error) {
+		cancelSend()
+		return []string{"device"}, nil
+	}}
+	svc := &cronService{
+		deliveryRepo: delivery,
+		fcmTokenRepo: tokens,
+		fcmClient:    &failingFCMClient{},
+	}
+
+	err := svc.sendToUnpostedIfNotSent(ctx, deliveryReminder30, 88, 12, BuildChallengeReminder(12, 88, 30))
+	if err == nil {
+		t.Fatal("expected delivery error")
+	}
+	if !releaseCalled {
+		t.Fatal("expected failed delivery claim to be released")
 	}
 }
 
