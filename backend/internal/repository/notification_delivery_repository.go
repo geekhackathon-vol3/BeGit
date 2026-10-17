@@ -18,6 +18,8 @@ type NotificationDeliveryRepository interface {
 	MarkSent(ctx context.Context, kind string, refID int64) (alreadySent bool, err error)
 	// HasBeenSent は (kind, ref_id) が既に送信済みかをチェックする（SELECT）。
 	HasBeenSent(ctx context.Context, kind string, refID int64) (bool, error)
+	// Release は送信失敗時に事前取得した配信権を解放し、次回 Cron で再試行可能にする。
+	Release(ctx context.Context, kind string, refID int64) error
 }
 
 // notificationDeliveryRepository は NotificationDeliveryRepository インターフェースの実装
@@ -63,4 +65,15 @@ func (r *notificationDeliveryRepository) HasBeenSent(ctx context.Context, kind s
 	}
 	count, _ := rows[0]["count"].(float64)
 	return count > 0, nil
+}
+
+func (r *notificationDeliveryRepository) Release(ctx context.Context, kind string, refID int64) error {
+	_, err := r.db.Exec(ctx,
+		`DELETE FROM notification_deliveries WHERE kind = ? AND ref_id = ?`,
+		[]interface{}{kind, refID},
+	)
+	if err != nil {
+		return fmt.Errorf("notification_delivery_repository: Release failed: %w", err)
+	}
+	return nil
 }

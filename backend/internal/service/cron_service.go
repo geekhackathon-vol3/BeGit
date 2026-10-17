@@ -14,6 +14,9 @@ import (
 
 // Cron delivery kind 定数（notification_deliveries.kind）
 const (
+	deliveryBeGitTime      = "begit_time"
+	deliveryReminder30     = "challenge_reminder_30"
+	deliveryReminder10     = "challenge_reminder_10"
 	deliveryChallengeEnd   = "challenge_end"
 	deliverySprintReminder = "sprint_reminder"
 	deliverySprintEnd      = "sprint_end"
@@ -40,6 +43,7 @@ type cronService struct {
 	fcmTokenRepo      repository.FCMTokenRepository
 	fcmClient         fcm.Client
 	externalPublisher ExternalNotificationPublisher
+	scheduleRepo      repository.BeGitTimeScheduleRepository
 }
 
 // NewCronService は CronService を作成する
@@ -73,12 +77,17 @@ func NewCronServiceWithPublisher(
 	fcmTokenRepo repository.FCMTokenRepository,
 	fcmClient fcm.Client,
 	externalPublisher ExternalNotificationPublisher,
+	scheduleRepos ...repository.BeGitTimeScheduleRepository,
 ) CronService {
-	return &cronService{
+	result := &cronService{
 		notifRepo: notifRepo, sprintRepo: sprintRepo, groupRepo: groupRepo, postRepo: postRepo,
 		deliveryRepo: deliveryRepo, fcmTokenRepo: fcmTokenRepo, fcmClient: fcmClient,
 		externalPublisher: externalPublisher,
 	}
+	if len(scheduleRepos) > 0 {
+		result.scheduleRepo = scheduleRepos[0]
+	}
+	return result
 }
 
 // RunCron は kind に応じて通知を発火する
@@ -93,8 +102,13 @@ func (s *cronService) RunCron(ctx context.Context, kind string) error {
 	}
 }
 
-// runMinutely は ③ challenge_end を発火する（発行+1h 到達かつ未送信の anchor）。
+// runMinutely は自動開催、残り時間リマインド、③ challenge_end を発火する。
 func (s *cronService) runMinutely(ctx context.Context) error {
+	now := time.Now().UTC()
+	s.runScheduledBeGitTimes(ctx, now)
+	s.runChallengeReminders(ctx, 30)
+	s.runChallengeReminders(ctx, 10)
+
 	due, err := s.notifRepo.ListChallengeEndDue(ctx)
 	if err != nil {
 		return fmt.Errorf("cron_service: ListChallengeEndDue failed: %w", err)
@@ -132,6 +146,99 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time) {
+	if s.scheduleRepo == nil {
+		return
+	}
+	schedules, err := s.scheduleRepo.ListDue(ctx, now)
+	if err != nil {
+		log.Printf("cron_service: ListDue schedules failed: %v", err)
+		return
+	}
+	for i := range schedules {
+		schedule := schedules[i]
+		if schedule.NextRunAt == nil {
+			continue
+		}
+		group, err := s.groupRepo.GetByID(ctx, schedule.GroupID)
+		if err != nil {
+			log.Printf("cron_service: GetByID group %d failed: %v", schedule.GroupID, err)
+			continue
+		}
+		durationDays := group.SprintDurationDays
+		if durationDays <= 0 {
+			durationDays = 7
+		}
+		sprint, err := s.sprintRepo.GetOrCreateCurrentSprint(ctx, schedule.GroupID, durationDays)
+		if err != nil {
+			log.Printf("cron_service: GetOrCreateCurrentSprint group %d failed: %v", schedule.GroupID, err)
+			continue
+		}
+
+		notif, err := s.notifRepo.CreateIfNoActive(ctx, &model.Notification{
+			SprintID: sprint.ID, SentBy: group.OwnerUserID,
+			Message: "今、なに作ってる？", Source: "scheduled",
+		}, true)
+		if errors.Is(err, repository.ErrConstraintViolation) {
+			// A previous run may have inserted the scheduled challenge before it could advance the schedule.
+			// Retry that delivery; a manually started challenge simply causes this occurrence to be skipped.
+			active, activeErr := s.notifRepo.GetActiveInSprint(ctx, sprint.ID, now)
+			if activeErr == nil && active.Source == "scheduled" {
+				notif = active
+			} else {
+				s.advanceSchedule(ctx, schedule, now)
+				continue
+			}
+		} else if err != nil {
+			log.Printf("cron_service: scheduled CreateIfNoActive group %d failed: %v", schedule.GroupID, err)
+			continue
+		}
+
+		if err := s.sendToGroupIfNotSent(ctx, deliveryBeGitTime, notif.ID, schedule.GroupID, BuildBeGitTime(schedule.GroupID, notif.ID, sprint.ID)); err != nil {
+			log.Printf("cron_service: scheduled begit_time delivery %d failed: %v", notif.ID, err)
+			continue
+		}
+		s.publishExternal(ctx, model.EventBeGitTime, notif.ID, schedule.GroupID, map[string]string{
+			"開始時刻": schedule.LocalTime,
+		})
+		s.advanceSchedule(ctx, schedule, now)
+	}
+}
+
+func (s *cronService) advanceSchedule(ctx context.Context, schedule model.BeGitTimeSchedule, after time.Time) {
+	next, err := NextBeGitTimeRun(after, schedule.LocalTime, schedule.Timezone, schedule.Weekdays)
+	if err != nil {
+		log.Printf("cron_service: calculate next run group %d failed: %v", schedule.GroupID, err)
+		return
+	}
+	if _, err := s.scheduleRepo.Advance(ctx, schedule.GroupID, *schedule.NextRunAt, next); err != nil {
+		log.Printf("cron_service: advance schedule group %d failed: %v", schedule.GroupID, err)
+	}
+}
+
+func (s *cronService) runChallengeReminders(ctx context.Context, remainingMinutes int) {
+	due, err := s.notifRepo.ListChallengeReminderDue(ctx, remainingMinutes)
+	if err != nil {
+		log.Printf("cron_service: ListChallengeReminderDue remaining=%d failed: %v", remainingMinutes, err)
+		return
+	}
+	kind := deliveryReminder30
+	if remainingMinutes == 10 {
+		kind = deliveryReminder10
+	}
+	for i := range due {
+		notif := due[i]
+		sprint, err := s.sprintRepo.GetByID(ctx, notif.SprintID)
+		if err != nil {
+			log.Printf("cron_service: reminder sprint %d lookup failed: %v", notif.SprintID, err)
+			continue
+		}
+		if err := s.sendToUnpostedIfNotSent(ctx, kind, notif.ID, sprint.GroupID, BuildChallengeReminder(sprint.GroupID, notif.ID, remainingMinutes)); err != nil {
+			log.Printf("cron_service: reminder notif=%d remaining=%d failed: %v", notif.ID, remainingMinutes, err)
+		}
+	}
 }
 
 // runDaily は ④ sprint_reminder / ⑤ sprint_end / ⑥ sprint_start を発火する。
@@ -207,6 +314,8 @@ func (s *cronService) publishExternal(ctx context.Context, eventType string, ref
 		fields[key] = value
 	}
 	switch eventType {
+	case model.EventBeGitTime:
+		title, body = "🐙 BeGit Time!", "今、なに作ってる？1時間の進捗共有を始めよう。"
 	case model.EventChallengeEnd:
 		title, body = "✨ BeGit Time終了！", "みんなの1時間が草になりました。結果を見て、お互いの進捗を讃えよう。"
 	case model.EventSprintReminder:
@@ -280,47 +389,69 @@ func (s *cronService) sendToGroup(ctx context.Context, groupID int64, payload Pa
 	logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
 }
 
-// sendToGroupIfNotSent は配信済みチェック → FCM 送信 → MarkSent の順で実行し、FCM 成功時のみ配信記録を残す。
-// 既送信の場合は何もせず nil を返す（冪等）。
+// sendToGroupIfNotSent は先に UNIQUE 配信権を取得し、並行 Cron でも一度だけ送る。
+// FCM 失敗時は配信権を解放して次回の再試行を許可する。
 func (s *cronService) sendToGroupIfNotSent(ctx context.Context, kind string, refID, groupID int64, payload Payload) error {
-	// Step 1: 配信済みチェック（SELECT で確認）
-	alreadySent, err := s.deliveryRepo.HasBeenSent(ctx, kind, refID)
+	alreadySent, err := s.deliveryRepo.MarkSent(ctx, kind, refID)
 	if err != nil {
-		return fmt.Errorf("HasBeenSent check failed: %w", err)
+		return fmt.Errorf("delivery claim failed: %w", err)
 	}
 	if alreadySent {
-		// 既に送信済み（冪等 skip）
 		return nil
 	}
 
-	// Step 2: FCM 送信を試行
 	if s.fcmTokenRepo == nil || s.fcmClient == nil {
-		// FCM 未設定の場合は送信スキップ（配信記録も残さない = 次回リトライ可能）
 		return nil
 	}
 	tokens, err := s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
 	if err != nil {
+		s.releaseDelivery(ctx, kind, refID)
 		return fmt.Errorf("GetTokensByGroupID failed: %w", err)
 	}
 	if len(tokens) == 0 {
-		// トークン無しの場合も送信スキップ（配信記録を残さない = 次回リトライ可能）
 		return nil
 	}
 
-	// Step 3: FCM 送信
 	if err := s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data); err != nil {
 		log.Printf("cron_service: FCM send failed (type=%s, tokens=%d): %v (will retry next run)", payload.Data["type"], len(tokens), err)
+		s.releaseDelivery(ctx, kind, refID)
 		return fmt.Errorf("FCM send failed: %w", err)
 	}
-
-	// Step 4: FCM 送信成功後に配信記録を残す（次回 skip される）
-	if _, err := s.deliveryRepo.MarkSent(ctx, kind, refID); err != nil {
-		log.Printf("cron_service: MarkSent after successful send failed (type=%s): %v (sent but not marked, may duplicate)", payload.Data["type"], err)
-		return fmt.Errorf("MarkSent failed: %w", err)
-	}
-
 	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
 	return nil
+}
+
+func (s *cronService) sendToUnpostedIfNotSent(ctx context.Context, kind string, refID, groupID int64, payload Payload) error {
+	alreadySent, err := s.deliveryRepo.MarkSent(ctx, kind, refID)
+	if err != nil {
+		return fmt.Errorf("delivery claim failed: %w", err)
+	}
+	if alreadySent {
+		return nil
+	}
+	if s.fcmTokenRepo == nil || s.fcmClient == nil {
+		return nil
+	}
+	tokens, err := s.fcmTokenRepo.GetTokensByGroupIDExcludingResponders(ctx, groupID, refID)
+	if err != nil {
+		s.releaseDelivery(ctx, kind, refID)
+		return fmt.Errorf("GetTokensByGroupIDExcludingResponders failed: %w", err)
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+	if err := s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data); err != nil {
+		s.releaseDelivery(ctx, kind, refID)
+		return fmt.Errorf("FCM send failed: %w", err)
+	}
+	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
+	return nil
+}
+
+func (s *cronService) releaseDelivery(ctx context.Context, kind string, refID int64) {
+	if err := s.deliveryRepo.Release(ctx, kind, refID); err != nil {
+		log.Printf("cron_service: release delivery kind=%s ref=%d failed: %v", kind, refID, err)
+	}
 }
 
 // summarize は集計結果を簡潔な文字列にする（ログ用）。

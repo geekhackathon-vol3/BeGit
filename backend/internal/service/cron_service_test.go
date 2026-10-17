@@ -33,8 +33,115 @@ func (m *mockDeliveryRepo) HasBeenSent(ctx context.Context, kind string, refID i
 	return m.sent[kind+":"+itoa(refID)], nil
 }
 
+func (m *mockDeliveryRepo) Release(ctx context.Context, kind string, refID int64) error {
+	delete(m.sent, kind+":"+itoa(refID))
+	return nil
+}
+
 func itoa(v int64) string {
 	return s(v)
+}
+
+type mockBeGitTimeScheduleRepository struct {
+	listDueFunc func(context.Context, time.Time) ([]model.BeGitTimeSchedule, error)
+	advanceFunc func(context.Context, int64, time.Time, time.Time) (bool, error)
+}
+
+func (m *mockBeGitTimeScheduleRepository) GetByGroupID(context.Context, int64) (*model.BeGitTimeSchedule, error) {
+	return nil, repository.ErrNotFound
+}
+func (m *mockBeGitTimeScheduleRepository) Upsert(context.Context, *model.BeGitTimeSchedule) (*model.BeGitTimeSchedule, error) {
+	return nil, nil
+}
+func (m *mockBeGitTimeScheduleRepository) ListDue(ctx context.Context, now time.Time) ([]model.BeGitTimeSchedule, error) {
+	if m.listDueFunc != nil {
+		return m.listDueFunc(ctx, now)
+	}
+	return nil, nil
+}
+func (m *mockBeGitTimeScheduleRepository) Advance(ctx context.Context, groupID int64, previous, next time.Time) (bool, error) {
+	if m.advanceFunc != nil {
+		return m.advanceFunc(ctx, groupID, previous, next)
+	}
+	return true, nil
+}
+
+func TestCron_Minutely_RemindsOnlyUnpostedMembers(t *testing.T) {
+	notifRepo := &mockNotificationRepository{
+		listChallengeReminderDueFunc: func(ctx context.Context, remainingMinutes int) ([]model.Notification, error) {
+			if remainingMinutes == 30 {
+				return []model.Notification{{ID: 44, SprintID: 7}}, nil
+			}
+			return nil, nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{getByIDFunc: func(ctx context.Context, sprintID int64) (*model.Sprint, error) {
+		return &model.Sprint{ID: sprintID, GroupID: 12}, nil
+	}}
+	var gotGroupID, gotNotificationID int64
+	tokens := &mockFCMTokenRepository{getUnpostedTokensFunc: func(ctx context.Context, groupID, notificationID int64) ([]string, error) {
+		gotGroupID, gotNotificationID = groupID, notificationID
+		return []string{"unposted-device"}, nil
+	}}
+	fc := &fakeFCMClient{}
+	svc := NewCronService(notifRepo, sprintRepo, &mockGroupRepository{}, &mockPostRepository{}, newMockDeliveryRepo(), tokens, fc)
+
+	if err := svc.RunCron(context.Background(), "minutely"); err != nil {
+		t.Fatalf("RunCron() failed: %v", err)
+	}
+	if gotGroupID != 12 || gotNotificationID != 44 {
+		t.Fatalf("responder filter got group=%d notification=%d", gotGroupID, gotNotificationID)
+	}
+	if len(fc.withDataCalls) != 1 || fc.withDataCalls[0].data["type"] != "challenge_reminder" {
+		t.Fatalf("unexpected sends: %+v", fc.withDataCalls)
+	}
+	if fc.withDataCalls[0].data["remaining_minutes"] != "30" {
+		t.Fatalf("remaining_minutes=%q", fc.withDataCalls[0].data["remaining_minutes"])
+	}
+}
+
+func TestCron_Minutely_AutomaticallyStartsScheduledBeGitTime(t *testing.T) {
+	dueAt := time.Now().UTC().Add(-time.Minute).Truncate(time.Second)
+	advanced := false
+	schedules := &mockBeGitTimeScheduleRepository{
+		listDueFunc: func(context.Context, time.Time) ([]model.BeGitTimeSchedule, error) {
+			return []model.BeGitTimeSchedule{{
+				GroupID: 12, Enabled: true, LocalTime: "09:00", Timezone: "Asia/Tokyo",
+				Weekdays: []int{1, 2, 3, 4, 5, 6, 7}, NextRunAt: &dueAt,
+			}}, nil
+		},
+		advanceFunc: func(context.Context, int64, time.Time, time.Time) (bool, error) {
+			advanced = true
+			return true, nil
+		},
+	}
+	var createdSource string
+	notifRepo := &mockNotificationRepository{createIfNoActiveFunc: func(ctx context.Context, notif *model.Notification) (*model.Notification, error) {
+		createdSource = notif.Source
+		notif.ID = 88
+		return notif, nil
+	}}
+	sprintRepo := &mockSprintRepository{getOrCreateFunc: func(ctx context.Context, groupID int64, durationDays int) (*model.Sprint, error) {
+		return &model.Sprint{ID: 7, GroupID: groupID}, nil
+	}}
+	groupRepo := &mockGroupRepository{getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
+		return &model.Group{ID: groupID, OwnerUserID: 5, SprintDurationDays: 7}, nil
+	}}
+	tokens := &mockFCMTokenRepository{getTokensByGroupIDFunc: func(context.Context, int64) ([]string, error) {
+		return []string{"device"}, nil
+	}}
+	fc := &fakeFCMClient{}
+	svc := NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, &mockPostRepository{}, newMockDeliveryRepo(), tokens, fc, nil, schedules)
+
+	if err := svc.RunCron(context.Background(), "minutely"); err != nil {
+		t.Fatalf("RunCron() failed: %v", err)
+	}
+	if createdSource != "scheduled" || !advanced {
+		t.Fatalf("source=%q advanced=%v", createdSource, advanced)
+	}
+	if len(fc.withDataCalls) != 1 || fc.withDataCalls[0].data["type"] != "begit_time" {
+		t.Fatalf("unexpected sends: %+v", fc.withDataCalls)
+	}
 }
 
 // TestCron_InvalidKind は kind 不正で ErrInvalidCronKind を返すことを確認する

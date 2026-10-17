@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"log"
 	"strconv"
 
@@ -93,6 +94,22 @@ func BuildChallengeEnd(groupID, notifID int64) Payload {
 			"type":            "challenge_end",
 			"group_id":        s(groupID),
 			"notification_id": s(notifID),
+		},
+	}
+}
+
+// BuildChallengeReminder は残り30分/10分時点で未投稿者だけに送るペイロードを構築する。
+func BuildChallengeReminder(groupID, notifID int64, remainingMinutes int) Payload {
+	return Payload{
+		Notification: fcm.Notification{
+			Title: fmt.Sprintf("⏳ あと%d分", remainingMinutes),
+			Body:  "まだ投稿していない人へ。今の進捗をひとこと共有しよう",
+		},
+		Data: map[string]string{
+			"type":              "challenge_reminder",
+			"group_id":          s(groupID),
+			"notification_id":   s(notifID),
+			"remaining_minutes": strconv.Itoa(remainingMinutes),
 		},
 	}
 }

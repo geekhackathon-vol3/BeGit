@@ -93,11 +93,13 @@ func (s *server) buildHandler() (http.Handler, error) {
 	deliveryRepo := repository.NewNotificationDeliveryRepository(d1Client)
 	notificationChannelRepo := repository.NewNotificationChannelRepository(d1Client)
 	notificationDeliveryJobRepo := repository.NewNotificationDeliveryJobRepository(d1Client)
+	beGitTimeScheduleRepo := repository.NewBeGitTimeScheduleRepository(d1Client)
 
 	externalSender := externalnotify.NewClient()
 	queueClient := notificationqueue.NewClient(cfg.AppBaseURL, cfg.NotificationQueueSecret)
 	externalPublisher := service.NewExternalNotificationPublisher(notificationChannelRepo, notificationDeliveryJobRepo, queueClient)
 	notificationChannelSvc := service.NewNotificationChannelService(notificationChannelRepo, groupRepo, encryptor, externalSender)
+	beGitTimeScheduleSvc := service.NewBeGitTimeScheduleService(beGitTimeScheduleRepo, groupRepo)
 	externalDeliverySvc := service.NewExternalNotificationDeliveryService(notificationChannelRepo, notificationDeliveryJobRepo, encryptor, externalSender)
 
 	// Service 層の初期化
@@ -139,7 +141,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	commentSvc := service.NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
 	// ③④⑤⑥ Cron サービス
-	cronSvc := service.NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient, externalPublisher)
+	cronSvc := service.NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient, externalPublisher, beGitTimeScheduleRepo)
 
 	appInstallationClient, ok := githubClient.(githubpkg.AppInstallationClient)
 	if !ok {
@@ -193,6 +195,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	githubAppHandler := handler.NewGitHubAppHandler(githubAppInstallationSvc, cfg.GitHubAppIOSRedirectURI)
 	cronHandler := handler.NewCronHandler(cronSvc, cfg.CronSecret)
 	notificationChannelHandler := handler.NewNotificationChannelHandler(notificationChannelSvc)
+	beGitTimeScheduleHandler := handler.NewBeGitTimeScheduleHandler(beGitTimeScheduleSvc)
 	externalDeliveryHandler := handler.NewNotificationDeliveryHandler(externalDeliverySvc, cfg.NotificationQueueSecret)
 
 	// ミドルウェアの初期化
@@ -277,6 +280,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.PATCH("/groups/:id/notification-channels/:channelId", bearerAuth, groupMember, notificationChannelHandler.Update)
 	r.DELETE("/groups/:id/notification-channels/:channelId", bearerAuth, groupMember, notificationChannelHandler.Delete)
 	r.POST("/groups/:id/notification-channels/:channelId/test", bearerAuth, groupMember, notificationChannelHandler.Test)
+	r.GET("/groups/:id/begit-time-schedule", bearerAuth, groupMember, beGitTimeScheduleHandler.Get)
+	r.PUT("/groups/:id/begit-time-schedule", bearerAuth, groupMember, beGitTimeScheduleHandler.Update)
 
 	return r, nil
 }

@@ -38,6 +38,9 @@ type NotificationRepository interface {
 	// ListChallengeEndDue は締め切り（sent_at + 1h、または途中中断なら ended_at）に到達した通知を返す
 	// （③ challenge_end の対象抽出）。
 	ListChallengeEndDue(ctx context.Context) ([]model.Notification, error)
+	// ListChallengeReminderDue は残り30分/10分の通知時刻に到達し、まだリマインドしていない
+	// 進行中の通知を返す。remainingMinutes は 30 または 10。
+	ListChallengeReminderDue(ctx context.Context, remainingMinutes int) ([]model.Notification, error)
 	// ListBySprintID は指定スプリントの全通知を返す（⑤ サマリ算出用）。
 	ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error)
 }
@@ -76,6 +79,12 @@ func scanNotification(row map[string]interface{}) (*model.Notification, error) {
 	if v, ok := row["message"].(string); ok {
 		n.Message = v
 	}
+	if v, ok := row["source"].(string); ok {
+		n.Source = v
+	}
+	if n.Source == "" {
+		n.Source = "manual"
+	}
 	if v, ok := row["sent_at"].(string); ok {
 		t, err := parseNotificationTime(v)
 		if err != nil {
@@ -111,9 +120,13 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 		message = "今、なに作ってる？"
 	}
 
+	source := notif.Source
+	if source == "" {
+		source = "manual"
+	}
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO notifications (sprint_id, sent_by, message) VALUES (?, ?, ?)`,
-		[]interface{}{notif.SprintID, notif.SentBy, message},
+		`INSERT INTO notifications (sprint_id, sent_by, message, source) VALUES (?, ?, ?, ?)`,
+		[]interface{}{notif.SprintID, notif.SentBy, message, source},
 	)
 	if err != nil {
 		if errors.Is(err, d1.ErrConstraintViolation) {
@@ -124,7 +137,7 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 
 	// 作成されたレコードを取得して返す
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_by = ?
 		 ORDER BY id DESC LIMIT 1`,
@@ -140,7 +153,7 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 // GetLatestInSprintBefore は同一スプリント内・指定時刻以前で最新の通知を返す
 func (r *notificationRepository) GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_at <= datetime(?)
 		 ORDER BY sent_at DESC, id DESC
@@ -192,19 +205,23 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 	}
 
 	// 「アクティブ」= 未中断（stopped_at / ended_at がともに NULL）かつ発行から1時間以内。
-	query := `INSERT INTO notifications (sprint_id, sent_by, message)
-		 SELECT ?, ?, ?
+	source := notif.Source
+	if source == "" {
+		source = "manual"
+	}
+	query := `INSERT INTO notifications (sprint_id, sent_by, message, source)
+		 SELECT ?, ?, ?, ?
 		 WHERE NOT EXISTS (
 		   SELECT 1 FROM notifications
 		   WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
 		     AND datetime(sent_at, '+1 hour') > datetime('now')
 		 )`
-	params := []interface{}{notif.SprintID, notif.SentBy, message, notif.SprintID}
+	params := []interface{}{notif.SprintID, notif.SentBy, message, source, notif.SprintID}
 	if !allowMultiplePerSprint {
 		query += `
 		 AND NOT EXISTS (
 		   SELECT 1 FROM notifications
-		   WHERE sprint_id = ? AND sent_by = ?
+		   WHERE sprint_id = ? AND sent_by = ? AND source = 'manual'
 		 )`
 		params = append(params, notif.SprintID, notif.SentBy)
 	}
@@ -226,7 +243,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 
 	// Fetch the created record
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_by = ?
 		 ORDER BY id DESC LIMIT 1`,
@@ -244,7 +261,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 // 既に challenge_end として送信済み（notification_deliveries に記録済み）の通知は除外する。
 func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications
 		 WHERE (datetime(sent_at, '+1 hour') <= datetime('now') OR stopped_at IS NOT NULL OR ended_at IS NOT NULL)
 		 AND NOT EXISTS (
@@ -262,10 +279,44 @@ func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]mod
 	return scanNotifications(rows)
 }
 
+// ListChallengeReminderDue returns active challenges in the reminder window.
+// A bounded window prevents a delayed Cron run from sending both the 30- and 10-minute reminders together.
+func (r *notificationRepository) ListChallengeReminderDue(ctx context.Context, remainingMinutes int) ([]model.Notification, error) {
+	var elapsedMinutes, windowEndMinutes int
+	var kind string
+	switch remainingMinutes {
+	case 30:
+		elapsedMinutes, windowEndMinutes, kind = 30, 50, "challenge_reminder_30"
+	case 10:
+		elapsedMinutes, windowEndMinutes, kind = 50, 60, "challenge_reminder_10"
+	default:
+		return nil, fmt.Errorf("notification_repository: unsupported reminder minutes %d", remainingMinutes)
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		 FROM notifications
+		 WHERE stopped_at IS NULL AND ended_at IS NULL
+		   AND datetime(sent_at, '+' || ? || ' minutes') <= datetime('now')
+		   AND datetime(sent_at, '+' || ? || ' minutes') > datetime('now')
+		   AND NOT EXISTS (
+		     SELECT 1 FROM notification_deliveries
+		     WHERE kind = ? AND ref_id = notifications.id
+		   )`,
+		[]interface{}{elapsedMinutes, windowEndMinutes, kind},
+	)
+	if errors.Is(err, d1.ErrNotFound) {
+		return []model.Notification{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("notification_repository: ListChallengeReminderDue failed: %w", err)
+	}
+	return scanNotifications(rows)
+}
+
 // ListBySprintID は指定スプリントの全通知を返す
 func (r *notificationRepository) ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications WHERE sprint_id = ?`,
 		[]interface{}{sprintID},
 	)
@@ -295,7 +346,7 @@ func scanNotifications(rows []map[string]interface{}) ([]model.Notification, err
 // sprints.group_id で引くため現在のスプリントを経由しない（スプリント切替直後の取りこぼし防止）。
 func (r *notificationRepository) GetActiveByGroup(ctx context.Context, groupID int64) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at
+		`SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source
 		 FROM notifications n
 		 INNER JOIN sprints s ON s.id = n.sprint_id
 		 WHERE s.group_id = ? AND n.stopped_at IS NULL AND n.ended_at IS NULL
@@ -335,7 +386,7 @@ func (r *notificationRepository) EndIfActive(ctx context.Context, notifID int64)
 // GetByID は notifID で通知を取得する
 func (r *notificationRepository) GetByID(ctx context.Context, notifID int64) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications WHERE id = ? LIMIT 1`,
 		[]interface{}{notifID},
 	)
@@ -352,7 +403,7 @@ func (r *notificationRepository) GetByID(ctx context.Context, notifID int64) (*m
 // GetActiveInSprint は送信から1時間以内の最新通知を返す。
 func (r *notificationRepository) GetActiveInSprint(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
 		 FROM notifications
 		 WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
 		 AND datetime(sent_at, '+1 hour') > datetime(?)
