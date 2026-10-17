@@ -17,8 +17,6 @@ struct RepoSettingView: View {
     @State private var members: [RepositoryMember]
     @State private var memberRoleError: String?
     @State private var canManage: Bool
-    @State private var ownerVerified: Bool
-    @State private var isClaimingOwnership = false
     private let memberRoleAPI: any GroupMemberRoleAPI
 
     init(repository: Repository, memberRoleAPI: any GroupMemberRoleAPI = BeGitBackendAPI()) {
@@ -27,7 +25,6 @@ struct RepoSettingView: View {
         _members = State(initialValue: repository.members)
         _memberRoleError = State(initialValue: nil)
         _canManage = State(initialValue: repository.canManage)
-        _ownerVerified = State(initialValue: repository.ownerVerified)
         _notificationChannels = StateObject(wrappedValue: NotificationChannelViewModel(repositoryID: repository.backendID))
         _beGitTimeSchedule = StateObject(wrappedValue: BeGitTimeScheduleViewModel(repositoryID: repository.backendID))
     }
@@ -44,11 +41,6 @@ struct RepoSettingView: View {
                                 .font(.custom("Bitcount", size: 34))
                                 .foregroundStyle(AppTheme.Text.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Text(repository.name)
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(AppTheme.Text.low)
-                                .lineLimit(1)
                         }
 
                         // MARK: リポジトリ情報
@@ -57,10 +49,6 @@ struct RepoSettingView: View {
                             color: AppTheme.sectionYellow
                         ) {
                             repoInfoRow
-                        }
-
-                        if !ownerVerified {
-                            ownershipClaimSection
                         }
 
                         settingSection(
@@ -181,6 +169,8 @@ struct RepoSettingView: View {
             } message: {
                 Text(memberRoleError ?? "")
             }
+            // メンバー権限アラートのOKを黒で表示する。
+            .tint(memberRoleError == nil ? AppTheme.accent : .black)
             .confirmationDialog(
                 "\(channelToDelete?.displayName ?? "この通知先")との接続を解除しますか？",
                 isPresented: Binding(
@@ -238,37 +228,13 @@ struct RepoSettingView: View {
             .scaledToFill()
     }
 
-    private var ownershipClaimSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button {
-                claimOwnership()
-            } label: {
-                HStack {
-                    if isClaimingOwnership { ProgressView().tint(.black) }
-                    Text("GitHub権限を確認して管理を引き継ぐ")
-                }
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(.black)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 13)
-                .background(AppTheme.accent)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .disabled(isClaimingOwnership)
-        }
-        .padding(14)
-        .background(AppTheme.fieldBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
     @ViewBuilder
     private var beGitTimeScheduleSection: some View {
         if beGitTimeSchedule.isLoading {
             HStack { Spacer(); ProgressView().tint(AppTheme.accent); Spacer() }
                 .padding(20)
         } else if !beGitTimeSchedule.canManage {
-            Label("リポジトリのオーナーだけが自動開催を設定できます", systemImage: "lock.fill")
+            Label("投稿可能なメンバーが自動開催を設定できます", systemImage: "lock.fill")
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.medium)
                 .padding(14)
@@ -406,43 +372,13 @@ struct RepoSettingView: View {
         }
     }
 
-    private func claimOwnership() {
-        guard !isClaimingOwnership,
-              let repositoryID = repository.backendID,
-              let accessToken = authState.accessToken else { return }
-        isClaimingOwnership = true
-        memberRoleError = nil
-        Task {
-            defer { isClaimingOwnership = false }
-            do {
-                let claimed = try await memberRoleAPI.claimOwnership(
-                    repositoryID: repositoryID,
-                    accessToken: accessToken
-                )
-                members = claimed.members
-                canManage = claimed.canManage
-                ownerVerified = claimed.ownerVerified
-                await notificationChannels.load(accessToken: authState.accessToken)
-                await beGitTimeSchedule.load(accessToken: authState.accessToken)
-            } catch {
-                if let apiError = beGitAPIError(from: error),
-                   case let .requestFailed(statusCode, _) = apiError,
-                   statusCode == 403 {
-                    memberRoleError = "GitHubリポジトリのオーナーまたは管理者権限を確認できませんでした。"
-                } else {
-                    memberRoleError = "管理権限を引き継げませんでした。もう一度お試しください。"
-                }
-            }
-        }
-    }
-
     @ViewBuilder
     private var notificationChannelSection: some View {
         if notificationChannels.isLoading {
             HStack { Spacer(); ProgressView().tint(AppTheme.checkmarkGreen); Spacer() }
                 .padding(20)
         } else if !notificationChannels.canManage {
-            Label("リポジトリのオーナーだけが通知先を設定できます", systemImage: "lock.fill")
+            Label("投稿可能なメンバーが通知先を設定できます", systemImage: "lock.fill")
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
                 .foregroundStyle(AppTheme.Text.medium)
                 .padding(14)
