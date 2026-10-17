@@ -9,7 +9,7 @@
 
 ## このドキュメントの役割
 
-通知（7種）の **「どの瞬間に、誰が、どの API を叩くか」** を1枚に集約する。
+通知の **「どの瞬間に、誰が、どの API を叩くか」** を1枚に集約する。
 
 通知まわりの API 呼び出しは大きく2つの瞬間に分かれる:
 
@@ -59,6 +59,7 @@ iOS は受信通知の `data.type` で分岐する（[ios-guide.md §2](ios-guid
 | # | `type` | 受信者 | タップ後の遷移先画面 | そこで叩く API |
 |---|---|---|---|---|
 | ① | `begit_time` | グループ全員 | 投稿作成 UI（memo 可） | `POST /groups/:id/posts`（`post_type=memo`） |
+| ①a | `challenge_reminder` | 残り30分/10分時点の未投稿者 | 投稿作成 UI（memo 可） | `POST /groups/:id/posts`（`post_type=memo`） |
 | ② | `nice_work` | 本人だけ | 下書きプレフィル → 撮影 → 確定 | `GET …/posts/:postId/draft` → `POST …/photos` → `POST …/posts/:postId/confirm` |
 | ③ | `challenge_end` | グループ全員 | チャレンジ結果画面 | `GET /groups/:id/notifications/:nid` |
 | ④ | `sprint_reminder` | グループ全員 | スプリント概要画面 | `GET /groups/:id`（+ `GET …/posts`） |
