@@ -14,6 +14,8 @@ type FCMTokenRepository interface {
 	Upsert(ctx context.Context, userID int64, token string) error
 	// GetTokensByGroupID はグループ内の全メンバーの FCM トークン一覧を取得する
 	GetTokensByGroupID(ctx context.Context, groupID int64) ([]string, error)
+	// GetTokensByGroupIDExcludingResponders は対象通知へ投稿済みのメンバーを除いたトークンを取得する。
+	GetTokensByGroupIDExcludingResponders(ctx context.Context, groupID, notificationID int64) ([]string, error)
 	// GetTokensByUserID は特定ユーザーの FCM トークン一覧を取得する（② Nice Work! / ⑦ 本人通知用）
 	GetTokensByUserID(ctx context.Context, userID int64) ([]string, error)
 	// DeleteByUserID はユーザーの FCM トークンを全て削除する（ログアウト用）
@@ -93,6 +95,31 @@ func (r *fcmTokenRepository) GetTokensByGroupID(ctx context.Context, groupID int
 		return nil, fmt.Errorf("fcm_token_repository: GetTokensByGroupID failed: %w", err)
 	}
 
+	tokens := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if token, ok := row["token"].(string); ok {
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens, nil
+}
+
+func (r *fcmTokenRepository) GetTokensByGroupIDExcludingResponders(ctx context.Context, groupID, notificationID int64) ([]string, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT ft.token
+		 FROM fcm_tokens ft
+		 INNER JOIN group_members gm ON ft.user_id = gm.user_id
+		 LEFT JOIN notification_post_unlocks npu
+		   ON npu.user_id = gm.user_id AND npu.notification_id = ?
+		 WHERE gm.group_id = ? AND npu.notification_id IS NULL`,
+		[]interface{}{notificationID, groupID},
+	)
+	if errors.Is(err, d1.ErrNotFound) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fcm_token_repository: GetTokensByGroupIDExcludingResponders failed: %w", err)
+	}
 	tokens := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if token, ok := row["token"].(string); ok {

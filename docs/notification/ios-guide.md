@@ -18,11 +18,12 @@
 
 ## 1. 通知一覧（iOS 視点）
 
-iOS が受け取る通知は7種類。受け取ったら `type` で分岐し、所定の画面へ遷移する。
+iOS が通知を受け取ったら `type` で分岐し、所定の画面へ遷移する。
 
 | # | 通知 | `type` | 受信するか | タップ後にやること |
 |---|---|---|---|---|
 | ① | BeGit Time! | `begit_time` | 自分がメンバーのグループで誰かが発行 | チャレンジ中 → 投稿作成 UI（後述§3） |
+| ①a | 残り時間リマインド | `challenge_reminder` | 残り30分/10分時点の未投稿者のみ | 投稿作成 UI（後述§3） |
 | ② | Nice Work! | `nice_work` | **自分が**コミット/issue/review した時 | 写真撮影 → 下書きプレフィル → 投稿確定（§4） |
 | ③ | チャレンジ終了 | `challenge_end` | グループ全員 | チャレンジ結果画面へ |
 | ④ | スプリント終了3日前 | `sprint_reminder` | グループ全員 | スプリント概要画面へ |
@@ -60,6 +61,9 @@ iOS が受け取る通知は7種類。受け取ったら `type` で分岐し、�
 ```jsonc
 // ① begit_time（チャレンジ開始）
 { "type": "begit_time", "group_id": "12", "notification_id": "345", "sprint_id": "7" }
+
+// ①a challenge_reminder（未投稿者のみ）
+{ "type": "challenge_reminder", "group_id": "12", "notification_id": "345", "remaining_minutes": "30" }
 
 // ② nice_work（自分の初アクティビティ検知）
 {
@@ -194,7 +198,7 @@ Push をタップしなくても「今チャレンジ中かどうか」「自分
 
 ## 6. 実装チェックリスト（iOS）
 
-- [x] `AppDelegate` で `type` 別の画面遷移を実装（§1・§2 の7種）※遷移先は #55 ではスタブ、中身は #56/#57
+- [x] `AppDelegate` で `type` 別の画面遷移を実装（§1・§2）※遷移先は #55 ではスタブ、中身は #56/#57
 - [x] FCM data ペイロードのパース（文字列→Int 変換含む）
 - [ ] ① memo タイプ投稿 UI
 - [ ] ② Nice Work! → 下書き取得 → 撮影 → 確定フロー

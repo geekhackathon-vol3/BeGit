@@ -75,9 +75,17 @@ type mockNotificationRepository struct {
 	// createIfNoActiveAllowMultiple は CreateIfNoActive に渡された allowMultiplePerSprint の記録
 	createIfNoActiveAllowMultiple []bool
 	listChallengeEndDueFunc       func(ctx context.Context) ([]model.Notification, error)
+	listChallengeReminderDueFunc  func(ctx context.Context, remainingMinutes int) ([]model.Notification, error)
 	listBySprintIDFunc            func(ctx context.Context, sprintID int64) ([]model.Notification, error)
 	getActiveByGroupFunc          func(ctx context.Context, groupID int64) (*model.Notification, error)
 	endIfActiveFunc               func(ctx context.Context, notifID int64) (bool, error)
+}
+
+func (m *mockNotificationRepository) ListChallengeReminderDue(ctx context.Context, remainingMinutes int) ([]model.Notification, error) {
+	if m.listChallengeReminderDueFunc != nil {
+		return m.listChallengeReminderDueFunc(ctx, remainingMinutes)
+	}
+	return nil, nil
 }
 
 func (m *mockNotificationRepository) GetActiveByGroup(ctx context.Context, groupID int64) (*model.Notification, error) {
@@ -274,8 +282,16 @@ func (m *mockPostRepository) GetByID(ctx context.Context, postID int64) (*model.
 type mockFCMTokenRepository struct {
 	upsertFunc             func(ctx context.Context, userID int64, token string) error
 	getTokensByGroupIDFunc func(ctx context.Context, groupID int64) ([]string, error)
+	getUnpostedTokensFunc  func(ctx context.Context, groupID, notificationID int64) ([]string, error)
 	getTokensByUserIDFunc  func(ctx context.Context, userID int64) ([]string, error)
 	deleteByUserIDFunc     func(ctx context.Context, userID int64) error
+}
+
+func (m *mockFCMTokenRepository) GetTokensByGroupIDExcludingResponders(ctx context.Context, groupID, notificationID int64) ([]string, error) {
+	if m.getUnpostedTokensFunc != nil {
+		return m.getUnpostedTokensFunc(ctx, groupID, notificationID)
+	}
+	return []string{}, nil
 }
 
 func (m *mockFCMTokenRepository) Upsert(ctx context.Context, userID int64, token string) error {

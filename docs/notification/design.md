@@ -65,6 +65,7 @@ BeGit; の通知を体系的に整理し、`begit-notifications` spec（バッ�
 | 通知 | `type` | タップ後の遷移（iOS 実装） |
 |---|---|---|
 | ① | `begit_time` | チャレンジ中なら投稿作成 UI（memo タイプ可）へ |
+| ①a | `challenge_reminder` | 未投稿者のみ。進行中チャレンジの投稿作成 UI へ |
 | ② | `nice_work` | 写真撮影 → 下書きプレフィル投稿確定へ。`status`(on_time/late)・下書き参照を含む |
 | ③ | `challenge_end` | チャレンジ結果画面へ |
 | ④⑤⑥ | `sprint_reminder` / `sprint_end` / `sprint_start` | スプリント概要画面へ |

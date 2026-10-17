@@ -1,6 +1,7 @@
 //  RepoSettingView.swift
 //  リポジトリ設定シート（リポジトリ情報・メンバー一覧）
 
+import Combine
 import SwiftUI
 
 @MainActor
@@ -9,12 +10,15 @@ struct RepoSettingView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authState: AuthState
     @StateObject private var notificationChannels: NotificationChannelViewModel
+    @StateObject private var beGitTimeSchedule: BeGitTimeScheduleViewModel
     @State private var isShowingChannelSetup = false
+    @State private var isShowingTimePicker = false
     @State private var channelToDelete: NotificationChannel?
 
     init(repository: Repository) {
         self.repository = repository
         _notificationChannels = StateObject(wrappedValue: NotificationChannelViewModel(repositoryID: repository.backendID))
+        _beGitTimeSchedule = StateObject(wrappedValue: BeGitTimeScheduleViewModel(repositoryID: repository.backendID))
     }
 
     var body: some View {
@@ -42,6 +46,13 @@ struct RepoSettingView: View {
                             color: AppTheme.sectionYellow
                         ) {
                             repoInfoRow
+                        }
+
+                        settingSection(
+                            title: "■ Automatic BeGit Time",
+                            color: AppTheme.accent
+                        ) {
+                            beGitTimeScheduleSection
                         }
 
                         settingSection(
@@ -92,6 +103,7 @@ struct RepoSettingView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .task {
                 await notificationChannels.load(accessToken: authState.accessToken)
+                await beGitTimeSchedule.load(accessToken: authState.accessToken)
             }
             .sheet(isPresented: $isShowingChannelSetup) {
                 NotificationChannelSetupView { platform, name, webhookURL in
@@ -104,6 +116,39 @@ struct RepoSettingView: View {
                     if created { isShowingChannelSetup = false }
                     return created
                 }
+            }
+            .sheet(isPresented: $isShowingTimePicker) {
+                NavigationStack {
+                    ZStack {
+                        AppTheme.background.ignoresSafeArea()
+
+                        DatePicker(
+                            "開始時刻",
+                            selection: $beGitTimeSchedule.selectedTime,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.wheel)
+                        .tint(AppTheme.accent)
+                        .environment(\.timeZone, beGitTimeSchedule.timeZone)
+                        .environment(\.colorScheme, .dark)
+                        .padding(.horizontal, 20)
+                    }
+                    .navigationTitle("開始時刻")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完了") {
+                                isShowingTimePicker = false
+                            }
+                            .foregroundStyle(AppTheme.accent)
+                        }
+                    }
+                    .toolbarBackground(AppTheme.background, for: .navigationBar)
+                    .toolbarBackground(.visible, for: .navigationBar)
+                }
+                .presentationDetents([.height(320)])
+                .presentationDragIndicator(.visible)
             }
             .alert("Notification Channels", isPresented: Binding(
                 get: { notificationChannels.errorMessage != nil || notificationChannels.successMessage != nil },
@@ -170,6 +215,96 @@ struct RepoSettingView: View {
             .scaledToFill()
     }
 
+    @ViewBuilder
+    private var beGitTimeScheduleSection: some View {
+        if beGitTimeSchedule.isLoading {
+            HStack { Spacer(); ProgressView().tint(AppTheme.accent); Spacer() }
+                .padding(20)
+        } else if !beGitTimeSchedule.canManage {
+            Label("リポジトリのオーナーだけが自動開催を設定できます", systemImage: "lock.fill")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.medium)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.fieldBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                Toggle("設定時刻に自動で開始", isOn: $beGitTimeSchedule.isEnabled)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .tint(AppTheme.checkmarkGreen)
+
+                HStack {
+                    Text("開始時刻")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(beGitTimeSchedule.isEnabled ? 1 : 0.55))
+
+                    Spacer()
+
+                    Button {
+                        isShowingTimePicker = true
+                    } label: {
+                        Text(beGitTimeSchedule.selectedTimeText)
+                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(AppTheme.accent.opacity(beGitTimeSchedule.isEnabled ? 1 : 0.45))
+                            .frame(width: 88, height: 42)
+                            .background(AppTheme.accent.opacity(beGitTimeSchedule.isEnabled ? 0.14 : 0.07))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("開始時刻")
+                    .accessibilityValue(beGitTimeSchedule.selectedTimeText)
+                }
+                .disabled(!beGitTimeSchedule.isEnabled)
+
+                HStack(spacing: 6) {
+                    ForEach(BeGitTimeScheduleViewModel.weekdayOptions, id: \.value) { weekday in
+                        Button {
+                            beGitTimeSchedule.toggleWeekday(weekday.value)
+                        } label: {
+                            Text(weekday.label)
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .foregroundStyle(beGitTimeSchedule.weekdays.contains(weekday.value) ? .black : AppTheme.Text.medium)
+                                .background(beGitTimeSchedule.weekdays.contains(weekday.value) ? AppTheme.accent : Color.white.opacity(0.05))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!beGitTimeSchedule.isEnabled)
+                    }
+                }
+
+                if let message = beGitTimeSchedule.message {
+                    Text(message)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(beGitTimeSchedule.hasError ? AppTheme.softPink : AppTheme.checkmarkGreen)
+                }
+
+                Button {
+                    Task { await beGitTimeSchedule.save(accessToken: authState.accessToken) }
+                } label: {
+                    HStack {
+                        if beGitTimeSchedule.isSaving { ProgressView().tint(.black) }
+                        Text("自動開催設定を保存")
+                    }
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(AppTheme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(!beGitTimeSchedule.hasLoaded || beGitTimeSchedule.isSaving || beGitTimeSchedule.weekdays.isEmpty)
+            }
+            .padding(14)
+            .background(AppTheme.fieldBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
     private func memberRow(_ member: RepositoryMember) -> some View {
         HStack(spacing: 12) {
             AvatarView(member: member, size: 36)
@@ -198,7 +333,14 @@ struct RepoSettingView: View {
         } else {
             VStack(spacing: 10) {
                 ForEach(notificationChannels.channels) { channel in
-                    notificationChannelRow(channel)
+                    SwipeToDeleteNotificationChannelRow(
+                        channelName: channel.displayName,
+                        onDelete: {
+                            channelToDelete = channel
+                        }
+                    ) {
+                        notificationChannelRow(channel)
+                    }
                 }
 
                 Button {
@@ -216,52 +358,33 @@ struct RepoSettingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-
-                Text("BeGit TimeとSprintのお知らせを、チームのいつもの場所へ。Webhook URLは暗号化して保存されます。")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(AppTheme.Text.low)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
     private func notificationChannelRow(_ channel: NotificationChannel) -> some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: channel.platform.symbolName)
-                    .foregroundStyle(channel.platform == .slack ? AppTheme.softPink : AppTheme.accent)
-                    .frame(width: 42, height: 42)
+        HStack(spacing: 12) {
+            Image(systemName: channel.platform.symbolName)
+                .foregroundStyle(channel.platform == .slack ? AppTheme.softPink : AppTheme.accent)
+                .frame(width: 42, height: 42)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(channel.displayName)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.white)
-                    Text(channel.platform.title)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(AppTheme.Text.medium)
-                }
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { channel.isEnabled },
-                    set: { enabled in
-                        Task { await notificationChannels.setEnabled(enabled, channel: channel, accessToken: authState.accessToken) }
-                    }
-                ))
-                .labelsHidden()
-                .tint(AppTheme.checkmarkGreen)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(channel.displayName)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                Text(channel.platform.title)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.medium)
             }
-
-            HStack {
-                Spacer()
-
-                Button(role: .destructive) {
-                    channelToDelete = channel
-                } label: {
-                    Image(systemName: "trash")
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { channel.isEnabled },
+                set: { enabled in
+                    Task { await notificationChannels.setEnabled(enabled, channel: channel, accessToken: authState.accessToken) }
                 }
-                .buttonStyle(.borderless)
-            }
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            ))
+            .labelsHidden()
+            .tint(AppTheme.checkmarkGreen)
         }
         .padding(14)
         .background(AppTheme.fieldBackground)
@@ -284,6 +407,222 @@ struct RepoSettingView: View {
                 .foregroundStyle(color)
             content()
         }
+    }
+}
+
+// HOMEのRepository行と同じ、左スワイプで削除ボタンを表示する通知チャネル行。
+private struct SwipeToDeleteNotificationChannelRow<Content: View>: View {
+    let channelName: String
+    let onDelete: () -> Void
+    let content: Content
+
+    @State private var offsetX: CGFloat = 0
+
+    private let deleteRevealWidth: CGFloat = 86
+    private let deleteButtonSize: CGFloat = 58
+    private let rowCornerRadius: CGFloat = 14
+
+    init(
+        channelName: String,
+        onDelete: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.channelName = channelName
+        self.onDelete = onDelete
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            deleteButton
+                .padding(.trailing, 10)
+                .scaleEffect(isDeleteVisible ? 1 : 0.62)
+                .opacity(isDeleteVisible ? 1 : 0)
+                .animation(.spring(response: 0.30, dampingFraction: 0.46), value: isDeleteVisible)
+
+            content
+                .contentShape(RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous))
+                .offset(x: offsetX)
+                .highPriorityGesture(swipeGesture)
+                .onTapGesture {
+                    guard isDeleteVisible else { return }
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.56)) {
+                        offsetX = 0
+                    }
+                }
+                .animation(.spring(response: 0.34, dampingFraction: 0.62), value: offsetX)
+        }
+    }
+
+    private var deleteButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.24, dampingFraction: 0.54)) {
+                offsetX = -deleteRevealWidth - 10
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                withAnimation(.spring(response: 0.26, dampingFraction: 0.70)) {
+                    onDelete()
+                }
+            }
+        } label: {
+            Image(systemName: "trash.fill")
+                .font(.system(size: 22, weight: .black))
+                .foregroundStyle(.white)
+                .frame(width: deleteButtonSize, height: deleteButtonSize)
+                .background(Color(.systemRed))
+                .clipShape(Circle())
+                .shadow(color: Color(.systemRed).opacity(0.35), radius: 10, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(channelName)を削除")
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .onChanged { value in
+                let horizontalMovement = value.translation.width
+                guard abs(horizontalMovement) > abs(value.translation.height) else { return }
+
+                if horizontalMovement < 0 {
+                    offsetX = max(horizontalMovement, -deleteRevealWidth)
+                } else if isDeleteVisible {
+                    offsetX = min(-deleteRevealWidth + horizontalMovement, 0)
+                }
+            }
+            .onEnded { value in
+                let shouldReveal = value.translation.width < -38 || value.predictedEndTranslation.width < -deleteRevealWidth
+
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.48)) {
+                    offsetX = shouldReveal ? -deleteRevealWidth : 0
+                }
+            }
+    }
+
+    private var isDeleteVisible: Bool {
+        offsetX < -12
+    }
+}
+
+@MainActor
+private final class BeGitTimeScheduleViewModel: ObservableObject {
+    static let weekdayOptions: [(value: Int, label: String)] = [
+        (1, "月"), (2, "火"), (3, "水"), (4, "木"), (5, "金"), (6, "土"), (7, "日")
+    ]
+
+    @Published var isEnabled = false
+    @Published var selectedTime = Date()
+    @Published var weekdays: Set<Int> = [1, 2, 3, 4, 5]
+    @Published private(set) var timezoneIdentifier = TimeZone.current.identifier
+    @Published private(set) var isLoading = false
+    @Published private(set) var isSaving = false
+    @Published private(set) var hasLoaded = false
+    @Published private(set) var canManage = true
+    @Published private(set) var message: String?
+    @Published private(set) var hasError = false
+
+    var timeZone: TimeZone { TimeZone(identifier: timezoneIdentifier) ?? .current }
+    var selectedTimeText: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: selectedTime)
+    }
+
+    private let repositoryID: Int64?
+    private let api: any BeGitTimeScheduleAPI
+
+    init(repositoryID: Int64?, api: any BeGitTimeScheduleAPI = BeGitBackendAPI()) {
+        self.repositoryID = repositoryID
+        self.api = api
+    }
+
+    func load(accessToken: String?) async {
+        hasLoaded = false
+        guard let repositoryID, let accessToken, !accessToken.isEmpty else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let schedule = try await api.getBeGitTimeSchedule(repositoryID: repositoryID, accessToken: accessToken)
+            guard apply(schedule) else {
+                hasError = true
+                message = "自動開催設定を読み込めませんでした。"
+                return
+            }
+            canManage = true
+            hasLoaded = true
+            hasError = false
+            message = nil
+        } catch let BeGitAPIError.requestFailed(statusCode, _) where statusCode == 403 {
+            canManage = false
+        } catch {
+            hasError = true
+            message = error.localizedDescription
+        }
+    }
+
+    func toggleWeekday(_ weekday: Int) {
+        if weekdays.contains(weekday) {
+            weekdays.remove(weekday)
+        } else {
+            weekdays.insert(weekday)
+        }
+        message = nil
+    }
+
+    func save(accessToken: String?) async {
+        guard hasLoaded, let repositoryID, let accessToken, !weekdays.isEmpty else { return }
+        isSaving = true
+        message = nil
+        defer { isSaving = false }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "HH:mm"
+        do {
+            let updated = try await api.updateBeGitTimeSchedule(
+                repositoryID: repositoryID,
+                enabled: isEnabled,
+                localTime: formatter.string(from: selectedTime),
+                timezone: timezoneIdentifier,
+                weekdays: weekdays.sorted(),
+                accessToken: accessToken
+            )
+            guard apply(updated) else {
+                hasLoaded = false
+                hasError = true
+                message = "保存した自動開催設定を反映できませんでした。"
+                return
+            }
+            hasError = false
+            message = updated.isEnabled ? "自動開催を設定しました 🌱" : "自動開催をオフにしました"
+        } catch {
+            hasError = true
+            message = error.localizedDescription
+        }
+    }
+
+    private func apply(_ schedule: BeGitTimeSchedule) -> Bool {
+        let timeParts = schedule.localTime.split(separator: ":", omittingEmptySubsequences: false)
+        guard timeParts.count == 2,
+              let hour = Int(timeParts[0]), (0...23).contains(hour),
+              let minute = Int(timeParts[1]), (0...59).contains(minute),
+              let scheduleTimeZone = TimeZone(identifier: schedule.timezone),
+              !schedule.weekdays.isEmpty,
+              schedule.weekdays.allSatisfy({ (1...7).contains($0) }) else {
+            return false
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = scheduleTimeZone
+        guard let selectedTime = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) else {
+            return false
+        }
+        isEnabled = schedule.isEnabled
+        timezoneIdentifier = schedule.timezone
+        weekdays = Set(schedule.weekdays)
+        self.selectedTime = selectedTime
+        return true
     }
 }
 

@@ -1,5 +1,5 @@
 //  NotificationPayload.swift
-//  FCM data メッセージ（通知7種）を型安全にパースするモデル。
+//  FCM data メッセージを型安全にパースするモデル。
 //  契約は docs/notification/ios-guide.md §2。FCM の data は値がすべて文字列で届くため、
 //  数値フィールドは Int 変換する。未知 type / 必須欠落は init? が nil を返し、安全に無視する。
 
@@ -8,6 +8,7 @@ import Foundation
 //  通知の種類（FCM data の `type`）
 enum NotificationType: String {
     case begitTime = "begit_time"           // ① BeGit Time!（チャレンジ開始）
+    case challengeReminder = "challenge_reminder" // 残り30分/10分（未投稿者のみ）
     case niceWork = "nice_work"             // ② Nice Work!（自分の初アクティビティ検知）
     case challengeEnd = "challenge_end"     // ③ チャレンジ終了（結果サマリ）
     case sprintReminder = "sprint_reminder" // ④ スプリント終了3日前
@@ -27,6 +28,7 @@ struct NotificationPayload: Equatable {
     let postId: Int?            // ⑦: 反応された投稿
     let status: String?         // ②: "on_time" | "late"
     let actorLogin: String?     // ⑦: 反応した相手の login
+    let remainingMinutes: Int?  // 残り時間リマインド: 30 | 10
 
     //  FCM の userInfo（didReceive 等で渡る辞書）からパースする。
     //  type が未知、または共通必須（type / group_id）が欠落・非数値なら nil。
@@ -46,6 +48,7 @@ struct NotificationPayload: Equatable {
         self.postId = Self.int(userInfo["post_id"])
         self.status = Self.string(userInfo["status"])
         self.actorLogin = Self.string(userInfo["actor_login"])
+        self.remainingMinutes = Self.int(userInfo["remaining_minutes"])
     }
 
     //  FCM data は文字列値だが、NSString 等で届く場合も吸収する。
@@ -72,7 +75,7 @@ extension NotificationPayload {
     //  type 別フィールドが欠ける場合は遷移できないため nil。
     var route: RepositoryNavigationRoute? {
         switch type {
-        case .begitTime:
+        case .begitTime, .challengeReminder:
             //  ① チャレンジ中なら memo 投稿 UI（中身は #56）
             return .notificationPostCreation(groupId: groupId, notificationId: notificationId)
         case .niceWork:

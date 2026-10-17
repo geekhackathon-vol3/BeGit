@@ -35,3 +35,22 @@ protocol NotificationChannelAPI: Sendable {
     func deleteNotificationChannel(repositoryID: Int64, channelID: Int64, accessToken: String) async throws
 }
 
+struct BeGitTimeSchedule: Equatable, Sendable {
+    let isEnabled: Bool
+    let localTime: String
+    let timezone: String
+    let weekdays: [Int]
+    let nextRunAt: Date?
+}
+
+protocol BeGitTimeScheduleAPI: Sendable {
+    func getBeGitTimeSchedule(repositoryID: Int64, accessToken: String) async throws -> BeGitTimeSchedule
+    func updateBeGitTimeSchedule(
+        repositoryID: Int64,
+        enabled: Bool,
+        localTime: String,
+        timezone: String,
+        weekdays: [Int],
+        accessToken: String
+    ) async throws -> BeGitTimeSchedule
+}

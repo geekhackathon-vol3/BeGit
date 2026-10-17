@@ -54,7 +54,7 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
     }
 }
 
-struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChannelAPI {
+struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChannelAPI, BeGitTimeScheduleAPI {
     private let baseURL: URL
     private let session: URLSession
     
@@ -695,6 +695,44 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, CurrentUserAPI, NotificationChan
         try validateHTTPResponse(response, data: data)
     }
 
+    func getBeGitTimeSchedule(repositoryID: Int64, accessToken: String) async throws -> BeGitTimeSchedule {
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/begit-time-schedule",
+            method: "GET",
+            accessToken: accessToken
+        )
+        try validateHTTPResponse(response, data: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(BeGitTimeScheduleDTO.self, from: data).model
+    }
+
+    func updateBeGitTimeSchedule(
+        repositoryID: Int64,
+        enabled: Bool,
+        localTime: String,
+        timezone: String,
+        weekdays: [Int],
+        accessToken: String
+    ) async throws -> BeGitTimeSchedule {
+        let body = try JSONEncoder().encode(UpdateBeGitTimeScheduleDTO(
+            enabled: enabled,
+            localTime: localTime,
+            timezone: timezone,
+            weekdays: weekdays
+        ))
+        let (data, response) = try await notificationChannelRequest(
+            path: "groups/\(repositoryID)/begit-time-schedule",
+            method: "PUT",
+            accessToken: accessToken,
+            body: body
+        )
+        try validateHTTPResponse(response, data: data)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(BeGitTimeScheduleDTO.self, from: data).model
+    }
+
     private func notificationChannelRequest(
         path: String,
         method: String,
@@ -761,6 +799,42 @@ private nonisolated struct CreateNotificationChannelDTO: Encodable {
 
 private nonisolated struct UpdateNotificationChannelDTO: Encodable {
     let enabled: Bool
+}
+
+private nonisolated struct BeGitTimeScheduleDTO: Decodable {
+    let enabled: Bool
+    let localTime: String
+    let timezone: String
+    let weekdays: [Int]
+    let nextRunAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, timezone, weekdays
+        case localTime = "local_time"
+        case nextRunAt = "next_run_at"
+    }
+
+    var model: BeGitTimeSchedule {
+        BeGitTimeSchedule(
+            isEnabled: enabled,
+            localTime: localTime,
+            timezone: timezone,
+            weekdays: weekdays,
+            nextRunAt: nextRunAt
+        )
+    }
+}
+
+private nonisolated struct UpdateBeGitTimeScheduleDTO: Encodable {
+    let enabled: Bool
+    let localTime: String
+    let timezone: String
+    let weekdays: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, timezone, weekdays
+        case localTime = "local_time"
+    }
 }
 
 private nonisolated struct ReactionCreateRequestDTO: Encodable {

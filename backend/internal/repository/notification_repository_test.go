@@ -53,8 +53,8 @@ func TestNotificationRepository_CreateIfNoActive_OncePerSprintCondition(t *testi
 		wantSenderSQL bool
 		wantParams    int
 	}{
-		{name: "既定は1人1回を判定する", allowMultiple: false, wantSenderSQL: true, wantParams: 6},
-		{name: "許可時は1人1回を判定しない", allowMultiple: true, wantSenderSQL: false, wantParams: 4},
+		{name: "既定は1人1回を判定する", allowMultiple: false, wantSenderSQL: true, wantParams: 7},
+		{name: "許可時は1人1回を判定しない", allowMultiple: true, wantSenderSQL: false, wantParams: 5},
 	}
 
 	for _, tc := range cases {
