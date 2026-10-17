@@ -70,6 +70,22 @@ type Notification struct {
 	// EndedAt は発行者による途中中断時刻。nil = 中断なし（締め切りは SentAt + 1h）。
 	// 中断は「締め切りを今にする」扱いで、以降は進行中とみなさない。
 	EndedAt *time.Time
+	// Source は "manual" または "scheduled"。空文字は後方互換上 manual と同義。
+	Source string
+}
+
+// BeGitTimeSchedule はグループ単位の自動開催設定。
+// Weekdays は ISO weekday（1=月曜 ... 7=日曜）。NextRunAt は UTC。
+type BeGitTimeSchedule struct {
+	GroupID   int64
+	Enabled   bool
+	LocalTime string
+	Timezone  string
+	Weekdays  []int
+	NextRunAt *time.Time
+	UpdatedBy int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Post は投稿。notification_id でどの通知に応答したかを記録
