@@ -40,11 +40,14 @@ type User struct {
 
 // RepoInfo は GitHub リポジトリ情報
 type RepoInfo struct {
-	FullName  string `json:"full_name"`
-	AvatarURL string // owner.avatar_url
-	Private   bool
-	CanPush   bool
-	CanAdmin  bool
+	FullName   string `json:"full_name"`
+	AvatarURL  string // owner.avatar_url
+	OwnerID    int64
+	OwnerLogin string
+	OwnerType  string
+	Private    bool
+	CanPush    bool
+	CanAdmin   bool
 }
 
 // AppInstallation は GitHub App のインストール先アカウント情報。
@@ -402,6 +405,15 @@ func (c *githubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToke
 	if owner, ok := raw["owner"].(map[string]interface{}); ok {
 		if avatarURL, ok := owner["avatar_url"].(string); ok {
 			info.AvatarURL = avatarURL
+		}
+		if ownerID, ok := owner["id"].(float64); ok {
+			info.OwnerID = int64(ownerID)
+		}
+		if ownerLogin, ok := owner["login"].(string); ok {
+			info.OwnerLogin = ownerLogin
+		}
+		if ownerType, ok := owner["type"].(string); ok {
+			info.OwnerType = ownerType
 		}
 	}
 	if permissions, ok := raw["permissions"].(map[string]interface{}); ok {

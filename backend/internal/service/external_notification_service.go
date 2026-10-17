@@ -66,7 +66,17 @@ func (s *notificationChannelService) requireOwner(ctx context.Context, groupID, 
 		}
 		return nil, err
 	}
-	if group.OwnerUserID != userID {
+	if !group.OwnerVerified {
+		return nil, ErrForbidden
+	}
+	member, err := s.groups.GetMember(ctx, groupID, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrForbidden
+		}
+		return nil, err
+	}
+	if model.NormalizeGroupRole(member.Role) != model.GroupRoleOwner {
 		return nil, ErrForbidden
 	}
 	return group, nil

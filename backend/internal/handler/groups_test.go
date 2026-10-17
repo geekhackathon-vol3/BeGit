@@ -16,7 +16,8 @@ import (
 
 // mockGroupService はテスト用の GroupService モック（GetGroup のみ差し替え可能）
 type mockGroupService struct {
-	getGroupFunc func(ctx context.Context, groupID, userID int64) (*service.GroupDetail, error)
+	getGroupFunc       func(ctx context.Context, groupID, userID int64) (*service.GroupDetail, error)
+	claimOwnershipFunc func(ctx context.Context, groupID, userID int64, accessToken string) error
 }
 
 func (m *mockGroupService) ListGroups(ctx context.Context, userID int64) ([]service.GroupDetail, error) {
@@ -49,6 +50,13 @@ func (m *mockGroupService) SyncMembers(ctx context.Context, groupID int64, acces
 }
 
 func (m *mockGroupService) UpdateMemberRole(ctx context.Context, groupID, requesterUserID, targetUserID int64, role string) error {
+	return nil
+}
+
+func (m *mockGroupService) ClaimOwnership(ctx context.Context, groupID, userID int64, accessToken string) error {
+	if m.claimOwnershipFunc != nil {
+		return m.claimOwnershipFunc(ctx, groupID, userID, accessToken)
+	}
 	return nil
 }
 
@@ -183,5 +191,28 @@ func TestGroupHandler_Get_ActiveChallenge_FailSoft(t *testing.T) {
 	}
 	if _, ok := raw["active_challenge"]; ok {
 		t.Errorf("active_challenge must be omitted on failure: %v", raw)
+	}
+}
+
+func TestGroupHandler_ClaimOwnership(t *testing.T) {
+	called := false
+	groupSvc := &mockGroupService{
+		claimOwnershipFunc: func(_ context.Context, groupID, userID int64, accessToken string) error {
+			called = groupID == 12 && userID == 23 && accessToken == "github-token"
+			return nil
+		},
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/groups/:id/claim-ownership", func(c *gin.Context) {
+		c.Set(ctxUserID, int64(23))
+		c.Set(ctxAccessToken, "github-token")
+		NewGroupHandler(groupSvc, &mockNotificationService{}).ClaimOwnership(c)
+	})
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/claim-ownership", nil))
+	if w.Code != http.StatusNoContent || !called {
+		t.Fatalf("expected 204 and service call, got status=%d called=%v body=%s", w.Code, called, w.Body.String())
 	}
 }

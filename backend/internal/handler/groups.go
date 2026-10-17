@@ -23,12 +23,13 @@ type CreateGroupRequest struct {
 
 // GroupJSON は GET /groups レスポンスのグループ型
 type GroupJSON struct {
-	ID           int64  `json:"id"`
-	Name         string `json:"name"`
-	RepoFullName string `json:"repo_full_name"`
-	AvatarURL    string `json:"avatar_url"`
-	ReadOnly     bool   `json:"read_only"`
-	MemberCount  int    `json:"member_count,omitempty"`
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	RepoFullName  string `json:"repo_full_name"`
+	AvatarURL     string `json:"avatar_url"`
+	ReadOnly      bool   `json:"read_only"`
+	OwnerVerified bool   `json:"owner_verified"`
+	MemberCount   int    `json:"member_count,omitempty"`
 }
 
 // GroupListResponse は GET /groups のレスポンス
@@ -212,12 +213,57 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, GroupJSON{
-		ID:           group.ID,
-		Name:         group.Name,
-		RepoFullName: group.RepoFullName,
-		AvatarURL:    group.AvatarURL,
-		ReadOnly:     group.ReadOnly,
+		ID:            group.ID,
+		Name:          group.Name,
+		RepoFullName:  group.RepoFullName,
+		AvatarURL:     group.AvatarURL,
+		ReadOnly:      group.ReadOnly,
+		OwnerVerified: group.OwnerVerified,
 	})
+}
+
+// ClaimOwnership はGitHub上のowner/admin権限を確認してBeGitの管理権を引き取る。
+//
+//	@Summary		リポジトリ管理権の引き取り
+//	@Tags			groups
+//	@Security		BearerAuth
+//	@Param			id	path	int	true	"グループ ID"
+//	@Success		204
+//	@Failure		401	{object}	ErrorResponse
+//	@Failure		403	{object}	ErrorResponse
+//	@Failure		404	{object}	ErrorResponse
+//	@Failure		409	{object}	ErrorResponse
+//	@Failure		502	{object}	ErrorResponse
+//	@Router			/groups/{id}/claim-ownership [post]
+func (h *GroupHandler) ClaimOwnership(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.groupService.ClaimOwnership(c.Request.Context(), groupID, userID, accessTokenFromContext(c)); err != nil {
+		switch {
+		case errors.Is(err, service.ErrUnauthorized):
+			respondError(c, http.StatusUnauthorized, "GitHub authentication required")
+		case errors.Is(err, service.ErrForbidden):
+			respondError(c, http.StatusForbidden, "GitHub repository owner or admin permission required")
+		case errors.Is(err, service.ErrNotFound):
+			respondError(c, http.StatusNotFound, "group not found")
+		case errors.Is(err, service.ErrConflict):
+			respondError(c, http.StatusConflict, "repository ownership has already been claimed")
+		case errors.Is(err, service.ErrExternalAPI):
+			respondError(c, http.StatusBadGateway, "external api error")
+		default:
+			respondError(c, http.StatusInternalServerError, "internal server error")
+		}
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // Delete はログイン中ユーザーのHOMEからグループを削除する。
@@ -352,12 +398,13 @@ func toGroupDetailJSON(detail service.GroupDetail) GroupDetailJSON {
 
 	return GroupDetailJSON{
 		GroupJSON: GroupJSON{
-			ID:           detail.ID,
-			Name:         detail.Name,
-			RepoFullName: detail.RepoFullName,
-			AvatarURL:    detail.AvatarURL,
-			ReadOnly:     detail.ReadOnly,
-			MemberCount:  len(members),
+			ID:            detail.ID,
+			Name:          detail.Name,
+			RepoFullName:  detail.RepoFullName,
+			AvatarURL:     detail.AvatarURL,
+			ReadOnly:      detail.ReadOnly,
+			OwnerVerified: detail.OwnerVerified,
+			MemberCount:   len(members),
 		},
 		Members: members,
 		MyRole:  detail.MyRole,

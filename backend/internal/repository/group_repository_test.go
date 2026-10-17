@@ -158,3 +158,50 @@ func TestGroupRepository_Create(t *testing.T) {
 		t.Errorf("expected RepoFullName=owner/repo, got %s", group.RepoFullName)
 	}
 }
+
+func TestGroupRepository_ClaimOwnership(t *testing.T) {
+	var capturedSQL string
+	var capturedParams []interface{}
+	mock := &mockD1Client{
+		execFunc: func(_ context.Context, sql string, params []interface{}) (int64, error) {
+			capturedSQL = sql
+			capturedParams = params
+			return 1, nil
+		},
+		queryFunc: func(_ context.Context, _ string, _ []interface{}) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{
+				{
+					"id":             float64(8),
+					"repo_full_name": "octocat/Hello-World",
+					"owner_user_id":  float64(42),
+					"owner_verified": float64(1),
+					"created_at":     "2026-10-17 00:00:00",
+				},
+			}, nil
+		},
+	}
+
+	repo := NewGroupRepository(mock)
+	if err := repo.ClaimOwnership(context.Background(), 8, 42); err != nil {
+		t.Fatalf("ClaimOwnership() failed: %v", err)
+	}
+	for _, fragment := range []string{
+		"SET role = 'viewer'",
+		"DO UPDATE SET role = 'owner'",
+		"owner_verified = 1",
+		"read_only = 0",
+	} {
+		if !strings.Contains(capturedSQL, fragment) {
+			t.Fatalf("claim SQL does not contain %q: %s", fragment, capturedSQL)
+		}
+	}
+	wantParams := []interface{}{int64(8), int64(8), int64(8), int64(42), int64(8), int64(42), int64(8)}
+	if len(capturedParams) != len(wantParams) {
+		t.Fatalf("unexpected params: %#v", capturedParams)
+	}
+	for index := range wantParams {
+		if capturedParams[index] != wantParams[index] {
+			t.Fatalf("unexpected params: %#v", capturedParams)
+		}
+	}
+}

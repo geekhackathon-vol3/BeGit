@@ -47,8 +47,13 @@ func (c *stubClient) CreateInstallationAccessToken(ctx context.Context, appID, p
 // GetRepoInfo はリクエストされた repoFullName をそのまま返す（avatar はダミー）。
 func (c *stubClient) GetRepoInfo(ctx context.Context, repoFullName, accessToken string) (*RepoInfo, error) {
 	return &RepoInfo{
-		FullName:  repoFullName,
-		AvatarURL: "https://avatars.githubusercontent.com/u/0?v=4",
+		FullName:   repoFullName,
+		AvatarURL:  "https://avatars.githubusercontent.com/u/0?v=4",
+		OwnerID:    -1000,
+		OwnerLogin: "dev-stub-user",
+		OwnerType:  "User",
+		CanPush:    true,
+		CanAdmin:   true,
 	}, nil
 }
 

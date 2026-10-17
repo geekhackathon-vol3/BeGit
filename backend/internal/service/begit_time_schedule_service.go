@@ -49,7 +49,17 @@ func (s *beGitTimeScheduleService) requireOwner(ctx context.Context, groupID, us
 		}
 		return err
 	}
-	if group.OwnerUserID != userID {
+	if !group.OwnerVerified {
+		return ErrForbidden
+	}
+	member, err := s.groups.GetMember(ctx, groupID, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrForbidden
+		}
+		return err
+	}
+	if model.NormalizeGroupRole(member.Role) != model.GroupRoleOwner {
 		return ErrForbidden
 	}
 	return nil

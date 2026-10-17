@@ -12,11 +12,12 @@ import (
 
 // GroupCreateInput は GroupRepository.Create の入力型（テスト用に公開）
 type GroupCreateInput struct {
-	RepoFullName string
-	Name         string
-	AvatarURL    string
-	ReadOnly     bool
-	OwnerUserID  int64
+	RepoFullName  string
+	Name          string
+	AvatarURL     string
+	ReadOnly      bool
+	OwnerUserID   int64
+	OwnerVerified bool
 }
 
 // GroupRepository は groups / group_members テーブルへのアクセスインターフェース
@@ -28,6 +29,7 @@ type GroupRepository interface {
 	AddMember(ctx context.Context, groupID, userID int64, role string) error
 	BatchAddMembers(ctx context.Context, groupID int64, userIDs []int64, role string) error
 	UpdateMemberRole(ctx context.Context, groupID, userID int64, role string) error
+	ClaimOwnership(ctx context.Context, groupID, userID int64) error
 	RemoveMember(ctx context.Context, groupID, userID int64) error
 	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
 	GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
@@ -65,6 +67,18 @@ func scanGroup(row map[string]interface{}) (*model.Group, error) {
 	}
 	if v, ok := row["owner_user_id"].(float64); ok {
 		group.OwnerUserID = int64(v)
+	}
+	if v, ok := row["owner_verified"].(float64); ok {
+		group.OwnerVerified = v != 0
+	}
+	if v, ok := row["owner_claimed_at"].(string); ok && v != "" {
+		claimedAt, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			claimedAt, err = time.Parse("2006-01-02 15:04:05", v)
+		}
+		if err == nil {
+			group.OwnerClaimedAt = &claimedAt
+		}
 	}
 	if v, ok := row["member_count"].(float64); ok {
 		group.MemberCount = int(v)
@@ -111,6 +125,7 @@ func scanGroupMember(row map[string]interface{}) model.GroupMember {
 func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]model.Group, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT g.id, g.repo_full_name, g.name, g.avatar_url, g.read_only, g.owner_user_id,
+		        g.owner_verified, g.owner_claimed_at,
 		        (SELECT COUNT(*) FROM group_members all_gm WHERE all_gm.group_id = g.id) AS member_count,
 		        g.sprint_duration_days, g.created_at
 		 FROM groups g
@@ -139,9 +154,9 @@ func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]mod
 // Create はグループを作成する
 func (r *groupRepository) Create(ctx context.Context, input *GroupCreateInput) (*model.Group, error) {
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO groups (repo_full_name, name, avatar_url, read_only, owner_user_id)
-		 VALUES (?, ?, ?, ?, ?)`,
-		[]interface{}{input.RepoFullName, input.Name, input.AvatarURL, boolToSQLite(input.ReadOnly), input.OwnerUserID},
+		`INSERT INTO groups (repo_full_name, name, avatar_url, read_only, owner_user_id, owner_verified, owner_claimed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END)`,
+		[]interface{}{input.RepoFullName, input.Name, input.AvatarURL, boolToSQLite(input.ReadOnly), input.OwnerUserID, boolToSQLite(input.OwnerVerified), boolToSQLite(input.OwnerVerified)},
 	)
 	if err != nil {
 		if errors.Is(err, d1.ErrConstraintViolation) {
@@ -156,7 +171,8 @@ func (r *groupRepository) Create(ctx context.Context, input *GroupCreateInput) (
 // GetByID は groupID でグループを取得する
 func (r *groupRepository) GetByID(ctx context.Context, groupID int64) (*model.Group, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id, sprint_duration_days, created_at
+		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id,
+		        owner_verified, owner_claimed_at, sprint_duration_days, created_at
 		 FROM groups WHERE id = ? LIMIT 1`,
 		[]interface{}{groupID},
 	)
@@ -173,7 +189,8 @@ func (r *groupRepository) GetByID(ctx context.Context, groupID int64) (*model.Gr
 // GetByRepoFullName は repo_full_name でグループを取得する
 func (r *groupRepository) GetByRepoFullName(ctx context.Context, repoFullName string) (*model.Group, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id, sprint_duration_days, created_at
+		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id,
+		        owner_verified, owner_claimed_at, sprint_duration_days, created_at
 		 FROM groups WHERE repo_full_name = ? LIMIT 1`,
 		[]interface{}{repoFullName},
 	)
@@ -231,6 +248,37 @@ func (r *groupRepository) UpdateMemberRole(ctx context.Context, groupID, userID 
 	)
 	if err != nil {
 		return fmt.Errorf("group_repository: UpdateMemberRole failed: %w", err)
+	}
+	return nil
+}
+
+// ClaimOwnership は未確認グループの既存ownerをviewerへ戻し、GitHubで確認済みの
+// ユーザーへownerを付け替える。複数文を同じD1バッチで実行し、途中状態を公開しない。
+func (r *groupRepository) ClaimOwnership(ctx context.Context, groupID, userID int64) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE group_members
+		 SET role = 'viewer'
+		 WHERE group_id = ? AND role = 'owner'
+		   AND EXISTS (SELECT 1 FROM groups WHERE id = ? AND owner_verified = 0);
+		 INSERT INTO group_members (group_id, user_id, role)
+		 SELECT ?, ?, 'owner'
+		 WHERE EXISTS (SELECT 1 FROM groups WHERE id = ? AND owner_verified = 0)
+		 ON CONFLICT(group_id, user_id) DO UPDATE SET role = 'owner';
+		 UPDATE groups
+		 SET owner_user_id = ?, owner_verified = 1, owner_claimed_at = datetime('now'), read_only = 0
+		 WHERE id = ? AND owner_verified = 0`,
+		[]interface{}{groupID, groupID, groupID, userID, groupID, userID, groupID},
+	)
+	if err != nil {
+		return fmt.Errorf("group_repository: ClaimOwnership failed: %w", err)
+	}
+
+	group, err := r.GetByID(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if !group.OwnerVerified || group.OwnerUserID != userID {
+		return ErrConflict
 	}
 	return nil
 }
