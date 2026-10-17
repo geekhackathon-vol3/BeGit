@@ -14,7 +14,6 @@ struct RepositoryPhotoGalleryContentView: View {
             .filter { activity in
                 activity.mainPhotoURL != nil || activity.imageName != nil
             }
-            .sorted { $0.date > $1.date }
     }
 
     var body: some View {
