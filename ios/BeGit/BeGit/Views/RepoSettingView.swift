@@ -1,6 +1,7 @@
 //  RepoSettingView.swift
 //  リポジトリ設定シート（リポジトリ情報・メンバー一覧）
 
+import Combine
 import SwiftUI
 
 @MainActor
@@ -9,12 +10,14 @@ struct RepoSettingView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var authState: AuthState
     @StateObject private var notificationChannels: NotificationChannelViewModel
+    @StateObject private var beGitTimeSchedule: BeGitTimeScheduleViewModel
     @State private var isShowingChannelSetup = false
     @State private var channelToDelete: NotificationChannel?
 
     init(repository: Repository) {
         self.repository = repository
         _notificationChannels = StateObject(wrappedValue: NotificationChannelViewModel(repositoryID: repository.backendID))
+        _beGitTimeSchedule = StateObject(wrappedValue: BeGitTimeScheduleViewModel(repositoryID: repository.backendID))
     }
 
     var body: some View {
@@ -42,6 +45,13 @@ struct RepoSettingView: View {
                             color: AppTheme.sectionYellow
                         ) {
                             repoInfoRow
+                        }
+
+                        settingSection(
+                            title: "■ Automatic BeGit Time",
+                            color: AppTheme.accent
+                        ) {
+                            beGitTimeScheduleSection
                         }
 
                         settingSection(
@@ -92,6 +102,7 @@ struct RepoSettingView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .task {
                 await notificationChannels.load(accessToken: authState.accessToken)
+                await beGitTimeSchedule.load(accessToken: authState.accessToken)
             }
             .sheet(isPresented: $isShowingChannelSetup) {
                 NotificationChannelSetupView { platform, name, webhookURL in
@@ -168,6 +179,97 @@ struct RepoSettingView: View {
         Image("github_default_icon")
             .resizable()
             .scaledToFill()
+    }
+
+    @ViewBuilder
+    private var beGitTimeScheduleSection: some View {
+        if beGitTimeSchedule.isLoading {
+            HStack { Spacer(); ProgressView().tint(AppTheme.accent); Spacer() }
+                .padding(20)
+        } else if !beGitTimeSchedule.canManage {
+            Label("リポジトリのオーナーだけが自動開催を設定できます", systemImage: "lock.fill")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(AppTheme.Text.medium)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppTheme.fieldBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                Toggle("設定時刻に自動で開始", isOn: $beGitTimeSchedule.isEnabled)
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .tint(AppTheme.checkmarkGreen)
+
+                DatePicker(
+                    "開始時刻",
+                    selection: $beGitTimeSchedule.selectedTime,
+                    displayedComponents: .hourAndMinute
+                )
+                .environment(\.timeZone, beGitTimeSchedule.timeZone)
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(beGitTimeSchedule.isEnabled ? 1 : 0.55))
+                .disabled(!beGitTimeSchedule.isEnabled)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("開催する曜日")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.medium)
+                    HStack(spacing: 6) {
+                        ForEach(BeGitTimeScheduleViewModel.weekdayOptions, id: \.value) { weekday in
+                            Button {
+                                beGitTimeSchedule.toggleWeekday(weekday.value)
+                            } label: {
+                                Text(weekday.label)
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 9)
+                                    .foregroundStyle(beGitTimeSchedule.weekdays.contains(weekday.value) ? .black : AppTheme.Text.medium)
+                                    .background(beGitTimeSchedule.weekdays.contains(weekday.value) ? AppTheme.accent : Color.white.opacity(0.05))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!beGitTimeSchedule.isEnabled)
+                        }
+                    }
+                }
+
+                Text("Timezone: \(beGitTimeSchedule.timezoneIdentifier)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.low)
+
+                if let message = beGitTimeSchedule.message {
+                    Text(message)
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(beGitTimeSchedule.hasError ? AppTheme.softPink : AppTheme.checkmarkGreen)
+                }
+
+                Button {
+                    Task { await beGitTimeSchedule.save(accessToken: authState.accessToken) }
+                } label: {
+                    HStack {
+                        if beGitTimeSchedule.isSaving { ProgressView().tint(.black) }
+                        Text("自動開催設定を保存")
+                    }
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .background(AppTheme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .disabled(beGitTimeSchedule.isSaving || beGitTimeSchedule.weekdays.isEmpty)
+
+                Text("開始後、残り30分・10分の時点で未投稿のメンバーだけにリマインドします。")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.low)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .background(AppTheme.fieldBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
     }
 
     private func memberRow(_ member: RepositoryMember) -> some View {
@@ -284,6 +386,95 @@ struct RepoSettingView: View {
                 .foregroundStyle(color)
             content()
         }
+    }
+}
+
+@MainActor
+private final class BeGitTimeScheduleViewModel: ObservableObject {
+    static let weekdayOptions: [(value: Int, label: String)] = [
+        (1, "月"), (2, "火"), (3, "水"), (4, "木"), (5, "金"), (6, "土"), (7, "日")
+    ]
+
+    @Published var isEnabled = false
+    @Published var selectedTime = Date()
+    @Published var weekdays: Set<Int> = [1, 2, 3, 4, 5]
+    @Published private(set) var timezoneIdentifier = TimeZone.current.identifier
+    @Published private(set) var isLoading = false
+    @Published private(set) var isSaving = false
+    @Published private(set) var canManage = true
+    @Published private(set) var message: String?
+    @Published private(set) var hasError = false
+
+    var timeZone: TimeZone { TimeZone(identifier: timezoneIdentifier) ?? .current }
+
+    private let repositoryID: Int64?
+    private let api: any BeGitTimeScheduleAPI
+
+    init(repositoryID: Int64?, api: any BeGitTimeScheduleAPI = BeGitBackendAPI()) {
+        self.repositoryID = repositoryID
+        self.api = api
+    }
+
+    func load(accessToken: String?) async {
+        guard let repositoryID, let accessToken, !accessToken.isEmpty else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            apply(try await api.getBeGitTimeSchedule(repositoryID: repositoryID, accessToken: accessToken))
+            canManage = true
+        } catch let BeGitAPIError.requestFailed(statusCode, _) where statusCode == 403 {
+            canManage = false
+        } catch {
+            hasError = true
+            message = error.localizedDescription
+        }
+    }
+
+    func toggleWeekday(_ weekday: Int) {
+        if weekdays.contains(weekday) {
+            weekdays.remove(weekday)
+        } else {
+            weekdays.insert(weekday)
+        }
+        message = nil
+    }
+
+    func save(accessToken: String?) async {
+        guard let repositoryID, let accessToken, !weekdays.isEmpty else { return }
+        isSaving = true
+        message = nil
+        defer { isSaving = false }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "HH:mm"
+        do {
+            let updated = try await api.updateBeGitTimeSchedule(
+                repositoryID: repositoryID,
+                enabled: isEnabled,
+                localTime: formatter.string(from: selectedTime),
+                timezone: timezoneIdentifier,
+                weekdays: weekdays.sorted(),
+                accessToken: accessToken
+            )
+            apply(updated)
+            hasError = false
+            message = updated.isEnabled ? "自動開催を設定しました 🌱" : "自動開催をオフにしました"
+        } catch {
+            hasError = true
+            message = error.localizedDescription
+        }
+    }
+
+    private func apply(_ schedule: BeGitTimeSchedule) {
+        isEnabled = schedule.isEnabled
+        timezoneIdentifier = schedule.timezone
+        weekdays = Set(schedule.weekdays)
+        let parts = schedule.localTime.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        selectedTime = calendar.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: Date()) ?? Date()
     }
 }
 
