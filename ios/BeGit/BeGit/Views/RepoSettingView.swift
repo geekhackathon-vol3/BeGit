@@ -297,7 +297,7 @@ struct RepoSettingView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .disabled(beGitTimeSchedule.isSaving || beGitTimeSchedule.weekdays.isEmpty)
+                .disabled(!beGitTimeSchedule.hasLoaded || beGitTimeSchedule.isSaving || beGitTimeSchedule.weekdays.isEmpty)
             }
             .padding(14)
             .background(AppTheme.fieldBackground)
@@ -516,6 +516,7 @@ private final class BeGitTimeScheduleViewModel: ObservableObject {
     @Published private(set) var timezoneIdentifier = TimeZone.current.identifier
     @Published private(set) var isLoading = false
     @Published private(set) var isSaving = false
+    @Published private(set) var hasLoaded = false
     @Published private(set) var canManage = true
     @Published private(set) var message: String?
     @Published private(set) var hasError = false
@@ -538,12 +539,21 @@ private final class BeGitTimeScheduleViewModel: ObservableObject {
     }
 
     func load(accessToken: String?) async {
+        hasLoaded = false
         guard let repositoryID, let accessToken, !accessToken.isEmpty else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            apply(try await api.getBeGitTimeSchedule(repositoryID: repositoryID, accessToken: accessToken))
+            let schedule = try await api.getBeGitTimeSchedule(repositoryID: repositoryID, accessToken: accessToken)
+            guard apply(schedule) else {
+                hasError = true
+                message = "自動開催設定を読み込めませんでした。"
+                return
+            }
             canManage = true
+            hasLoaded = true
+            hasError = false
+            message = nil
         } catch let BeGitAPIError.requestFailed(statusCode, _) where statusCode == 403 {
             canManage = false
         } catch {
@@ -562,7 +572,7 @@ private final class BeGitTimeScheduleViewModel: ObservableObject {
     }
 
     func save(accessToken: String?) async {
-        guard let repositoryID, let accessToken, !weekdays.isEmpty else { return }
+        guard hasLoaded, let repositoryID, let accessToken, !weekdays.isEmpty else { return }
         isSaving = true
         message = nil
         defer { isSaving = false }
@@ -579,7 +589,12 @@ private final class BeGitTimeScheduleViewModel: ObservableObject {
                 weekdays: weekdays.sorted(),
                 accessToken: accessToken
             )
-            apply(updated)
+            guard apply(updated) else {
+                hasLoaded = false
+                hasError = true
+                message = "保存した自動開催設定を反映できませんでした。"
+                return
+            }
             hasError = false
             message = updated.isEnabled ? "自動開催を設定しました 🌱" : "自動開催をオフにしました"
         } catch {
@@ -588,15 +603,26 @@ private final class BeGitTimeScheduleViewModel: ObservableObject {
         }
     }
 
-    private func apply(_ schedule: BeGitTimeSchedule) {
+    private func apply(_ schedule: BeGitTimeSchedule) -> Bool {
+        let timeParts = schedule.localTime.split(separator: ":", omittingEmptySubsequences: false)
+        guard timeParts.count == 2,
+              let hour = Int(timeParts[0]), (0...23).contains(hour),
+              let minute = Int(timeParts[1]), (0...59).contains(minute),
+              let scheduleTimeZone = TimeZone(identifier: schedule.timezone),
+              !schedule.weekdays.isEmpty,
+              schedule.weekdays.allSatisfy({ (1...7).contains($0) }) else {
+            return false
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = scheduleTimeZone
+        guard let selectedTime = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) else {
+            return false
+        }
         isEnabled = schedule.isEnabled
         timezoneIdentifier = schedule.timezone
         weekdays = Set(schedule.weekdays)
-        let parts = schedule.localTime.split(separator: ":").compactMap { Int($0) }
-        guard parts.count == 2 else { return }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        selectedTime = calendar.date(bySettingHour: parts[0], minute: parts[1], second: 0, of: Date()) ?? Date()
+        self.selectedTime = selectedTime
+        return true
     }
 }
 
