@@ -26,7 +26,21 @@ type Group struct {
 	CreatedAt          time.Time
 }
 
-// GroupMember は Group と User の多対多（role: owner | member）
+const (
+	GroupRoleOwner  = "owner"
+	GroupRolePoster = "poster"
+	GroupRoleViewer = "viewer"
+)
+
+// NormalizeGroupRole は旧role名を現行の権限名へ読み替える。
+func NormalizeGroupRole(role string) string {
+	if role == "member" {
+		return GroupRolePoster
+	}
+	return role
+}
+
+// GroupMember は Group と User の多対多（role: owner | poster | viewer）
 type GroupMember struct {
 	GroupID    int64
 	UserID     int64
