@@ -14,9 +14,15 @@ struct RepoSettingView: View {
     @State private var isShowingChannelSetup = false
     @State private var isShowingTimePicker = false
     @State private var channelToDelete: NotificationChannel?
+    @State private var members: [RepositoryMember]
+    @State private var memberRoleError: String?
+    private let memberRoleAPI: any GroupMemberRoleAPI
 
-    init(repository: Repository) {
+    init(repository: Repository, memberRoleAPI: any GroupMemberRoleAPI = BeGitBackendAPI()) {
         self.repository = repository
+        self.memberRoleAPI = memberRoleAPI
+        _members = State(initialValue: repository.members)
+        _memberRoleError = State(initialValue: nil)
         _notificationChannels = StateObject(wrappedValue: NotificationChannelViewModel(repositoryID: repository.backendID))
         _beGitTimeSchedule = StateObject(wrappedValue: BeGitTimeScheduleViewModel(repositoryID: repository.backendID))
     }
@@ -68,9 +74,9 @@ struct RepoSettingView: View {
                             color: AppTheme.sectionPink
                         ) {
                             VStack(spacing: 0) {
-                                ForEach(Array(repository.members.enumerated()), id: \.element.id) { index, member in
+                                ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
                                     memberRow(member)
-                                    if index < repository.members.count - 1 {
+                                    if index < members.count - 1 {
                                         Divider()
                                             .background(Color.white.opacity(0.08))
                                             .padding(.leading, 56)
@@ -157,6 +163,14 @@ struct RepoSettingView: View {
                 Button("OK", role: .cancel) { }
             } message: {
                 Text(notificationChannels.errorMessage ?? notificationChannels.successMessage ?? "")
+            }
+            .alert("メンバー権限", isPresented: Binding(
+                get: { memberRoleError != nil },
+                set: { if !$0 { memberRoleError = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(memberRoleError ?? "")
             }
             .confirmationDialog(
                 "\(channelToDelete?.displayName ?? "この通知先")との接続を解除しますか？",
@@ -312,9 +326,51 @@ struct RepoSettingView: View {
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.85))
             Spacer()
+
+            if repository.canManage, member.role != .owner {
+                Menu {
+                    Button("投稿可能") { updateMemberRole(member, role: .poster) }
+                    Button("表示専用") { updateMemberRole(member, role: .viewer) }
+                } label: {
+                    Label(member.role.displayName, systemImage: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(member.role == .poster ? AppTheme.accent : AppTheme.Text.medium)
+                }
+            } else {
+                Text(member.role.displayName)
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(member.role == .owner ? AppTheme.softPink : AppTheme.Text.medium)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    private func updateMemberRole(_ member: RepositoryMember, role: RepositoryRole) {
+        guard member.role != role,
+              let repositoryID = repository.backendID,
+              let userID = member.backendUserID,
+              let accessToken = authState.accessToken else { return }
+        Task {
+            do {
+                try await memberRoleAPI.updateMemberRole(
+                    repositoryID: repositoryID,
+                    userID: userID,
+                    role: role,
+                    accessToken: accessToken
+                )
+                guard let index = members.firstIndex(where: { $0.id == member.id }) else { return }
+                members[index] = RepositoryMember(
+                    id: member.id,
+                    backendUserID: member.backendUserID,
+                    login: member.login,
+                    avatarURL: member.avatarURL,
+                    role: role
+                )
+            } catch {
+                memberRoleError = error.localizedDescription
+            }
+        }
     }
 
     @ViewBuilder
