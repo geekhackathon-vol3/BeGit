@@ -253,7 +253,7 @@ func (h *NotificationChannelHandler) Test(c *gin.Context) {
 func respondChannelError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrForbidden):
-		respondError(c, http.StatusForbidden, "only the repository owner can manage notification channels")
+		respondError(c, http.StatusForbidden, "only posting members can manage notification channels")
 	case errors.Is(err, service.ErrNotFound), errors.Is(err, repository.ErrNotFound):
 		respondError(c, http.StatusNotFound, "notification channel not found")
 	case errors.Is(err, service.ErrValidation):

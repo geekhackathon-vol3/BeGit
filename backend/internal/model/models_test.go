@@ -62,6 +62,17 @@ func TestGroupMemberModel(t *testing.T) {
 	}
 }
 
+func TestCanManageGroupSettings(t *testing.T) {
+	for _, role := range []string{GroupRoleOwner, GroupRolePoster, "member"} {
+		if !CanManageGroupSettings(role) {
+			t.Errorf("role %q should be able to manage group settings", role)
+		}
+	}
+	if CanManageGroupSettings(GroupRoleViewer) {
+		t.Error("viewer should not be able to manage group settings")
+	}
+}
+
 func TestSprintModel(t *testing.T) {
 	now := time.Now()
 	s := Sprint{

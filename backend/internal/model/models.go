@@ -42,6 +42,12 @@ func NormalizeGroupRole(role string) string {
 	return role
 }
 
+// CanManageGroupSettings は自動開催や通知先を設定できるroleかを返す。
+func CanManageGroupSettings(role string) bool {
+	normalized := NormalizeGroupRole(role)
+	return normalized == GroupRoleOwner || normalized == GroupRolePoster
+}
+
 // GroupMember は Group と User の多対多（role: owner | poster | viewer）
 type GroupMember struct {
 	GroupID    int64

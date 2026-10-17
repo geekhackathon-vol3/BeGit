@@ -168,10 +168,6 @@ func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time)
 			log.Printf("cron_service: GetByID group %d failed: %v", schedule.GroupID, err)
 			continue
 		}
-		if !group.OwnerVerified {
-			log.Printf("cron_service: skip scheduled BeGit Time for unclaimed group %d", schedule.GroupID)
-			continue
-		}
 		durationDays := group.SprintDurationDays
 		if durationDays <= 0 {
 			durationDays = 7

@@ -56,7 +56,7 @@ func parseScheduleGroupID(c *gin.Context) (int64, bool) {
 	return groupID, true
 }
 
-// Get returns the automatic BeGit Time schedule. Only the repository owner can view it.
+// Get returns the automatic BeGit Time schedule. Owners and posters can view it.
 //
 //	@Summary		BeGit Time 自動開催設定を取得
 //	@Tags			begit-time-schedule
@@ -125,7 +125,7 @@ func (h *BeGitTimeScheduleHandler) Update(c *gin.Context) {
 func respondScheduleError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrForbidden):
-		respondError(c, http.StatusForbidden, "only the repository owner can manage the schedule")
+		respondError(c, http.StatusForbidden, "only posting members can manage the schedule")
 	case errors.Is(err, service.ErrNotFound), errors.Is(err, repository.ErrNotFound):
 		respondError(c, http.StatusNotFound, "group not found")
 	case errors.Is(err, service.ErrValidation):

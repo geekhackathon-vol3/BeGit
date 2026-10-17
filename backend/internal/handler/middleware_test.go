@@ -56,6 +56,14 @@ type mockEncryptorForHandler struct {
 	decryptFunc func(ciphertext string) (string, error)
 }
 
+type mockGroupMemberReader struct {
+	role string
+}
+
+func (m *mockGroupMemberReader) GetMember(context.Context, int64, int64) (*model.GroupMember, error) {
+	return &model.GroupMember{Role: m.role}, nil
+}
+
 func (m *mockEncryptorForHandler) Encrypt(plaintext string) (string, error) {
 	if m.encryptFunc != nil {
 		return m.encryptFunc(plaintext)
@@ -154,5 +162,26 @@ func TestBearerAuthMiddleware_MissingHeader(t *testing.T) {
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401 for missing header, got %d", rr.Code)
+	}
+}
+
+func TestGroupRole_AllowsPoster(t *testing.T) {
+	groupRepo := &mockGroupMemberReader{role: model.GroupRolePoster}
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.GET("/groups/:id/settings", func(c *gin.Context) {
+		c.Set(ctxUserID, int64(42))
+		c.Next()
+	}, GroupRole(groupRepo, model.GroupRoleOwner, model.GroupRolePoster), func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/groups/8/settings", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected poster to pass settings middleware, got %d", rr.Code)
 	}
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -57,7 +58,11 @@ func BearerAuth(
 }
 
 // GroupRole はグループ内roleを検証する。旧memberはposterとして扱う。
-func GroupRole(groupRepo repository.GroupRepository, allowedRoles ...string) gin.HandlerFunc {
+type groupMemberReader interface {
+	GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
+}
+
+func GroupRole(groupRepo groupMemberReader, allowedRoles ...string) gin.HandlerFunc {
 	allowed := make(map[string]struct{}, len(allowedRoles))
 	for _, role := range allowedRoles {
 		allowed[model.NormalizeGroupRole(role)] = struct{}{}

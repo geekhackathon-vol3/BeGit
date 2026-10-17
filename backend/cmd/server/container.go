@@ -280,13 +280,13 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.DELETE("/groups/:id/posts/:postId/comments/:commentId", bearerAuth, groupPoster, commentHandler.Delete)
 	r.GET("/groups/:id/commits", bearerAuth, groupMember, githubHandler.ListCommits)
 	r.GET("/groups/:id/pull-requests", bearerAuth, groupMember, githubHandler.ListPullRequests)
-	r.GET("/groups/:id/notification-channels", bearerAuth, groupOwner, notificationChannelHandler.List)
-	r.POST("/groups/:id/notification-channels", bearerAuth, groupOwner, notificationChannelHandler.Create)
-	r.PATCH("/groups/:id/notification-channels/:channelId", bearerAuth, groupOwner, notificationChannelHandler.Update)
-	r.DELETE("/groups/:id/notification-channels/:channelId", bearerAuth, groupOwner, notificationChannelHandler.Delete)
-	r.POST("/groups/:id/notification-channels/:channelId/test", bearerAuth, groupOwner, notificationChannelHandler.Test)
-	r.GET("/groups/:id/begit-time-schedule", bearerAuth, groupOwner, beGitTimeScheduleHandler.Get)
-	r.PUT("/groups/:id/begit-time-schedule", bearerAuth, groupOwner, beGitTimeScheduleHandler.Update)
+	r.GET("/groups/:id/notification-channels", bearerAuth, groupPoster, notificationChannelHandler.List)
+	r.POST("/groups/:id/notification-channels", bearerAuth, groupPoster, notificationChannelHandler.Create)
+	r.PATCH("/groups/:id/notification-channels/:channelId", bearerAuth, groupPoster, notificationChannelHandler.Update)
+	r.DELETE("/groups/:id/notification-channels/:channelId", bearerAuth, groupPoster, notificationChannelHandler.Delete)
+	r.POST("/groups/:id/notification-channels/:channelId/test", bearerAuth, groupPoster, notificationChannelHandler.Test)
+	r.GET("/groups/:id/begit-time-schedule", bearerAuth, groupPoster, beGitTimeScheduleHandler.Get)
+	r.PUT("/groups/:id/begit-time-schedule", bearerAuth, groupPoster, beGitTimeScheduleHandler.Update)
 
 	return r, nil
 }
