@@ -14,6 +14,8 @@ final class AddRepositoryViewModel: ObservableObject {
     @Published private(set) var isLoadingRepositories = false                   // Repository一覧取得中か
     @Published private(set) var repositoryListErrorMessage: String?             // Repository一覧取得エラー
     @Published private(set) var visibleRepositoryCount = 3                      // 画面に表示するRepository候補数
+    @Published private(set) var isLookingUpPublicRepository = false             // 公開Repository検索中か
+    @Published private(set) var publicRepositoryLookupError: String?            // 公開Repository検索エラー
 
     @Published var memberLoginText = ""                                         // 招待するmember login入力値
     @Published private(set) var members: [RepositoryMember] = []                // 追加済みmember一覧
@@ -91,6 +93,16 @@ final class AddRepositoryViewModel: ObservableObject {
         visibleRepositoryCount < filteredRepositories.count
     }
 
+    var canLookupPublicRepository: Bool {
+        guard isLookingUpPublicRepository == false,
+              let fullName = Self.normalizedPublicRepositoryInput(repositorySearchText) else {
+            return false
+        }
+        return availableRepositories.contains {
+            Self.normalizedRepositoryName($0.fullName) == Self.normalizedRepositoryName(fullName)
+        } == false
+    }
+
     //  member追加可能か
     var canAddMember: Bool {
         normalizedMemberLogin.isEmpty == false
@@ -108,7 +120,42 @@ final class AddRepositoryViewModel: ObservableObject {
 
     func updateRepositorySearchText(_ text: String) {
         repositorySearchText = text
+        publicRepositoryLookupError = nil
         visibleRepositoryCount = min(3, filteredRepositories.count)
+    }
+
+    // URLまたはowner/repoから、一覧にない公開Repositoryを取得する。
+    func lookupPublicRepository() async {
+        guard canLookupPublicRepository,
+              let repoFullName = Self.normalizedPublicRepositoryInput(repositorySearchText),
+              let accessToken, accessToken.isEmpty == false else {
+            return
+        }
+
+        isLookingUpPublicRepository = true
+        publicRepositoryLookupError = nil
+        defer { isLookingUpPublicRepository = false }
+
+        do {
+            let repository = try await githubRepositoryAPI.lookupPublicRepository(
+                repoFullName: repoFullName,
+                accessToken: accessToken
+            )
+            if isAlreadyAdded(repository) {
+                reportAlreadyAdded(repository.fullName)
+                return
+            }
+            availableRepositories.removeAll {
+                Self.normalizedRepositoryName($0.fullName) == Self.normalizedRepositoryName(repository.fullName)
+            }
+            availableRepositories.insert(repository, at: 0)
+            visibleRepositoryCount = max(1, visibleRepositoryCount)
+            repositorySearchText = repository.fullName
+            await selectRepository(repository)
+        } catch {
+            publicRepositoryLookupError = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+        }
     }
 
     func isAlreadyAdded(_ repository: GitHubRepository) -> Bool {
@@ -474,6 +521,24 @@ final class AddRepositoryViewModel: ObservableObject {
         repositoryName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
+    private static func normalizedPublicRepositoryInput(_ input: String) -> String? {
+        var value = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.isEmpty == false else { return nil }
+
+        if let url = URL(string: value), url.scheme != nil {
+            guard url.host?.lowercased() == "github.com" else { return nil }
+            value = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+
+        value = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if value.hasSuffix(".git") {
+            value.removeLast(4)
+        }
+        let parts = value.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts.allSatisfy({ $0.isEmpty == false }) else { return nil }
+        return "\(parts[0])/\(parts[1])"
+    }
+
     //  Dev / Mock時はバックエンドへ未登録トークンを送らず、画面上へ即時追加する
     private func makeLocalRepository(name: String) -> Repository {
         Repository(
@@ -506,7 +571,8 @@ final class AddRepositoryViewModel: ObservableObject {
             ownerAvatarURL: ownerAvatarURL,
             memberCount: repository.memberCount,
             members: repository.members,
-            isReadOnly: repository.isReadOnly
+            isReadOnly: repository.isReadOnly,
+            myRole: repository.myRole
         )
     }
 
