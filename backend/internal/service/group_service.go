@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -24,6 +26,7 @@ type CreateGroupRequest struct {
 type GroupDetail struct {
 	model.Group
 	Members []model.GroupMember
+	MyRole  string
 }
 
 // GroupServiceConfig は GroupService の設定
@@ -41,6 +44,7 @@ type GroupService interface {
 	LeaveGroup(ctx context.Context, groupID, userID int64) error
 	GetGroup(ctx context.Context, groupID, userID int64) (*GroupDetail, error)
 	SyncMembers(ctx context.Context, groupID int64, accessToken string) ([]model.GroupMember, error)
+	UpdateMemberRole(ctx context.Context, groupID, requesterUserID, targetUserID int64, role string) error
 }
 
 // groupService は GroupService インターフェースの実装
@@ -129,6 +133,7 @@ func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]GroupDet
 		details = append(details, GroupDetail{
 			Group:   group,
 			Members: members,
+			MyRole:  roleForUser(members, userID),
 		})
 	}
 
@@ -138,6 +143,11 @@ func (s *groupService) ListGroups(ctx context.Context, userID int64) ([]GroupDet
 // CreateGroup はリポジトリ情報取得 → Webhook 登録 → グループ作成 → オーナー追加 → コラボレーター自動追加の順に処理する。
 // Webhook 登録を先に行うことで、登録失敗時にグループが作成されないことを保証する。
 func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, userID int64) (*model.Group, error) {
+	repoFullName, err := normalizeRepoFullName(req.RepoFullName)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid repository", ErrValidation)
+	}
+	req.RepoFullName = repoFullName
 	if req.ReadOnly && req.InstallationID > 0 {
 		return nil, fmt.Errorf("%w: read-only repositories cannot use a GitHub App installation", ErrValidation)
 	}
@@ -161,8 +171,18 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	if req.ReadOnly && repoInfo.Private {
 		return nil, fmt.Errorf("%w: read-only mode is available only for public repositories", ErrForbidden)
 	}
+	// GitHub App未接続かつpush権限のない公開リポジトリは、クライアント指定に
+	// 関係なく公開閲覧モードに固定する。read_only=falseの自己申告で昇格させない。
+	effectiveReadOnly := req.ReadOnly || (req.InstallationID <= 0 && !repoInfo.CanPush)
+	if effectiveReadOnly && repoInfo.Private {
+		return nil, fmt.Errorf("%w: read-only mode is available only for public repositories", ErrForbidden)
+	}
+	req.RepoFullName = repoInfo.FullName
+	if strings.TrimSpace(req.Name) == "" || strings.EqualFold(strings.TrimSpace(req.Name), repoFullName) {
+		req.Name = repoInfo.FullName
+	}
 
-	if !req.ReadOnly {
+	if !effectiveReadOnly {
 		// Step 2: GitHub Webhook を登録（失敗時はグループを作成しない）
 		// "hook already exists" と 403 Forbidden（admin 権限不足）は非致命的として扱う
 		webhookURL := s.config.AppBaseURL + "/webhook/github"
@@ -178,7 +198,7 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 		RepoFullName: req.RepoFullName,
 		Name:         req.Name,
 		AvatarURL:    repoInfo.AvatarURL,
-		ReadOnly:     req.ReadOnly,
+		ReadOnly:     effectiveReadOnly,
 		OwnerUserID:  userID,
 	})
 	if err != nil {
@@ -187,7 +207,11 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 			if getErr != nil {
 				return nil, fmt.Errorf("group_service: GetByRepoFullName after conflict failed: %w", getErr)
 			}
-			if addErr := s.groupRepo.AddMember(ctx, existingGroup.ID, userID, "member"); addErr != nil {
+			joinRole := model.GroupRoleViewer
+			if req.InstallationID > 0 || repoInfo.CanPush {
+				joinRole = model.GroupRolePoster
+			}
+			if addErr := s.groupRepo.AddMember(ctx, existingGroup.ID, userID, joinRole); addErr != nil {
 				return nil, fmt.Errorf("group_service: AddMember after conflict failed: %w", addErr)
 			}
 			return existingGroup, nil
@@ -196,13 +220,13 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 	}
 
 	// Step 4: 作成者を owner ロールで group_members に追加
-	if err := s.groupRepo.AddMember(ctx, group.ID, userID, "owner"); err != nil {
+	if err := s.groupRepo.AddMember(ctx, group.ID, userID, model.GroupRoleOwner); err != nil {
 		return nil, fmt.Errorf("group_service: AddMember (owner) failed: %w", err)
 	}
 
 	// Step 5: GitHub コラボレーターを取得して BeGit 登録済みユーザーを自動追加。
 	// 表示専用リポジトリはコラボレーター情報も権限対象のため取得しない。
-	if req.ReadOnly {
+	if effectiveReadOnly {
 		return group, nil
 	}
 	collaborators, err := s.githubClient.GetCollaborators(ctx, req.RepoFullName, accessToken)
@@ -221,11 +245,37 @@ func (s *groupService) CreateGroup(ctx context.Context, req CreateGroupRequest, 
 			}
 		}
 		if len(memberIDs) > 0 {
-			_ = s.groupRepo.BatchAddMembers(ctx, group.ID, memberIDs, "member") // エラーは無視（ベストエフォート）
+			_ = s.groupRepo.BatchAddMembers(ctx, group.ID, memberIDs, model.GroupRolePoster) // エラーは無視（ベストエフォート）
 		}
 	}
 
 	return group, nil
+}
+
+func normalizeRepoFullName(input string) (string, error) {
+	trimmed := strings.TrimSpace(input)
+	if strings.HasPrefix(trimmed, "https://") || strings.HasPrefix(trimmed, "http://") {
+		parsed, err := url.Parse(trimmed)
+		if err != nil || (!strings.EqualFold(parsed.Hostname(), "github.com") && !strings.EqualFold(parsed.Hostname(), "www.github.com")) {
+			return "", ErrValidation
+		}
+		trimmed = strings.Trim(parsed.Path, "/")
+	}
+	trimmed = strings.TrimSuffix(strings.TrimSuffix(trimmed, "/"), ".git")
+	parts := strings.Split(trimmed, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.ContainsAny(trimmed, "?# \t\n") {
+		return "", ErrValidation
+	}
+	return parts[0] + "/" + parts[1], nil
+}
+
+func roleForUser(members []model.GroupMember, userID int64) string {
+	for _, member := range members {
+		if member.UserID == userID {
+			return model.NormalizeGroupRole(member.Role)
+		}
+	}
+	return ""
 }
 
 // LeaveGroup はログイン中ユーザーをグループから外し、HOMEの一覧から永続的に削除する。
@@ -313,7 +363,7 @@ func (s *groupService) SyncMembers(ctx context.Context, groupID int64, accessTok
 		memberIDs = append(memberIDs, u.ID)
 	}
 	if len(memberIDs) > 0 {
-		if err := s.groupRepo.BatchAddMembers(ctx, groupID, memberIDs, "member"); err != nil {
+		if err := s.groupRepo.BatchAddMembers(ctx, groupID, memberIDs, model.GroupRolePoster); err != nil {
 			return nil, fmt.Errorf("group_service: SyncMembers BatchAddMembers failed: %w", err)
 		}
 	}
@@ -352,5 +402,37 @@ func (s *groupService) GetGroup(ctx context.Context, groupID, userID int64) (*Gr
 	return &GroupDetail{
 		Group:   *group,
 		Members: members,
+		MyRole:  roleForUser(members, userID),
 	}, nil
+}
+
+// UpdateMemberRole はownerがメンバーを表示専用または投稿可能へ変更する。
+func (s *groupService) UpdateMemberRole(ctx context.Context, groupID, requesterUserID, targetUserID int64, role string) error {
+	requester, err := s.groupRepo.GetMember(ctx, groupID, requesterUserID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrForbidden
+		}
+		return fmt.Errorf("group_service: UpdateMemberRole requester lookup failed: %w", err)
+	}
+	if model.NormalizeGroupRole(requester.Role) != model.GroupRoleOwner {
+		return ErrForbidden
+	}
+	if role != model.GroupRoleViewer && role != model.GroupRolePoster {
+		return fmt.Errorf("%w: role must be viewer or poster", ErrValidation)
+	}
+	target, err := s.groupRepo.GetMember(ctx, groupID, targetUserID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("group_service: UpdateMemberRole target lookup failed: %w", err)
+	}
+	if model.NormalizeGroupRole(target.Role) == model.GroupRoleOwner {
+		return fmt.Errorf("%w: owner role cannot be changed", ErrValidation)
+	}
+	if err := s.groupRepo.UpdateMemberRole(ctx, groupID, targetUserID, role); err != nil {
+		return fmt.Errorf("group_service: UpdateMemberRole failed: %w", err)
+	}
+	return nil
 }
