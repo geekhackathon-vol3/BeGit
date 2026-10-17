@@ -57,6 +57,8 @@ extension Components.Schemas.Handler_GroupDetailJSON {
             memberCount: repositoryMembers.count,
             members: repositoryMembers,
             isReadOnly: readOnly ?? false,
+            // 旧Backendがmy_roleを返さない場合は、従来どおり投稿可能として扱う。
+            myRole: myRole.map { RepositoryRole(backendValue: $0) } ?? .poster,
             activeChallenge: activeChallenge?.toActiveChallenge()
         )
     }
@@ -118,7 +120,8 @@ extension Components.Schemas.Handler_GroupMemberJSON {
         RepositoryMember(
             backendUserID: userId.map(Int64.init),
             login: login ?? "",
-            avatarURL: avatarUrl.flatMap { URL(string: $0) }
+            avatarURL: avatarUrl.flatMap { URL(string: $0) },
+            role: RepositoryRole(backendValue: role)
         )
     }
 }
