@@ -21,12 +21,34 @@ type Group struct {
 	AvatarURL          string
 	ReadOnly           bool
 	OwnerUserID        int64
+	OwnerVerified      bool
+	OwnerClaimedAt     *time.Time
 	MemberCount        int
 	SprintDurationDays int
 	CreatedAt          time.Time
 }
 
-// GroupMember は Group と User の多対多（role: owner | member）
+const (
+	GroupRoleOwner  = "owner"
+	GroupRolePoster = "poster"
+	GroupRoleViewer = "viewer"
+)
+
+// NormalizeGroupRole は旧role名を現行の権限名へ読み替える。
+func NormalizeGroupRole(role string) string {
+	if role == "member" {
+		return GroupRolePoster
+	}
+	return role
+}
+
+// CanManageGroupSettings は自動開催や通知先を設定できるroleかを返す。
+func CanManageGroupSettings(role string) bool {
+	normalized := NormalizeGroupRole(role)
+	return normalized == GroupRoleOwner || normalized == GroupRolePoster
+}
+
+// GroupMember は Group と User の多対多（role: owner | poster | viewer）
 type GroupMember struct {
 	GroupID    int64
 	UserID     int64

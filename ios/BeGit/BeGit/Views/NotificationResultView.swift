@@ -74,6 +74,8 @@ struct NotificationResultView: View {
                             RepositoryActivityTimelineView(
                                 activities: viewModel.activities,
                                 currentUserLogin: authState.githubUser?.login,
+                                allowsDeletion: viewModel.notification.repository.canPost,
+                                allowsReactions: viewModel.notification.repository.canPost,
                                 onDeleteRequested: {
                                     activityToDelete = $0
                                     isShowingDeleteConfirmation = true

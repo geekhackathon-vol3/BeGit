@@ -24,7 +24,7 @@ enum BeGitAPIError: LocalizedError {
                 return "ログイン状態を確認できません。再ログインしてください。"
             }
             if statusCode == 403 {
-                return "このリポジトリへのアクセス権がありません。所有者にGitHub Appをインストールして、対象リポジトリを選択してもらってください。"
+                return "この操作を行う権限がありません。"
             }
             if statusCode == 502 {
                 return "GitHub App経由のリポジトリ登録に失敗しました。Appのインストール先とリポジトリ権限を確認してください。"
@@ -214,6 +214,15 @@ protocol RepositoryAPI: Sendable {
         postID: Int64,
         mainImageData: Data,
         frontImageData: Data?,
+        accessToken: String
+    ) async throws
+}
+
+protocol GroupMemberRoleAPI: Sendable {
+    func updateMemberRole(
+        repositoryID: Int64,
+        userID: Int64,
+        role: RepositoryRole,
         accessToken: String
     ) async throws
 }

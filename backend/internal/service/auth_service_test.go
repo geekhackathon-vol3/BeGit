@@ -47,7 +47,10 @@ func (m *mockGitHubClient) GetRepoInfo(ctx context.Context, repoFullName, access
 	if m.getRepoInfoFunc != nil {
 		return m.getRepoInfoFunc(ctx, repoFullName, accessToken)
 	}
-	return &githubpkg.RepoInfo{FullName: repoFullName, AvatarURL: "https://example.com/avatar.png"}, nil
+	return &githubpkg.RepoInfo{
+		FullName: repoFullName, AvatarURL: "https://example.com/avatar.png",
+		OwnerID: 1, OwnerLogin: "testuser", OwnerType: "User", CanPush: true, CanAdmin: true,
+	}, nil
 }
 
 func (m *mockGitHubClient) GetCollaborators(ctx context.Context, repoFullName, accessToken string) ([]githubpkg.User, error) {

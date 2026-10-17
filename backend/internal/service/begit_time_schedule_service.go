@@ -41,22 +41,29 @@ func NewBeGitTimeScheduleService(schedules repository.BeGitTimeScheduleRepositor
 	return &beGitTimeScheduleService{schedules: schedules, groups: groups}
 }
 
-func (s *beGitTimeScheduleService) requireOwner(ctx context.Context, groupID, userID int64) error {
-	group, err := s.groups.GetByID(ctx, groupID)
+func (s *beGitTimeScheduleService) requirePoster(ctx context.Context, groupID, userID int64) error {
+	_, err := s.groups.GetByID(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrNotFound
 		}
 		return err
 	}
-	if group.OwnerUserID != userID {
+	member, err := s.groups.GetMember(ctx, groupID, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrForbidden
+		}
+		return err
+	}
+	if !model.CanManageGroupSettings(member.Role) {
 		return ErrForbidden
 	}
 	return nil
 }
 
 func (s *beGitTimeScheduleService) Get(ctx context.Context, groupID, userID int64) (*model.BeGitTimeSchedule, error) {
-	if err := s.requireOwner(ctx, groupID, userID); err != nil {
+	if err := s.requirePoster(ctx, groupID, userID); err != nil {
 		return nil, err
 	}
 	schedule, err := s.schedules.GetByGroupID(ctx, groupID)
@@ -70,7 +77,7 @@ func (s *beGitTimeScheduleService) Get(ctx context.Context, groupID, userID int6
 }
 
 func (s *beGitTimeScheduleService) Update(ctx context.Context, groupID, userID int64, input UpdateBeGitTimeScheduleInput) (*model.BeGitTimeSchedule, error) {
-	if err := s.requireOwner(ctx, groupID, userID); err != nil {
+	if err := s.requirePoster(ctx, groupID, userID); err != nil {
 		return nil, err
 	}
 	localTime := strings.TrimSpace(input.LocalTime)

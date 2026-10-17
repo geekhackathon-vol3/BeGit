@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/pkg/crypto"
 )
@@ -51,6 +53,44 @@ func BearerAuth(
 		// userID と accessToken をコンテキストに注入
 		c.Set(ctxUserID, user.ID)
 		c.Set(ctxAccessToken, token)
+		c.Next()
+	}
+}
+
+// GroupRole はグループ内roleを検証する。旧memberはposterとして扱う。
+type groupMemberReader interface {
+	GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
+}
+
+func GroupRole(groupRepo groupMemberReader, allowedRoles ...string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(allowedRoles))
+	for _, role := range allowedRoles {
+		allowed[model.NormalizeGroupRole(role)] = struct{}{}
+	}
+	return func(c *gin.Context) {
+		userID, ok := userIDFromContext(c)
+		if !ok {
+			respondError(c, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "invalid group id")
+			return
+		}
+		member, err := groupRepo.GetMember(c.Request.Context(), groupID, userID)
+		if err != nil {
+			if errors.Is(err, repository.ErrNotFound) {
+				respondError(c, http.StatusForbidden, "forbidden")
+				return
+			}
+			respondError(c, http.StatusInternalServerError, "internal server error")
+			return
+		}
+		if _, ok := allowed[model.NormalizeGroupRole(member.Role)]; !ok {
+			respondError(c, http.StatusForbidden, "forbidden")
+			return
+		}
 		c.Next()
 	}
 }

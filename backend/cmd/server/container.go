@@ -10,6 +10,7 @@ import (
 
 	"github.com/irj0927/begit/docs"
 	"github.com/irj0927/begit/internal/handler"
+	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
 	"github.com/irj0927/begit/internal/service"
 	"github.com/irj0927/begit/pkg/crypto"
@@ -201,6 +202,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
 	groupMember := handler.GroupMember(groupRepo)
+	groupPoster := handler.GroupRole(groupRepo, model.GroupRoleOwner, model.GroupRolePoster)
+	groupOwner := handler.GroupRole(groupRepo, model.GroupRoleOwner)
 
 	// ルーティング設定（gin）
 	gin.SetMode(gin.ReleaseMode)
@@ -248,6 +251,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.GET("/me", bearerAuth, authHandler.Me)
 	r.GET("/groups", bearerAuth, groupHandler.List)
 	r.POST("/groups", bearerAuth, groupHandler.Create)
+	r.POST("/groups/:id/claim-ownership", bearerAuth, groupHandler.ClaimOwnership)
 	r.DELETE("/groups/:id", bearerAuth, groupHandler.Delete)
 	r.PUT("/me/fcm-token", bearerAuth, fcmTokenHandler.Upsert)
 	r.POST("/auth/logout", bearerAuth, fcmTokenHandler.Logout)
@@ -255,33 +259,34 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
-	r.POST("/groups/:id/sync-members", bearerAuth, groupMember, groupHandler.SyncMembers)
-	r.POST("/groups/:id/notifications", bearerAuth, groupMember, notifHandler.Send)
+	r.POST("/groups/:id/sync-members", bearerAuth, groupOwner, groupHandler.SyncMembers)
+	r.PATCH("/groups/:id/members/:userId", bearerAuth, groupOwner, groupHandler.UpdateMemberRole)
+	r.POST("/groups/:id/notifications", bearerAuth, groupPoster, notifHandler.Send)
 	r.GET("/groups/:id/notifications/active", bearerAuth, groupMember, notifHandler.GetActive)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
-	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupMember, notifHandler.Stop)
-	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupMember, notifHandler.End)
-	r.POST("/groups/:id/posts", bearerAuth, groupMember, postHandler.Create)
+	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupOwner, notifHandler.Stop)
+	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupOwner, notifHandler.End)
+	r.POST("/groups/:id/posts", bearerAuth, groupPoster, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
-	r.DELETE("/groups/:id/posts/:postId", bearerAuth, groupMember, postHandler.Delete)
-	r.GET("/groups/:id/posts/:postId/draft", bearerAuth, groupMember, postHandler.GetDraft)
-	r.POST("/groups/:id/posts/:postId/confirm", bearerAuth, groupMember, postHandler.Confirm)
-	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupMember, photoHandler.Upload)
-	r.POST("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.Create)
-	r.DELETE("/groups/:id/posts/:postId/reactions/:reactionType", bearerAuth, groupMember, reactionHandler.Delete)
+	r.DELETE("/groups/:id/posts/:postId", bearerAuth, groupPoster, postHandler.Delete)
+	r.GET("/groups/:id/posts/:postId/draft", bearerAuth, groupPoster, postHandler.GetDraft)
+	r.POST("/groups/:id/posts/:postId/confirm", bearerAuth, groupPoster, postHandler.Confirm)
+	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupPoster, photoHandler.Upload)
+	r.POST("/groups/:id/posts/:postId/reactions", bearerAuth, groupPoster, reactionHandler.Create)
+	r.DELETE("/groups/:id/posts/:postId/reactions/:reactionType", bearerAuth, groupPoster, reactionHandler.Delete)
 	r.GET("/groups/:id/posts/:postId/reactions", bearerAuth, groupMember, reactionHandler.List)
-	r.POST("/groups/:id/posts/:postId/comments", bearerAuth, groupMember, commentHandler.Create)
+	r.POST("/groups/:id/posts/:postId/comments", bearerAuth, groupPoster, commentHandler.Create)
 	r.GET("/groups/:id/posts/:postId/comments", bearerAuth, groupMember, commentHandler.List)
-	r.DELETE("/groups/:id/posts/:postId/comments/:commentId", bearerAuth, groupMember, commentHandler.Delete)
+	r.DELETE("/groups/:id/posts/:postId/comments/:commentId", bearerAuth, groupPoster, commentHandler.Delete)
 	r.GET("/groups/:id/commits", bearerAuth, groupMember, githubHandler.ListCommits)
 	r.GET("/groups/:id/pull-requests", bearerAuth, groupMember, githubHandler.ListPullRequests)
-	r.GET("/groups/:id/notification-channels", bearerAuth, groupMember, notificationChannelHandler.List)
-	r.POST("/groups/:id/notification-channels", bearerAuth, groupMember, notificationChannelHandler.Create)
-	r.PATCH("/groups/:id/notification-channels/:channelId", bearerAuth, groupMember, notificationChannelHandler.Update)
-	r.DELETE("/groups/:id/notification-channels/:channelId", bearerAuth, groupMember, notificationChannelHandler.Delete)
-	r.POST("/groups/:id/notification-channels/:channelId/test", bearerAuth, groupMember, notificationChannelHandler.Test)
-	r.GET("/groups/:id/begit-time-schedule", bearerAuth, groupMember, beGitTimeScheduleHandler.Get)
-	r.PUT("/groups/:id/begit-time-schedule", bearerAuth, groupMember, beGitTimeScheduleHandler.Update)
+	r.GET("/groups/:id/notification-channels", bearerAuth, groupPoster, notificationChannelHandler.List)
+	r.POST("/groups/:id/notification-channels", bearerAuth, groupPoster, notificationChannelHandler.Create)
+	r.PATCH("/groups/:id/notification-channels/:channelId", bearerAuth, groupPoster, notificationChannelHandler.Update)
+	r.DELETE("/groups/:id/notification-channels/:channelId", bearerAuth, groupPoster, notificationChannelHandler.Delete)
+	r.POST("/groups/:id/notification-channels/:channelId/test", bearerAuth, groupPoster, notificationChannelHandler.Test)
+	r.GET("/groups/:id/begit-time-schedule", bearerAuth, groupPoster, beGitTimeScheduleHandler.Get)
+	r.PUT("/groups/:id/begit-time-schedule", bearerAuth, groupPoster, beGitTimeScheduleHandler.Update)
 
 	return r, nil
 }

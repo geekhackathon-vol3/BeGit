@@ -129,7 +129,7 @@ func TestCron_Minutely_AutomaticallyStartsScheduledBeGitTime(t *testing.T) {
 		return &model.Sprint{ID: 7, GroupID: groupID}, nil
 	}}
 	groupRepo := &mockGroupRepository{getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
-		return &model.Group{ID: groupID, OwnerUserID: 5, SprintDurationDays: 7}, nil
+		return &model.Group{ID: groupID, OwnerUserID: 5, OwnerVerified: true, SprintDurationDays: 7}, nil
 	}}
 	tokens := &mockFCMTokenRepository{getTokensByGroupIDFunc: func(context.Context, int64) ([]string, error) {
 		return []string{"device"}, nil
@@ -171,7 +171,7 @@ func TestCron_Minutely_AdvancesScheduledBeGitTimeWhenDeliveryFails(t *testing.T)
 		return &model.Sprint{ID: 7, GroupID: groupID}, nil
 	}}
 	groupRepo := &mockGroupRepository{getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
-		return &model.Group{ID: groupID, OwnerUserID: 5, SprintDurationDays: 7}, nil
+		return &model.Group{ID: groupID, OwnerUserID: 5, OwnerVerified: true, SprintDurationDays: 7}, nil
 	}}
 	tokens := &mockFCMTokenRepository{getTokensByGroupIDFunc: func(context.Context, int64) ([]string, error) {
 		return []string{"device"}, nil

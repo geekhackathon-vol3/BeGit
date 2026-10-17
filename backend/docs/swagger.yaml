@@ -232,8 +232,12 @@ components:
             $ref: '#/components/schemas/handler.GroupMemberJSON'
           type: array
           uniqueItems: false
+        my_role:
+          type: string
         name:
           type: string
+        owner_verified:
+          type: boolean
         read_only:
           type: boolean
         repo_full_name:
@@ -249,6 +253,8 @@ components:
           type: integer
         name:
           type: string
+        owner_verified:
+          type: boolean
         read_only:
           type: boolean
         repo_full_name:
@@ -524,6 +530,15 @@ components:
       properties:
         fcm_token:
           example: fcm-device-token
+          type: string
+      type: object
+    handler.UpdateMemberRoleRequest:
+      properties:
+        role:
+          enum:
+          - viewer
+          - poster
+          example: poster
           type: string
       type: object
     handler.UpdateNotificationChannelRequest:
@@ -984,6 +999,53 @@ paths:
       summary: BeGit Time 自動開催設定を更新
       tags:
       - begit-time-schedule
+  /groups/{id}/claim-ownership:
+    post:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
+        "502":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Bad Gateway
+      security:
+      - BearerAuth: []
+      summary: リポジトリ管理権の引き取り
+      tags:
+      - groups
   /groups/{id}/commits:
     get:
       description: グループに紐づく GitHub リポジトリのコミット履歴を返す（GET /repos/{owner}/{repo}/commits
@@ -1063,6 +1125,56 @@ paths:
       summary: コミット一覧
       tags:
       - github
+  /groups/{id}/members/{userId}:
+    patch:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: ユーザー ID
+        in: path
+        name: userId
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.UpdateMemberRoleRequest'
+              description: 変更後の権限
+              summary: request
+        description: 変更後の権限
+        required: true
+      responses:
+        "204":
+          description: No Content
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
+      security:
+      - BearerAuth: []
+      summary: メンバー権限変更
+      tags:
+      - groups
   /groups/{id}/notification-channels:
     get:
       parameters:

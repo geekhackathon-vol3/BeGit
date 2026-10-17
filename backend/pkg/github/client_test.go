@@ -174,8 +174,12 @@ func TestGetRepoInfo(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"full_name": "owner/repo",
 			"owner": map[string]interface{}{
+				"id":         float64(12345),
+				"login":      "owner",
+				"type":       "User",
 				"avatar_url": "https://example.com/owner-avatar.png",
 			},
+			"permissions": map[string]interface{}{"push": true, "admin": true},
 		})
 	}))
 	defer server.Close()
@@ -195,6 +199,12 @@ func TestGetRepoInfo(t *testing.T) {
 	}
 	if info.AvatarURL != "https://example.com/owner-avatar.png" {
 		t.Errorf("expected avatar_url, got %s", info.AvatarURL)
+	}
+	if info.OwnerID != 12345 || info.OwnerLogin != "owner" || info.OwnerType != "User" {
+		t.Errorf("unexpected owner: %+v", info)
+	}
+	if !info.CanPush || !info.CanAdmin {
+		t.Errorf("expected push/admin permissions: %+v", info)
 	}
 }
 

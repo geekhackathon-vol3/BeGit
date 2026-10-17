@@ -30,8 +30,11 @@ type mockGroupRepository struct {
 	getByRepoFullNameFunc func(ctx context.Context, repoFullName string) (*model.Group, error)
 	addMemberFunc         func(ctx context.Context, groupID, userID int64, role string) error
 	batchAddMembersFunc   func(ctx context.Context, groupID int64, userIDs []int64, role string) error
+	updateMemberRoleFunc  func(ctx context.Context, groupID, userID int64, role string) error
+	claimOwnershipFunc    func(ctx context.Context, groupID, userID int64, replaceVerified bool) error
 	removeMemberFunc      func(ctx context.Context, groupID, userID int64) error
 	isMemberFunc          func(ctx context.Context, groupID, userID int64) (bool, error)
+	getMemberFunc         func(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
 	getMembersFunc        func(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 }
 
@@ -77,6 +80,20 @@ func (m *mockGroupRepository) BatchAddMembers(ctx context.Context, groupID int64
 	return nil
 }
 
+func (m *mockGroupRepository) UpdateMemberRole(ctx context.Context, groupID, userID int64, role string) error {
+	if m.updateMemberRoleFunc != nil {
+		return m.updateMemberRoleFunc(ctx, groupID, userID, role)
+	}
+	return nil
+}
+
+func (m *mockGroupRepository) ClaimOwnership(ctx context.Context, groupID, userID int64, replaceVerified bool) error {
+	if m.claimOwnershipFunc != nil {
+		return m.claimOwnershipFunc(ctx, groupID, userID, replaceVerified)
+	}
+	return nil
+}
+
 func (m *mockGroupRepository) RemoveMember(ctx context.Context, groupID, userID int64) error {
 	if m.removeMemberFunc != nil {
 		return m.removeMemberFunc(ctx, groupID, userID)
@@ -89,6 +106,13 @@ func (m *mockGroupRepository) IsMember(ctx context.Context, groupID, userID int6
 		return m.isMemberFunc(ctx, groupID, userID)
 	}
 	return true, nil
+}
+
+func (m *mockGroupRepository) GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error) {
+	if m.getMemberFunc != nil {
+		return m.getMemberFunc(ctx, groupID, userID)
+	}
+	return &model.GroupMember{GroupID: groupID, UserID: userID, Role: model.GroupRoleOwner}, nil
 }
 
 func (m *mockGroupRepository) GetMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
@@ -383,7 +407,14 @@ func TestGroupService_CreateGroup_WebhookForbidden(t *testing.T) {
 func TestGroupService_CreateGroup_ExistingGroupAddsMember(t *testing.T) {
 	addedMember := false
 
-	githubClient := &mockGitHubClient{}
+	githubClient := &mockGitHubClient{
+		getRepoInfoFunc: func(_ context.Context, repoFullName, _ string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: repoFullName, OwnerID: 99, OwnerLogin: "owner",
+				OwnerType: "User", CanPush: true,
+			}, nil
+		},
+	}
 	groupRepo := &mockGroupRepository{
 		createFunc: func(ctx context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
 			return nil, repository.ErrConflict
@@ -392,10 +423,10 @@ func TestGroupService_CreateGroup_ExistingGroupAddsMember(t *testing.T) {
 			if repoFullName != "owner/repo" {
 				t.Fatalf("expected repo full name owner/repo, got %s", repoFullName)
 			}
-			return &model.Group{ID: 42, RepoFullName: repoFullName, Name: "Existing Repo"}, nil
+			return &model.Group{ID: 42, RepoFullName: repoFullName, Name: "Existing Repo", OwnerVerified: true}, nil
 		},
 		addMemberFunc: func(ctx context.Context, groupID, userID int64, role string) error {
-			if groupID != 42 || userID != 7 || role != "member" {
+			if groupID != 42 || userID != 7 || role != model.GroupRolePoster {
 				t.Fatalf("unexpected AddMember args: groupID=%d userID=%d role=%s", groupID, userID, role)
 			}
 			addedMember = true
@@ -423,5 +454,280 @@ func TestGroupService_CreateGroup_ExistingGroupAddsMember(t *testing.T) {
 	}
 	if group.ID != 42 {
 		t.Errorf("expected existing group ID 42, got %d", group.ID)
+	}
+}
+
+func TestGroupService_CreateGroup_PublicOutsiderJoinsAsViewer(t *testing.T) {
+	var gotRole string
+	githubClient := &mockGitHubClient{
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{FullName: "owner/public", Private: false, CanPush: false}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(context.Context, *repository.GroupCreateInput) (*model.Group, error) {
+			return nil, repository.ErrConflict
+		},
+		getByRepoFullNameFunc: func(context.Context, string) (*model.Group, error) {
+			return &model.Group{ID: 42, RepoFullName: "owner/public"}, nil
+		},
+		addMemberFunc: func(_ context.Context, _, _ int64, role string) error {
+			gotRole = role
+			return nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, githubClient, groupRepo, &mockUserRepository{})
+	if _, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "https://github.com/owner/public.git",
+		Name:         "owner/public",
+		ReadOnly:     true,
+		AccessToken:  "token",
+	}, 7); err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if gotRole != model.GroupRoleViewer {
+		t.Fatalf("expected viewer role, got %q", gotRole)
+	}
+}
+
+func TestGroupService_CreateGroup_PublicOutsiderCreatesUnclaimedViewerGroup(t *testing.T) {
+	var ownerVerified bool
+	var creatorRole string
+	githubClient := &mockGitHubClient{
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: "octocat/Hello-World", OwnerID: 99, OwnerLogin: "octocat",
+				OwnerType: "User", Private: false, CanPush: false,
+			}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(_ context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
+			ownerVerified = input.OwnerVerified
+			return &model.Group{ID: 42, RepoFullName: input.RepoFullName, ReadOnly: input.ReadOnly, OwnerVerified: input.OwnerVerified}, nil
+		},
+		addMemberFunc: func(_ context.Context, _, _ int64, role string) error {
+			creatorRole = role
+			return nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, githubClient, groupRepo, &mockUserRepository{})
+	if _, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "octocat/Hello-World", Name: "octocat/Hello-World", ReadOnly: true, AccessToken: "token",
+	}, 7); err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if ownerVerified || creatorRole != model.GroupRoleViewer {
+		t.Fatalf("ownerVerified=%v creatorRole=%q; want false/viewer", ownerVerified, creatorRole)
+	}
+}
+
+func TestGroupService_CreateGroup_GitHubOwnerClaimsExistingGroup(t *testing.T) {
+	claimed := false
+	githubClient := &mockGitHubClient{
+		getUserFunc: func(context.Context, string) (*githubpkg.User, error) {
+			return &githubpkg.User{ID: 99, Login: "octocat"}, nil
+		},
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: "octocat/Hello-World", OwnerID: 99, OwnerLogin: "octocat",
+				OwnerType: "User", CanPush: true, CanAdmin: true,
+			}, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(context.Context, *repository.GroupCreateInput) (*model.Group, error) {
+			return nil, repository.ErrConflict
+		},
+		getByRepoFullNameFunc: func(context.Context, string) (*model.Group, error) {
+			return &model.Group{ID: 42, RepoFullName: "octocat/Hello-World", OwnerVerified: false}, nil
+		},
+		claimOwnershipFunc: func(_ context.Context, groupID, userID int64, replaceVerified bool) error {
+			claimed = groupID == 42 && userID == 7 && replaceVerified
+			return nil
+		},
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{ID: 42, RepoFullName: "octocat/Hello-World", OwnerUserID: 7, OwnerVerified: true}, nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, githubClient, groupRepo, &mockUserRepository{})
+	group, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "octocat/Hello-World", Name: "octocat/Hello-World", AccessToken: "token",
+	}, 7)
+	if err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if !claimed || !group.OwnerVerified || group.OwnerUserID != 7 {
+		t.Fatalf("claimed=%v group=%+v", claimed, group)
+	}
+}
+
+func TestGroupService_CreateGroup_PublicOutsiderCannotDisableReadOnly(t *testing.T) {
+	webhookRegistered := false
+	createdReadOnly := false
+	githubClient := &mockGitHubClient{
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{FullName: "owner/public", Private: false, CanPush: false}, nil
+		},
+		registerWebhookFunc: func(context.Context, string, string, string, string) error {
+			webhookRegistered = true
+			return nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(_ context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
+			createdReadOnly = input.ReadOnly
+			return &model.Group{ID: 1, RepoFullName: input.RepoFullName, ReadOnly: input.ReadOnly}, nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, githubClient, groupRepo, &mockUserRepository{})
+	if _, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "owner/public", Name: "owner/public", ReadOnly: false, AccessToken: "token",
+	}, 7); err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if !createdReadOnly || webhookRegistered {
+		t.Fatal("public outsider must be forced into read-only mode without webhook registration")
+	}
+}
+
+func TestGroupService_CreateGroup_GitHubOwnerCanManagePublicSearchResult(t *testing.T) {
+	webhookRegistered := false
+	var ownerVerified bool
+	var createdReadOnly bool
+	var creatorRole string
+	githubClient := &mockGitHubClient{
+		getUserFunc: func(context.Context, string) (*githubpkg.User, error) {
+			return &githubpkg.User{ID: 99, Login: "octocat"}, nil
+		},
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: "octocat/Hello-World", OwnerID: 99, OwnerLogin: "octocat",
+				OwnerType: "User", CanPush: true, CanAdmin: true,
+			}, nil
+		},
+		registerWebhookFunc: func(context.Context, string, string, string, string) error {
+			webhookRegistered = true
+			return nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		createFunc: func(_ context.Context, input *repository.GroupCreateInput) (*model.Group, error) {
+			ownerVerified = input.OwnerVerified
+			createdReadOnly = input.ReadOnly
+			return &model.Group{ID: 1, RepoFullName: input.RepoFullName}, nil
+		},
+		addMemberFunc: func(_ context.Context, _, _ int64, role string) error {
+			creatorRole = role
+			return nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, githubClient, groupRepo, &mockUserRepository{})
+	if _, err := svc.CreateGroup(context.Background(), CreateGroupRequest{
+		RepoFullName: "octocat/Hello-World", Name: "octocat/Hello-World", ReadOnly: true, AccessToken: "token",
+	}, 7); err != nil {
+		t.Fatalf("CreateGroup() failed: %v", err)
+	}
+	if !ownerVerified || createdReadOnly || creatorRole != model.GroupRoleOwner || !webhookRegistered {
+		t.Fatalf(
+			"ownerVerified=%v readOnly=%v role=%q webhook=%v; want true/false/owner/true",
+			ownerVerified, createdReadOnly, creatorRole, webhookRegistered,
+		)
+	}
+}
+
+func TestGroupService_ClaimOwnership_ExactOwnerReplacesVerifiedOwner(t *testing.T) {
+	claimed := false
+	githubClient := &mockGitHubClient{
+		getUserFunc: func(context.Context, string) (*githubpkg.User, error) {
+			return &githubpkg.User{ID: 99, Login: "palm7710"}, nil
+		},
+		getRepoInfoFunc: func(context.Context, string, string) (*githubpkg.RepoInfo, error) {
+			return &githubpkg.RepoInfo{
+				FullName: "palm7710/palm7710", OwnerID: 99, OwnerLogin: "palm7710",
+				OwnerType: "User", CanPush: true, CanAdmin: true,
+			}, nil
+		},
+	}
+	groups := &mockGroupRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{
+				ID: 8, RepoFullName: "palm7710/palm7710", OwnerUserID: 1, OwnerVerified: true,
+			}, nil
+		},
+		claimOwnershipFunc: func(_ context.Context, groupID, userID int64, replaceVerified bool) error {
+			claimed = groupID == 8 && userID == 42 && replaceVerified
+			return nil
+		},
+	}
+	service := NewGroupService(GroupServiceConfig{}, githubClient, groups, &mockUserRepository{})
+	if err := service.ClaimOwnership(context.Background(), 8, 42, "token"); err != nil {
+		t.Fatalf("exact GitHub owner should reclaim ownership: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected verified ownership to be replaced")
+	}
+}
+
+func TestGroupService_UpdateMemberRole_OwnerCanPromoteViewer(t *testing.T) {
+	updated := false
+	groupRepo := &mockGroupRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{ID: 9, OwnerVerified: true}, nil
+		},
+		getMemberFunc: func(_ context.Context, _ int64, userID int64) (*model.GroupMember, error) {
+			role := model.GroupRoleViewer
+			if userID == 1 {
+				role = model.GroupRoleOwner
+			}
+			return &model.GroupMember{UserID: userID, Role: role}, nil
+		},
+		updateMemberRoleFunc: func(_ context.Context, groupID, userID int64, role string) error {
+			updated = groupID == 9 && userID == 2 && role == model.GroupRolePoster
+			return nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, &mockGitHubClient{}, groupRepo, &mockUserRepository{})
+	if err := svc.UpdateMemberRole(context.Background(), 9, 1, 2, model.GroupRolePoster); err != nil {
+		t.Fatalf("UpdateMemberRole() failed: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected target member to be promoted")
+	}
+}
+
+func TestGroupService_UpdateMemberRole_NonOwnerIsForbidden(t *testing.T) {
+	groupRepo := &mockGroupRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{ID: 9, OwnerVerified: true}, nil
+		},
+		getMemberFunc: func(_ context.Context, _ int64, userID int64) (*model.GroupMember, error) {
+			return &model.GroupMember{UserID: userID, Role: model.GroupRolePoster}, nil
+		},
+	}
+	svc := NewGroupService(GroupServiceConfig{}, &mockGitHubClient{}, groupRepo, &mockUserRepository{})
+	if err := svc.UpdateMemberRole(context.Background(), 9, 1, 2, model.GroupRoleViewer); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestNormalizeRepoFullName(t *testing.T) {
+	tests := map[string]string{
+		"owner/repo":                         "owner/repo",
+		" https://github.com/owner/repo ":    "owner/repo",
+		"https://GITHUB.com/owner/repo":      "owner/repo",
+		"https://www.github.com/owner/repo/": "owner/repo",
+		"https://github.com/owner/repo.git":  "owner/repo",
+	}
+	for input, want := range tests {
+		got, err := normalizeRepoFullName(input)
+		if err != nil || got != want {
+			t.Errorf("normalizeRepoFullName(%q) = %q, %v; want %q", input, got, err, want)
+		}
+	}
+	for _, input := range []string{"owner", "owner/repo/extra", "https://example.com/owner/repo"} {
+		if _, err := normalizeRepoFullName(input); err == nil {
+			t.Errorf("normalizeRepoFullName(%q) should fail", input)
+		}
 	}
 }

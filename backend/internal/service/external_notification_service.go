@@ -58,7 +58,7 @@ func NewNotificationChannelService(channels repository.NotificationChannelReposi
 	return &notificationChannelService{channels: channels, groups: groups, encryptor: encryptor, sender: sender}
 }
 
-func (s *notificationChannelService) requireOwner(ctx context.Context, groupID, userID int64) (*model.Group, error) {
+func (s *notificationChannelService) requirePoster(ctx context.Context, groupID, userID int64) (*model.Group, error) {
 	group, err := s.groups.GetByID(ctx, groupID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -66,21 +66,28 @@ func (s *notificationChannelService) requireOwner(ctx context.Context, groupID, 
 		}
 		return nil, err
 	}
-	if group.OwnerUserID != userID {
+	member, err := s.groups.GetMember(ctx, groupID, userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrForbidden
+		}
+		return nil, err
+	}
+	if !model.CanManageGroupSettings(member.Role) {
 		return nil, ErrForbidden
 	}
 	return group, nil
 }
 
 func (s *notificationChannelService) List(ctx context.Context, groupID, userID int64) ([]model.NotificationChannel, error) {
-	if _, err := s.requireOwner(ctx, groupID, userID); err != nil {
+	if _, err := s.requirePoster(ctx, groupID, userID); err != nil {
 		return nil, err
 	}
 	return s.channels.ListByGroup(ctx, groupID)
 }
 
 func (s *notificationChannelService) Create(ctx context.Context, groupID, userID int64, input CreateNotificationChannelInput) (*model.NotificationChannel, error) {
-	if _, err := s.requireOwner(ctx, groupID, userID); err != nil {
+	if _, err := s.requirePoster(ctx, groupID, userID); err != nil {
 		return nil, err
 	}
 	input.Platform = strings.ToLower(strings.TrimSpace(input.Platform))
@@ -106,7 +113,7 @@ func (s *notificationChannelService) Create(ctx context.Context, groupID, userID
 }
 
 func (s *notificationChannelService) Update(ctx context.Context, groupID, channelID, userID int64, input UpdateNotificationChannelInput) (*model.NotificationChannel, error) {
-	if _, err := s.requireOwner(ctx, groupID, userID); err != nil {
+	if _, err := s.requirePoster(ctx, groupID, userID); err != nil {
 		return nil, err
 	}
 	channel, err := s.channels.GetByID(ctx, channelID)
@@ -147,7 +154,7 @@ func (s *notificationChannelService) Update(ctx context.Context, groupID, channe
 }
 
 func (s *notificationChannelService) Delete(ctx context.Context, groupID, channelID, userID int64) error {
-	if _, err := s.requireOwner(ctx, groupID, userID); err != nil {
+	if _, err := s.requirePoster(ctx, groupID, userID); err != nil {
 		return err
 	}
 	channel, err := s.channels.GetByID(ctx, channelID)
@@ -161,7 +168,7 @@ func (s *notificationChannelService) Delete(ctx context.Context, groupID, channe
 }
 
 func (s *notificationChannelService) Test(ctx context.Context, groupID, channelID, userID int64) error {
-	group, err := s.requireOwner(ctx, groupID, userID)
+	group, err := s.requirePoster(ctx, groupID, userID)
 	if err != nil {
 		return err
 	}

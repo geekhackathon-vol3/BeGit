@@ -8,6 +8,8 @@ struct RepositoryActivityTimelineView: View {
     let currentUserLogin: String?
     let lockedPostRoute: RepositoryNavigationRoute?
     let activeNotificationID: Int64?
+    let allowsDeletion: Bool
+    let allowsReactions: Bool
     let onDeleteRequested: ((RepositoryActivity) -> Void)?
     let onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)?
 
@@ -16,6 +18,8 @@ struct RepositoryActivityTimelineView: View {
         currentUserLogin: String? = nil,
         lockedPostRoute: RepositoryNavigationRoute? = nil,
         activeNotificationID: Int64? = nil,
+        allowsDeletion: Bool = true,
+        allowsReactions: Bool = true,
         onDeleteRequested: ((RepositoryActivity) -> Void)? = nil,
         onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
@@ -23,6 +27,8 @@ struct RepositoryActivityTimelineView: View {
         self.currentUserLogin = currentUserLogin
         self.lockedPostRoute = lockedPostRoute
         self.activeNotificationID = activeNotificationID
+        self.allowsDeletion = allowsDeletion
+        self.allowsReactions = allowsReactions
         self.onDeleteRequested = onDeleteRequested
         self.onReactionTapped = onReactionTapped
     }
@@ -45,6 +51,7 @@ struct RepositoryActivityTimelineView: View {
                     activity: activity,
                     lockedPostRoute: activity.notificationID == activeNotificationID ? lockedPostRoute : nil,
                     canDelete: canDelete(activity),
+                    allowsReactions: allowsReactions,
                     onDelete: {
                         onDeleteRequested?(activity)
                     },
@@ -73,7 +80,9 @@ struct RepositoryActivityTimelineView: View {
     }
 
     private func canDelete(_ activity: RepositoryActivity) -> Bool {
-        guard let currentUserLogin,
+        guard allowsDeletion,
+              onDeleteRequested != nil,
+              let currentUserLogin,
               activity.backendPostID != nil else { return false }
         return activity.author.login.caseInsensitiveCompare(currentUserLogin) == .orderedSame
     }
@@ -93,6 +102,7 @@ struct RepositoryActivityCardView: View {
     let activity: RepositoryActivity
     let lockedPostRoute: RepositoryNavigationRoute?
     let canDelete: Bool
+    let allowsReactions: Bool
     let onDelete: (() -> Void)?
     var onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
 
@@ -108,12 +118,14 @@ struct RepositoryActivityCardView: View {
         activity: RepositoryActivity,
         lockedPostRoute: RepositoryNavigationRoute? = nil,
         canDelete: Bool = false,
+        allowsReactions: Bool = true,
         onDelete: (() -> Void)? = nil,
         onReactionTapped: ((ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activity = activity
         self.lockedPostRoute = lockedPostRoute
         self.canDelete = canDelete
+        self.allowsReactions = allowsReactions
         self.onDelete = onDelete
         self.onReactionTapped = onReactionTapped
         _myReaction = State(initialValue: activity.reactions.first(where: { $0.reactedByMe })?.type)
@@ -205,7 +217,7 @@ struct RepositoryActivityCardView: View {
             ZStack(alignment: .bottomTrailing) {
                 photoArea
 
-                if showReactionPicker {
+                if allowsReactions && showReactionPicker {
                     reactionPicker
                         .padding(.trailing, 16)
                         .padding(.bottom, reactionPickerBottomOffset)
@@ -327,7 +339,9 @@ struct RepositoryActivityCardView: View {
                     } else {
                         Spacer()
                     }
-                    reactionButton
+                    if allowsReactions {
+                        reactionButton
+                    }
                 }
             }
             .padding(16)

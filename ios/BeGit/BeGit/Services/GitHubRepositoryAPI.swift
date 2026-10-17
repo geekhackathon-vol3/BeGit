@@ -83,7 +83,14 @@ struct GitHubRepositoryClient: GitHubRepositoryAPI {
 
         switch httpResponse.statusCode {
         case 200..<300:
-            let repository = try JSONDecoder().decode(GitHubRepositoryResponse.self, from: data).repository
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let repository: GitHubRepository
+            do {
+                repository = try decoder.decode(GitHubRepositoryResponse.self, from: data).repository
+            } catch {
+                throw GitHubRepositoryAPIError.invalidResponse
+            }
             guard repository.isPrivate == false else {
                 throw GitHubRepositoryAPIError.privateRepository
             }
