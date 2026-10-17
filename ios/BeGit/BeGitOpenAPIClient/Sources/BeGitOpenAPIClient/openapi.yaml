@@ -68,6 +68,22 @@ components:
         user:
           $ref: '#/components/schemas/handler.UserJSON'
       type: object
+    handler.BeGitTimeScheduleJSON:
+      properties:
+        enabled:
+          type: boolean
+        local_time:
+          type: string
+        next_run_at:
+          type: string
+        timezone:
+          type: string
+        weekdays:
+          items:
+            type: integer
+          type: array
+          uniqueItems: false
+      type: object
     handler.CommentJSON:
       properties:
         avatar_url:
@@ -486,6 +502,24 @@ components:
           type: array
           uniqueItems: false
       type: object
+    handler.UpdateBeGitTimeScheduleRequest:
+      properties:
+        enabled:
+          type: boolean
+        local_time:
+          type: string
+        timezone:
+          type: string
+        weekdays:
+          items:
+            type: integer
+          type: array
+          uniqueItems: false
+      required:
+      - local_time
+      - timezone
+      - weekdays
+      type: object
     handler.UpdateFCMTokenRequest:
       properties:
         fcm_token:
@@ -883,6 +917,70 @@ paths:
       summary: グループ詳細 + メンバー
       tags:
       - groups
+  /groups/{id}/begit-time-schedule:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.BeGitTimeScheduleJSON'
+          description: OK
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+      security:
+      - BearerAuth: []
+      summary: BeGit Time 自動開催設定を取得
+      tags:
+      - begit-time-schedule
+    put:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+              - type: object
+              - $ref: '#/components/schemas/handler.UpdateBeGitTimeScheduleRequest'
+                description: 自動開催設定
+                summary: request
+        description: 自動開催設定
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.BeGitTimeScheduleJSON'
+          description: OK
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
+      security:
+      - BearerAuth: []
+      summary: BeGit Time 自動開催設定を更新
+      tags:
+      - begit-time-schedule
   /groups/{id}/commits:
     get:
       description: グループに紐づく GitHub リポジトリのコミット履歴を返す（GET /repos/{owner}/{repo}/commits
