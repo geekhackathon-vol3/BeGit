@@ -12,6 +12,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
     let memberCount: Int            //  Team member数
     let members: [RepositoryMember] //  Repository member一覧
     let isReadOnly: Bool            //  GitHub App未接続の公開リポジトリ（表示専用）
+    let myRole: RepositoryRole      //  ログイン中ユーザーのBeGit内権限
     let activeChallenge: ActiveChallenge? //  進行中のBeGit Time（GET /groups/:id 取得時のみ。一覧では常にnil）
 
     init(
@@ -22,6 +23,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         memberCount: Int,
         members: [RepositoryMember],
         isReadOnly: Bool = false,
+        myRole: RepositoryRole = .owner,
         activeChallenge: ActiveChallenge? = nil
     ) {
         self.id = id
@@ -31,8 +33,12 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         self.memberCount = memberCount
         self.members = members
         self.isReadOnly = isReadOnly
+        self.myRole = myRole
         self.activeChallenge = activeChallenge
     }
+
+    var canPost: Bool { myRole == .owner || myRole == .poster }
+    var canManage: Bool { myRole == .owner }
 }
 
 //  Preview / Mock表示用データ
