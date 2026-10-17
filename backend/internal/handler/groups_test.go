@@ -48,6 +48,10 @@ func (m *mockGroupService) SyncMembers(ctx context.Context, groupID int64, acces
 	return nil, nil
 }
 
+func (m *mockGroupService) UpdateMemberRole(ctx context.Context, groupID, requesterUserID, targetUserID int64, role string) error {
+	return nil
+}
+
 // newGroupRouter は userID を注入した上で GET /groups/:id を登録する
 func newGroupRouter(groupSvc service.GroupService, notifSvc service.NotificationService, userID int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
