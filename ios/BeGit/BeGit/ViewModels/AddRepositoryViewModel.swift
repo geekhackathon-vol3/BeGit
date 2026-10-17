@@ -527,7 +527,9 @@ final class AddRepositoryViewModel: ObservableObject {
 
         if let url = URL(string: value), url.scheme != nil {
             guard url.host?.lowercased() == "github.com" else { return nil }
-            value = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let pathComponents = url.pathComponents.filter { $0 != "/" }
+            guard pathComponents.count >= 2 else { return nil }
+            value = pathComponents.prefix(2).joined(separator: "/")
         }
 
         value = value.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
