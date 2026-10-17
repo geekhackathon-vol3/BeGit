@@ -14,7 +14,7 @@ WHERE owner_verified = 1;
 
 UPDATE group_members
 SET role = 'viewer'
-WHERE role = 'owner'
+WHERE role IN ('owner', 'poster', 'member')
   AND group_id IN (
     SELECT id FROM groups WHERE owner_verified = 0
   );
