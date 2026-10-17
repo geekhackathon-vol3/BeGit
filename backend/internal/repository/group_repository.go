@@ -27,8 +27,10 @@ type GroupRepository interface {
 	GetByRepoFullName(ctx context.Context, repoFullName string) (*model.Group, error)
 	AddMember(ctx context.Context, groupID, userID int64, role string) error
 	BatchAddMembers(ctx context.Context, groupID int64, userIDs []int64, role string) error
+	UpdateMemberRole(ctx context.Context, groupID, userID int64, role string) error
 	RemoveMember(ctx context.Context, groupID, userID int64) error
 	IsMember(ctx context.Context, groupID, userID int64) (bool, error)
+	GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error)
 	GetMembers(ctx context.Context, groupID int64) ([]model.GroupMember, error)
 }
 
@@ -97,7 +99,7 @@ func scanGroupMember(row map[string]interface{}) model.GroupMember {
 		m.AvatarURL = v
 	}
 	if v, ok := row["role"].(string); ok {
-		m.Role = v
+		m.Role = model.NormalizeGroupRole(v)
 	}
 	if v, ok := row["auto_joined"].(float64); ok {
 		m.AutoJoined = v != 0
@@ -218,6 +220,21 @@ func (r *groupRepository) BatchAddMembers(ctx context.Context, groupID int64, us
 	return nil
 }
 
+// UpdateMemberRole は既存メンバーのBeGit内権限を更新する。
+func (r *groupRepository) UpdateMemberRole(ctx context.Context, groupID, userID int64, role string) error {
+	if _, err := r.GetMember(ctx, groupID, userID); err != nil {
+		return err
+	}
+	_, err := r.db.Exec(ctx,
+		`UPDATE group_members SET role = ? WHERE group_id = ? AND user_id = ?`,
+		[]interface{}{role, groupID, userID},
+	)
+	if err != nil {
+		return fmt.Errorf("group_repository: UpdateMemberRole failed: %w", err)
+	}
+	return nil
+}
+
 // RemoveMember はユーザーをグループから外す。
 // 対象が存在しない場合も成功扱いとし、削除操作を冪等にする。
 func (r *groupRepository) RemoveMember(ctx context.Context, groupID, userID int64) error {
@@ -250,6 +267,28 @@ func (r *groupRepository) IsMember(ctx context.Context, groupID, userID int64) (
 
 	count, _ := rows[0]["count"].(float64)
 	return count > 0, nil
+}
+
+// GetMember はグループ内のユーザーと権限を取得する。
+func (r *groupRepository) GetMember(ctx context.Context, groupID, userID int64) (*model.GroupMember, error) {
+	rows, err := r.db.Query(ctx,
+		`SELECT gm.group_id, gm.user_id, u.github_login as login, u.avatar_url, gm.role, gm.auto_joined
+		 FROM group_members gm
+		 INNER JOIN users u ON gm.user_id = u.id
+		 WHERE gm.group_id = ? AND gm.user_id = ? LIMIT 1`,
+		[]interface{}{groupID, userID},
+	)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("group_repository: GetMember failed: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil, ErrNotFound
+	}
+	member := scanGroupMember(rows[0])
+	return &member, nil
 }
 
 // GetMembers はグループのメンバー一覧を取得する
