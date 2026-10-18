@@ -402,7 +402,19 @@ struct RepositoryListView: View {
 
         // MARK: - FCM 通知タップからの遷移（#55・中身は #56/#57 が実装）
         case let .notificationPostCreation(groupId, notificationId):
-            NotificationPostCreationStubView(groupId: groupId, notificationId: notificationId)
+            if let repository = viewModel.repositories.first(where: { $0.backendID == Int64(groupId) }),
+               let notificationId,
+               let githubLogin = authState.githubUser?.login,
+               let accessToken = authState.accessToken {
+                CameraView(repositoryID: Int64(groupId), repoFullName: repository.name,
+                    githubLogin: githubLogin, accessToken: accessToken,
+                    notificationID: Int64(notificationId)) { _ in
+                    showDashboardAfterNiceWorkPost(groupId: groupId)
+                }
+            } else {
+                Text("報告先を取得できません。グループ一覧を更新してください。")
+                    .foregroundStyle(.white)
+            }
         case let .notificationNiceWorkDraft(groupId, draftPostId, _):
             NiceWorkDraftCaptureView(groupId: groupId, draftPostId: draftPostId) {
                 showDashboardAfterNiceWorkPost(groupId: groupId)

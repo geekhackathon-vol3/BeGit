@@ -67,9 +67,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             if let repositoryID = repository.backendID {
                 await withTaskGroup(of: (Int, [ActivityReaction]?).self) { group in
                     for index in fetched.indices {
-                        // ロック中はリアクションを操作・表示しないため、追加API取得も行わない。
-                        guard fetched[index].isLocked == false,
-                              let postID = fetched[index].backendPostID else { continue }
+                        guard let postID = fetched[index].backendPostID else { continue }
                         group.addTask {
                             let reactions = try? await self.repositoryAPI.listReactions(
                                 repositoryID: repositoryID,

@@ -57,7 +57,8 @@ func BuildBeGitTime(groupID, notifID, sprintID int64) Payload {
 }
 
 // BuildNiceWork は ② nice_work のペイロードを構築する。
-// data: type, group_id, notification_id(anchor), draft_post_id, status(on_time|late)
+// data: type, group_id, notification_id(anchor), post_id, status(on_time|late)。
+// draft_post_id は既存クライアント向けに同じIDを残す。
 // status が不正な値の場合は on_time をデフォルトとして使用する（エラーにはしない）。
 func BuildNiceWork(groupID, notifID, draftPostID int64, status NiceWorkStatus) Payload {
 	// status の妥当性チェック
@@ -66,7 +67,7 @@ func BuildNiceWork(groupID, notifID, draftPostID int64, status NiceWorkStatus) P
 		status = NiceWorkStatusOnTime
 	}
 
-	body := "いい仕事！写真を撮ってチームへシェアしよう"
+	body := "いい仕事！進捗を報告しました。写真は後から添付できます"
 	return Payload{
 		Notification: fcm.Notification{
 			Title: "🎉 Nice Work!",
@@ -77,6 +78,7 @@ func BuildNiceWork(groupID, notifID, draftPostID int64, status NiceWorkStatus) P
 			"group_id":        s(groupID),
 			"notification_id": s(notifID),
 			"draft_post_id":   s(draftPostID),
+			"post_id":         s(draftPostID),
 			"status":          string(status),
 		},
 	}

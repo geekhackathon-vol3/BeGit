@@ -150,7 +150,7 @@ func (s *reactionService) getPostInGroup(ctx context.Context, groupID, postID in
 		}
 		return nil, fmt.Errorf("reaction_service: getPostInGroup failed: %w", err)
 	}
-	if post.GroupID != groupID {
+	if post.GroupID != groupID || post.IsDraft || isMissedPost(post) {
 		return nil, ErrNotFound
 	}
 	return post, nil

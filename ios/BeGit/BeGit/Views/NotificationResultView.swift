@@ -93,15 +93,28 @@ struct NotificationResultView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
-                        .padding(.bottom, 104)  //  下部固定button領域分の余白
+                        .padding(.bottom, 170)  //  撮影・Timelineボタン分の余白
                     }
 
-                    //  Timelineへ戻るbutton
-                    PrimaryButton("Timelineに戻る", systemImage: "list.bullet", action: onReturnToTimeline)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 14)
-                        .padding(.bottom, 18)
-                        .background(bottomBarBackground)    //  下部固定エリア背景
+                    VStack(spacing: 10) {
+                        if viewModel.notification.repository.canPost,
+                           let active = viewModel.activeBeGitTime {
+                            NavigationLink(value: cameraRoute(for: active)) {
+                                PrimaryCapsuleButtonLabel(
+                                    title: "写真で報告する",
+                                    systemImage: "camera.fill",
+                                    isEnabled: true
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        PrimaryButton("Timelineに戻る", systemImage: "list.bullet", action: onReturnToTimeline)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+                    .padding(.bottom, 18)
+                    .background(bottomBarBackground)
                 }
                 .transition(.opacity)
             }
@@ -268,7 +281,7 @@ struct NotificationResultView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
 
-                    Text("pushしたら投稿できるよ")
+                    Text("GitHub活動、または写真撮影で報告できます")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.white.opacity(0.68))
                 }
@@ -335,6 +348,17 @@ struct NotificationResultView: View {
     private func remainingTimeText(until expiry: Date, now: Date) -> String {
         let seconds = max(0, Int(expiry.timeIntervalSince(now)))
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    private func cameraRoute(for active: ActiveBeGitTime) -> RepositoryNavigationRoute {
+        let notification = RepositoryNotification(
+            backendID: active.notificationID > 0 ? active.notificationID : viewModel.notification.backendID,
+            repository: viewModel.notification.repository,
+            selectedMembers: viewModel.notification.selectedMembers,
+            comment: viewModel.notification.comment,
+            createdAt: active.sentAt
+        )
+        return .camera(notification: notification)
     }
 
     private func isNotificationOwner(_ active: ActiveBeGitTime) -> Bool {
