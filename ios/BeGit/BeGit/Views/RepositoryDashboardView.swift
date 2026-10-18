@@ -245,8 +245,6 @@ struct RepositoryDashboardView: View {
         RepositoryActivityTimelineView(
             activities: viewModel.activities,
             currentUserLogin: authState.githubUser?.login,
-            lockedPostRoute: lockedPostRoute,
-            activeNotificationID: activeNotificationID,
             onDeleteRequested: {
                 activityToDelete = $0
                 isShowingDeleteConfirmation = true
@@ -263,42 +261,10 @@ struct RepositoryDashboardView: View {
         .padding(.horizontal, -20)
     }
 
-    private var activeNotificationID: Int64? {
-        viewModel.activeChallenge?.notificationID ?? viewModel.activeBeGitTime?.notificationID
-    }
-
-    private var lockedPostRoute: RepositoryNavigationRoute? {
-        if let challenge = viewModel.activeChallenge {
-            if challenge.hasDraftToCapture,
-               let backendID = viewModel.repository.backendID,
-               let draftPost = challenge.myPost {
-                return .notificationNiceWorkDraft(
-                    groupId: Int(backendID),
-                    draftPostId: Int(draftPost.postID),
-                    status: draftPost.status
-                )
-            }
-
-            return cameraRoute(for: ActiveBeGitTime(
-                notificationID: challenge.notificationID,
-                sentBy: challenge.issuer.userID,
-                sentAt: challenge.sentAt,
-                expiresAt: challenge.endsAt
-            ))
-        }
-
-        if let activeBeGitTime = viewModel.activeBeGitTime {
-            return cameraRoute(for: activeBeGitTime)
-        }
-
-        return nil
-    }
-
     @ViewBuilder
     private var timelinePostButton: some View {
         Group {
             if let challenge = viewModel.activeChallenge,
-               challenge.hasDraftToCapture,
                let backendID = viewModel.repository.backendID,
                let draftPost = challenge.myPost {
                 NavigationLink(
@@ -309,18 +275,22 @@ struct RepositoryDashboardView: View {
                     )
                 ) {
                     PrimaryCapsuleButtonLabel(
-                        title: "撮影して投稿",
+                        title: draftPost.isDraft ? "写真で報告を完了" : "写真を添付する",
                         systemImage: "camera.fill",
                         isEnabled: true
                     )
                 }
-            } else if viewModel.activeChallenge != nil || viewModel.activeBeGitTime != nil {
-                PrimaryCapsuleButtonLabel(
-                    title: "BeGit Time 進行中",
-                    systemImage: "hourglass",
-                    isEnabled: false
-                )
-                .accessibilityLabel("GitHubのcommitを待っています")
+            } else if let active = viewModel.activeChallenge {
+                NavigationLink(value: cameraRoute(for: ActiveBeGitTime(
+                    notificationID: active.notificationID, sentBy: active.issuer.userID,
+                    sentAt: active.sentAt, expiresAt: active.endsAt
+                ))) {
+                    PrimaryCapsuleButtonLabel(title: "写真で報告する", systemImage: "camera.fill", isEnabled: true)
+                }
+            } else if let active = viewModel.activeBeGitTime {
+                NavigationLink(value: cameraRoute(for: active)) {
+                    PrimaryCapsuleButtonLabel(title: "写真で報告する", systemImage: "camera.fill", isEnabled: true)
+                }
             } else {
                 NavigationLink(value: RepositoryNavigationRoute.makeNotification(viewModel.repository)) {
                     PrimaryCapsuleButtonLabel(
@@ -406,7 +376,7 @@ struct RepositoryDashboardView: View {
 
             HStack(spacing: 10) {
                 if draftPost?.isDraft == true {
-                    Text("Nice Work!が届きました。下のボタンから投稿できます")
+                    Text("写真のアップロードを完了すると報告済みになります")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(AppTheme.accent)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -418,7 +388,7 @@ struct RepositoryDashboardView: View {
                     .font(.system(size: 13, weight: .bold, design: .monospaced))
                     .foregroundStyle(draftPost?.status == "late" ? AppTheme.softPink : AppTheme.accent)
                 } else {
-                    Text("GitHubにcommit/PRすると投稿できるよ")
+                    Text("GitHub活動または写真撮影で報告できます")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.68))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -432,8 +402,7 @@ struct RepositoryDashboardView: View {
                 }
             }
 
-            if draftPost == nil {
-                NavigationLink(value: cameraRoute(for: activeBeGitTime)) {
+            NavigationLink(value: photoRoute(for: activeBeGitTime, post: draftPost)) {
                     HStack(spacing: 10) {
                         Image(systemName: "camera.fill")
                             .font(.system(size: 15, weight: .bold))
@@ -441,7 +410,7 @@ struct RepositoryDashboardView: View {
                             .background(Color.black.opacity(0.10))
                             .clipShape(Circle())
 
-                        Text("撮影する")
+                        Text(draftPost?.isDraft == false ? "写真を添付する" : "撮影する")
                             .font(.system(size: 15, weight: .bold))
 
                         Spacer(minLength: 8)
@@ -462,8 +431,7 @@ struct RepositoryDashboardView: View {
                     .shadow(color: accentPurple.opacity(0.24), radius: 10, y: 5)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("写真を撮影して進捗を投稿")
-            }
+                .accessibilityLabel(draftPost?.isDraft == false ? "報告に写真を添付" : "写真を撮影して進捗を投稿")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
@@ -490,6 +458,11 @@ struct RepositoryDashboardView: View {
         )
 
         return .camera(notification: notification)
+    }
+
+    private func photoRoute(for active: ActiveBeGitTime, post: ActiveChallenge.MyPost?) -> RepositoryNavigationRoute {
+        guard let post, let backendID = viewModel.repository.backendID else { return cameraRoute(for: active) }
+        return .notificationNiceWorkDraft(groupId: Int(backendID), draftPostId: Int(post.postID), status: post.status)
     }
 
     private func remainingTimeText(until expiry: Date, now: Date) -> String {

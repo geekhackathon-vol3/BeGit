@@ -17,7 +17,7 @@ type PostRepository interface {
 	HasPostedInSprint(ctx context.Context, userID, sprintID int64) (bool, error)
 	GetByUserAndNotification(ctx context.Context, userID, notifID int64) (*model.Post, error)
 	GetByID(ctx context.Context, postID int64) (*model.Post, error)
-	// CreateDraft は ② Nice Work! の検知データを draft 状態（is_draft=1）で作成する。
+	// CreateDraft は通知に対する報告を作成する。IsDraft で公開状態を指定する。
 	// UNIQUE(notification_id, user_id) 違反時は ErrConstraintViolation（既発火＝冪等 skip 用）。
 	CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error)
 	// ConfirmDraft は draft を確定（is_draft=0 へ更新）する。べき等（既確定でもエラーにしない）。
@@ -134,48 +134,13 @@ func (r *postRepository) Create(ctx context.Context, post *model.Post) (*model.P
 	return scanPost(rows[0])
 }
 
-// RecordNotificationResponse は、BeGit Time へ投稿した事実を投稿本体とは別に保存する。
-// posts を削除しても、この達成記録は残る。
-func (r *postRepository) RecordNotificationResponse(ctx context.Context, notificationID, userID, groupID int64) error {
-	_, err := r.db.Exec(ctx,
-		`INSERT OR IGNORE INTO notification_post_unlocks (notification_id, user_id, group_id)
-		 VALUES (?, ?, ?)`,
-		[]interface{}{notificationID, userID, groupID},
-	)
-	if err != nil {
-		return fmt.Errorf("post_repository: RecordNotificationResponse failed: %w", err)
-	}
-	return nil
-}
-
-// LatestNotificationResponse は、ユーザーが投稿済みの最新 BeGit Time のIDを返す。
-// 未投稿の場合は 0 を返す。
-func (r *postRepository) LatestNotificationResponse(ctx context.Context, userID, groupID int64) (int64, error) {
-	rows, err := r.db.Query(ctx,
-		`SELECT MAX(notification_id) AS notification_id
-		 FROM notification_post_unlocks
-		 WHERE user_id = ? AND group_id = ?`,
-		[]interface{}{userID, groupID},
-	)
-	if err != nil {
-		return 0, fmt.Errorf("post_repository: LatestNotificationResponse failed: %w", err)
-	}
-	if len(rows) == 0 {
-		return 0, nil
-	}
-	if notificationID, ok := rows[0]["notification_id"].(float64); ok {
-		return int64(notificationID), nil
-	}
-	return 0, nil
-}
-
 // ListByGroupID はグループのフィード一覧を投稿日時の降順で取得する。
 // draft（is_draft=1）と missed（期限内に投稿されなかったことを示す管理レコード）は
 // ユーザー投稿ではないためフィードから除外する。
 func (r *postRepository) ListByGroupID(ctx context.Context, groupID int64) ([]model.Post, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
-		 FROM posts WHERE group_id = ? AND is_draft = 0 AND (status IS NULL OR status != 'missed') ORDER BY created_at DESC`,
+		 FROM posts WHERE group_id = ? AND is_draft = 0 AND (status IS NULL OR status != 'missed') ORDER BY datetime(created_at) DESC, id DESC`,
 		[]interface{}{groupID},
 	)
 	if err != nil {
@@ -223,7 +188,7 @@ func (r *postRepository) HasPostedInSprint(ctx context.Context, userID, sprintID
 		`SELECT COUNT(*) as count
 		 FROM posts p
 		 INNER JOIN notifications n ON p.notification_id = n.id
-		 WHERE p.user_id = ? AND n.sprint_id = ?`,
+		 WHERE p.user_id = ? AND n.sprint_id = ? AND p.is_draft = 0 AND (p.status IS NULL OR p.status != 'missed')`,
 		[]interface{}{userID, sprintID},
 	)
 	if err != nil {
@@ -241,7 +206,7 @@ func (r *postRepository) HasPostedInSprint(ctx context.Context, userID, sprintID
 	return count > 0, nil
 }
 
-// CreateDraft は ② Nice Work! の検知データを draft 状態（is_draft=1）で作成する。
+// CreateDraft は通知に対する投稿を作成する。IsDraft で公開状態を指定する。
 // UNIQUE(notification_id, user_id) 違反時は ErrConstraintViolation を返す（既発火＝冪等 skip）。
 func (r *postRepository) CreateDraft(ctx context.Context, post *model.Post) (*model.Post, error) {
 	var notifID interface{} = nil
@@ -249,14 +214,22 @@ func (r *postRepository) CreateDraft(ctx context.Context, post *model.Post) (*mo
 		notifID = *post.NotificationID
 	}
 
+	createdAt := post.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	isDraft := 0
+	if post.IsDraft {
+		isDraft = 1
+	}
 	_, err := r.db.Exec(ctx,
-		`INSERT INTO posts (notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+		`INSERT INTO posts (notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[]interface{}{
 			notifID, post.UserID, post.GroupID, post.PostType,
 			post.Body, post.RepoFullName, post.BranchName,
 			post.CommitCount, post.Additions, post.Deletions,
-			post.LatestCommitMessage, post.Status,
+			post.LatestCommitMessage, post.Status, isDraft, createdAt.Format(time.RFC3339),
 		},
 	)
 	if err != nil {
@@ -276,6 +249,30 @@ func (r *postRepository) CreateDraft(ctx context.Context, post *model.Post) (*mo
 	}
 
 	return scanPost(rows[0])
+}
+
+// ConfirmPhotoReport は写真保存後に報告時刻と判定を設定して公開する。
+func (r *postRepository) ConfirmPhotoReport(ctx context.Context, postID int64, status string, at time.Time) error {
+	_, err := r.db.Exec(ctx, `UPDATE posts SET is_draft = 0, status = ?, created_at = ? WHERE id = ? AND is_draft = 1`,
+		[]interface{}{status, at.UTC().Format(time.RFC3339), postID})
+	if err != nil {
+		return fmt.Errorf("post_repository: ConfirmPhotoReport failed: %w", err)
+	}
+	return nil
+}
+
+// PromotePhotoDraft は写真アップロード待ちの投稿に GitHub 活動を反映して確定する。
+func (r *postRepository) PromotePhotoDraft(ctx context.Context, post *model.Post) (*model.Post, error) {
+	_, err := r.db.Exec(ctx, `UPDATE posts SET is_draft = 0, post_type = ?, repo_full_name = ?, branch_name = ?,
+		commit_count = ?, additions = ?, deletions = ?, latest_commit_message = ?, status = ?, created_at = ?
+		WHERE notification_id = ? AND user_id = ? AND is_draft = 1`,
+		[]interface{}{post.PostType, post.RepoFullName, post.BranchName, post.CommitCount, post.Additions,
+			post.Deletions, post.LatestCommitMessage, post.Status, post.CreatedAt.UTC().Format(time.RFC3339),
+			*post.NotificationID, post.UserID})
+	if err != nil {
+		return nil, fmt.Errorf("post_repository: PromotePhotoDraft failed: %w", err)
+	}
+	return r.GetByUserAndNotification(ctx, post.UserID, *post.NotificationID)
 }
 
 // ConfirmDraft は draft を確定（is_draft=0 へ更新）する。べき等（既確定でも 0 行更新でエラーにしない）。

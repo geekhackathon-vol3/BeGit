@@ -207,3 +207,36 @@ func TestPhotoService_UploadPhotos_R2Failure(t *testing.T) {
 		t.Errorf("expected ErrExternalAPI, got %v", err)
 	}
 }
+
+func TestPhotoReport_ConfirmedOnlyAfterUpload(t *testing.T) {
+	notificationID := int64(9)
+	post := &model.Post{ID: 42, UserID: 1, GroupID: 5, NotificationID: &notificationID, IsDraft: true}
+	confirmed := 0
+	postRepo := &mockPostRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Post, error) { return post, nil },
+		confirmPhotoReportFunc: func(_ context.Context, postID int64, status string, at time.Time) error {
+			confirmed++
+			if postID != 42 || status != "late" || at.IsZero() {
+				t.Fatalf("wrong confirmation: %d %s %v", postID, status, at)
+			}
+			return nil
+		},
+	}
+	notifRepo := &mockNotificationRepository{getByIDFunc: func(context.Context, int64) (*model.Notification, error) {
+		return &model.Notification{ID: notificationID, SentAt: time.Now().Add(-2 * time.Hour)}, nil
+	}}
+	failed := NewPhotoService(&mockR2Client{putObjectFunc: func(context.Context, string, string, []byte) error { return errors.New("upload failed") }}, &mockPhotoRepository{}, postRepo, notifRepo)
+	if _, err := failed.UploadPhotos(context.Background(), UploadPhotosRequest{Main: jpegFile()}, 5, 42, 1); err == nil {
+		t.Fatal("expected upload error")
+	}
+	if confirmed != 0 {
+		t.Fatal("failed upload confirmed report")
+	}
+	succeeded := NewPhotoService(&mockR2Client{}, &mockPhotoRepository{}, postRepo, notifRepo)
+	if _, err := succeeded.UploadPhotos(context.Background(), UploadPhotosRequest{Main: jpegFile()}, 5, 42, 1); err != nil {
+		t.Fatal(err)
+	}
+	if confirmed != 1 {
+		t.Fatalf("expected one confirmation, got %d", confirmed)
+	}
+}

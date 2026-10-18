@@ -17,7 +17,7 @@ type CreatePostRequest struct {
 	Body              *string `json:"body"`
 	NotificationID    *int64  `json:"notification_id"`
 	PostType          string  `json:"post_type" enums:"commit,pull_request,memo" default:"commit"`
-	ContentSource     string  `json:"content_source" enums:"github,manual" default:"github"`
+	ContentSource     string  `json:"content_source" enums:"github,manual,photo" default:"github"`
 	CommitSHA         *string `json:"commit_sha"`
 	PullRequestNumber *int    `json:"pull_request_number"`
 	GitHubLogin       string  `json:"github_login"`
@@ -46,7 +46,6 @@ type PostFeedJSON struct {
 	Login     string      `json:"login"`
 	AvatarURL string      `json:"avatar_url"`
 	Photos    []PhotoJSON `json:"photos"`
-	IsLocked  bool        `json:"is_locked"`
 }
 
 // PostListResponse は GET /groups/:id/posts のレスポンス
@@ -150,7 +149,7 @@ type ConfirmPostRequest struct {
 	Body *string `json:"body"`
 }
 
-// draftPostJSON は下書き取得/確定レスポンスを構築する
+// draftPostJSON は本人の報告取得/確定レスポンスを構築する
 func draftPostJSON(p *model.Post) PostJSON {
 	return PostJSON{
 		ID:                  p.ID,
@@ -168,10 +167,10 @@ func draftPostJSON(p *model.Post) PostJSON {
 	}
 }
 
-// GetDraft は下書き投稿を取得する（② Nice Work! プレフィル元）。
+// GetDraft は写真添付のため本人の報告を取得する。
 //
-//	@Summary		下書き取得
-//	@Description	② Nice Work! 通知の draft_post_id に対応する下書きを取得する
+//	@Summary		本人の報告取得
+//	@Description	本人の報告を写真添付用に取得する（確定済みも可）
 //	@Tags			posts
 //	@Produce		json
 //	@Security		BearerAuth
@@ -255,6 +254,8 @@ func respondPostDraftError(c *gin.Context, err error) {
 		respondError(c, http.StatusForbidden, "forbidden")
 	case errors.Is(err, service.ErrNotFound):
 		respondError(c, http.StatusNotFound, "not found")
+	case errors.Is(err, service.ErrConflict):
+		respondError(c, http.StatusConflict, "photo upload required")
 	default:
 		respondError(c, http.StatusInternalServerError, "internal server error")
 	}
@@ -314,7 +315,6 @@ func (h *PostHandler) List(c *gin.Context) {
 			Login:     feed.Login,
 			AvatarURL: feed.AvatarURL,
 			Photos:    photos,
-			IsLocked:  feed.Blurred,
 		})
 	}
 

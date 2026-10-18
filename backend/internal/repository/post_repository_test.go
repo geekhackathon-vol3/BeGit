@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/pkg/d1"
@@ -91,6 +92,7 @@ func TestPostRepository_CreateDraft(t *testing.T) {
 		PostType:       "commit",
 		BranchName:     &branch,
 		CommitCount:    3,
+		IsDraft:        true,
 	})
 	if err != nil {
 		t.Fatalf("CreateDraft() failed: %v", err)
@@ -98,7 +100,7 @@ func TestPostRepository_CreateDraft(t *testing.T) {
 	if created.ID != 890 {
 		t.Errorf("expected created draft id=890, got %d", created.ID)
 	}
-	if !strings.Contains(capturedSQL, "is_draft") || !strings.Contains(capturedSQL, "1)") {
+	if !strings.Contains(capturedSQL, "is_draft") || capturedParams[12] != 1 {
 		t.Errorf("expected INSERT to set is_draft=1, got SQL: %s", capturedSQL)
 	}
 	if !strings.Contains(capturedSQL, "branch_name") {
@@ -258,5 +260,26 @@ func TestFCMTokenRepository_GetTokensByGroupID_Empty(t *testing.T) {
 	}
 	if len(tokens) != 0 {
 		t.Errorf("expected 0 tokens, got %d", len(tokens))
+	}
+}
+
+func TestPostRepository_CreateDraft_ConfirmedGitHubUsesEventTime(t *testing.T) {
+	eventTime := time.Date(2026, 10, 17, 8, 15, 30, 0, time.UTC)
+	var params []interface{}
+	db := &mockD1Client{
+		execFunc: func(_ context.Context, _ string, values []interface{}) (int64, error) { params = values; return 1, nil },
+		queryFunc: func(context.Context, string, []interface{}) ([]map[string]interface{}, error) {
+			return []map[string]interface{}{{"id": float64(1), "created_at": eventTime.Format(time.RFC3339), "is_draft": float64(0)}}, nil
+		},
+	}
+	id := int64(9)
+	post, err := NewPostRepository(db).CreateDraft(context.Background(), &model.Post{
+		NotificationID: &id, UserID: 1, GroupID: 3, PostType: "commit", CreatedAt: eventTime,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params[12] != 0 || params[13] != eventTime.Format(time.RFC3339) || post.IsDraft || !post.CreatedAt.Equal(eventTime) {
+		t.Fatalf("GitHub report was not immediately confirmed at event time: %+v %v", post, params)
 	}
 }

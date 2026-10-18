@@ -172,44 +172,17 @@ func (m *mockNotificationRepository) Stop(ctx context.Context, notifID, userID i
 
 // mockPostRepository はテスト用の投稿リポジトリモック
 type mockPostRepository struct {
-	createFunc            func(ctx context.Context, post *model.Post) (*model.Post, error)
-	listByGroupIDFunc     func(ctx context.Context, groupID int64) ([]model.Post, error)
-	hasPostedInSprintFunc func(ctx context.Context, userID, sprintID int64) (bool, error)
-	getByUserAndNotifFunc func(ctx context.Context, userID, notifID int64) (*model.Post, error)
-	getByIDFunc           func(ctx context.Context, postID int64) (*model.Post, error)
-	createDraftFunc       func(ctx context.Context, post *model.Post) (*model.Post, error)
-	confirmDraftFunc      func(ctx context.Context, postID int64) error
-	createMissedFunc      func(ctx context.Context, notifID, userID, groupID int64) error
-	updateBodyFunc        func(ctx context.Context, postID int64, body string) error
-	recordResponseFunc    func(ctx context.Context, notifID, userID, groupID int64) error
-	latestResponseFunc    func(ctx context.Context, userID, groupID int64) (int64, error)
-}
-
-func (m *mockPostRepository) RecordNotificationResponse(ctx context.Context, notifID, userID, groupID int64) error {
-	if m.recordResponseFunc != nil {
-		return m.recordResponseFunc(ctx, notifID, userID, groupID)
-	}
-	return nil
-}
-
-func (m *mockPostRepository) LatestNotificationResponse(ctx context.Context, userID, groupID int64) (int64, error) {
-	if m.latestResponseFunc != nil {
-		return m.latestResponseFunc(ctx, userID, groupID)
-	}
-	posts, err := m.ListByGroupID(ctx, groupID)
-	if err != nil {
-		return 0, err
-	}
-	latestNotificationID := int64(0)
-	for _, post := range posts {
-		if post.UserID != userID || post.NotificationID == nil || isMissedPost(&post) {
-			continue
-		}
-		if *post.NotificationID > latestNotificationID {
-			latestNotificationID = *post.NotificationID
-		}
-	}
-	return latestNotificationID, nil
+	createFunc             func(ctx context.Context, post *model.Post) (*model.Post, error)
+	listByGroupIDFunc      func(ctx context.Context, groupID int64) ([]model.Post, error)
+	hasPostedInSprintFunc  func(ctx context.Context, userID, sprintID int64) (bool, error)
+	getByUserAndNotifFunc  func(ctx context.Context, userID, notifID int64) (*model.Post, error)
+	getByIDFunc            func(ctx context.Context, postID int64) (*model.Post, error)
+	createDraftFunc        func(ctx context.Context, post *model.Post) (*model.Post, error)
+	confirmDraftFunc       func(ctx context.Context, postID int64) error
+	confirmPhotoReportFunc func(ctx context.Context, postID int64, status string, at time.Time) error
+	promotePhotoDraftFunc  func(ctx context.Context, post *model.Post) (*model.Post, error)
+	createMissedFunc       func(ctx context.Context, notifID, userID, groupID int64) error
+	updateBodyFunc         func(ctx context.Context, postID int64, body string) error
 }
 
 func (m *mockPostRepository) CreateMissed(ctx context.Context, notifID, userID, groupID int64) error {
@@ -231,7 +204,6 @@ func (m *mockPostRepository) CreateDraft(ctx context.Context, post *model.Post) 
 		return m.createDraftFunc(ctx, post)
 	}
 	post.ID = 1
-	post.IsDraft = true
 	return post, nil
 }
 
@@ -240,6 +212,20 @@ func (m *mockPostRepository) ConfirmDraft(ctx context.Context, postID int64) err
 		return m.confirmDraftFunc(ctx, postID)
 	}
 	return nil
+}
+
+func (m *mockPostRepository) ConfirmPhotoReport(ctx context.Context, postID int64, status string, at time.Time) error {
+	if m.confirmPhotoReportFunc != nil {
+		return m.confirmPhotoReportFunc(ctx, postID, status, at)
+	}
+	return nil
+}
+
+func (m *mockPostRepository) PromotePhotoDraft(ctx context.Context, post *model.Post) (*model.Post, error) {
+	if m.promotePhotoDraftFunc != nil {
+		return m.promotePhotoDraftFunc(ctx, post)
+	}
+	return nil, repository.ErrNotFound
 }
 
 func (m *mockPostRepository) Create(ctx context.Context, post *model.Post) (*model.Post, error) {
@@ -859,5 +845,20 @@ func TestChallengeDeadline(t *testing.T) {
 		if !got.Equal(tc.want) {
 			t.Errorf("[%s] expected %v, got %v", name, tc.want, got)
 		}
+	}
+}
+
+func TestComputeMemberStatuses_DraftIsNotReported(t *testing.T) {
+	repo := &mockPostRepository{getByUserAndNotifFunc: func(_ context.Context, userID, notifID int64) (*model.Post, error) {
+		return &model.Post{UserID: userID, NotificationID: &notifID, IsDraft: true}, nil
+	}}
+	statuses, err := computeMemberStatuses(context.Background(), repo,
+		&model.Notification{ID: 9, SentAt: time.Now().Add(-10 * time.Minute)},
+		[]model.GroupMember{{UserID: 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 1 || statuses[0].Status != "Missed" {
+		t.Fatalf("draft must not count: %+v", statuses)
 	}
 }

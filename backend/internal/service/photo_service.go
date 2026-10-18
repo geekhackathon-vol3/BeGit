@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -43,6 +44,7 @@ type photoService struct {
 	r2Client  r2.Client
 	photoRepo repository.PhotoRepository
 	postRepo  repository.PostRepository
+	notifRepo repository.NotificationRepository
 }
 
 // NewPhotoService は PhotoService を作成する
@@ -50,12 +52,17 @@ func NewPhotoService(
 	r2Client r2.Client,
 	photoRepo repository.PhotoRepository,
 	postRepo repository.PostRepository,
+	notifRepos ...repository.NotificationRepository,
 ) PhotoService {
-	return &photoService{
+	s := &photoService{
 		r2Client:  r2Client,
 		photoRepo: photoRepo,
 		postRepo:  postRepo,
 	}
+	if len(notifRepos) > 0 {
+		s.notifRepo = notifRepos[0]
+	}
+	return s
 }
 
 // UploadPhotos は投稿の所有権を検証し、main/front を R2 に保存して photos テーブルに紐付ける
@@ -82,6 +89,25 @@ func (s *photoService) UploadPhotos(ctx context.Context, req UploadPhotosRequest
 	}
 	if post.UserID != userID {
 		return nil, ErrForbidden
+	}
+	if isMissedPost(post) {
+		return nil, ErrNotFound
+	}
+	if post.IsDraft && post.NotificationID == nil {
+		return nil, fmt.Errorf("%w: draft has no BeGit Time", ErrValidation)
+	}
+	// A successful previous upload may have lost its HTTP response. Reuse its photos on retry.
+	existing, err := s.photoRepo.ListByPostID(ctx, postID)
+	if err != nil {
+		return nil, err
+	}
+	if len(existing) > 0 {
+		if post.IsDraft {
+			if err := s.confirmPhotoReport(ctx, post); err != nil {
+				return nil, err
+			}
+		}
+		return existing, nil
 	}
 
 	// アップロード対象を順序付きで組み立てる（main → front）
@@ -157,7 +183,34 @@ func (s *photoService) UploadPhotos(ctx context.Context, req UploadPhotosRequest
 		photos = append(photos, *created)
 	}
 
+	if post.IsDraft {
+		if err := s.confirmPhotoReport(ctx, post); err != nil {
+			return nil, err
+		}
+	}
 	return photos, nil
+}
+
+func (s *photoService) confirmPhotoReport(ctx context.Context, post *model.Post) error {
+	if s.notifRepo == nil {
+		return fmt.Errorf("photo_service: notification repository not configured")
+	}
+	notif, err := s.notifRepo.GetByID(ctx, *post.NotificationID)
+	if err != nil {
+		return err
+	}
+	confirmedAt := time.Now().UTC()
+	status := "on_time"
+	if confirmedAt.After(challengeDeadline(notif)) {
+		status = "late"
+	}
+	confirmer, ok := s.postRepo.(interface {
+		ConfirmPhotoReport(context.Context, int64, string, time.Time) error
+	})
+	if !ok {
+		return fmt.Errorf("photo_service: photo confirmation unsupported")
+	}
+	return confirmer.ConfirmPhotoReport(ctx, post.ID, status, confirmedAt)
 }
 
 // validatePhoto は Content-Type とサイズを検証し、R2 キー用の拡張子を返す

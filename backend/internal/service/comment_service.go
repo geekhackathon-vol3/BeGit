@@ -75,7 +75,7 @@ func (s *commentService) getPostInGroup(ctx context.Context, groupID, postID int
 		}
 		return nil, fmt.Errorf("comment_service: getPostInGroup failed: %w", err)
 	}
-	if post.GroupID != groupID {
+	if post.GroupID != groupID || post.IsDraft || isMissedPost(post) {
 		return nil, ErrNotFound
 	}
 	return post, nil

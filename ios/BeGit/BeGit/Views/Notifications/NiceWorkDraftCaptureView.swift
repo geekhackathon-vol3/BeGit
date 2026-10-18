@@ -1,6 +1,5 @@
 //  NiceWorkDraftCaptureView.swift
-//  ② nice_work 通知タップの遷移先。サーバーが作成した下書きを取得し、撮影画面へつなぐ。
-//  撮影した写真はこの下書きに付けて確定する（新規投稿は作らない）。
+//  Nice Work! で確定した報告に写真を後から添付する画面。
 
 import SwiftUI
 
@@ -14,7 +13,6 @@ struct NiceWorkDraftCaptureView: View {
     private enum LoadState {
         case loading
         case loaded(DraftPost)
-        case alreadyPosted
         case failed(String)
     }
 
@@ -46,8 +44,6 @@ struct NiceWorkDraftCaptureView: View {
                 } else {
                     message("ログイン状態を確認できません。再ログインしてください。")
                 }
-            case .alreadyPosted:
-                message("この Nice Work! はすでに投稿済みです")
             case .failed(let text):
                 message(text, retry: true)
             }
@@ -69,11 +65,8 @@ struct NiceWorkDraftCaptureView: View {
                 accessToken: accessToken
             )
             loadState = .loaded(draft)
-        } catch BeGitAPIError.requestFailed(statusCode: 404, message: _) {
-            //  確定済みの下書きは 404 になる
-            loadState = .alreadyPosted
         } catch {
-            loadState = .failed("下書きの取得に失敗しました。")
+            loadState = .failed("報告の取得に失敗しました。")
         }
     }
 

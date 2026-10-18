@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -155,3 +156,14 @@ func TestWebhook_GroupNotFound_NoDelegation(t *testing.T) {
 
 // Ensure errors package is used
 var _ = errors.New
+
+func TestDetectedActivity_UsesGitHubEventTime(t *testing.T) {
+	timestamp := "2026-10-17T08:15:30Z"
+	data := detectedActivity("push", "owner/repo", map[string]interface{}{
+		"commits": []interface{}{map[string]interface{}{"timestamp": timestamp, "message": "work"}},
+	})
+	want, _ := time.Parse(time.RFC3339, timestamp)
+	if !data.DetectionTime.Equal(want) {
+		t.Fatalf("got %v, want %v", data.DetectionTime, want)
+	}
+}

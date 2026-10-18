@@ -109,10 +109,11 @@ func (r *fcmTokenRepository) GetTokensByGroupIDExcludingResponders(ctx context.C
 		`SELECT ft.token
 		 FROM fcm_tokens ft
 		 INNER JOIN group_members gm ON ft.user_id = gm.user_id
-		 LEFT JOIN notification_post_unlocks npu
-		   ON npu.user_id = gm.user_id AND npu.notification_id = ?
-		 WHERE gm.group_id = ? AND npu.notification_id IS NULL`,
-		[]interface{}{notificationID, groupID},
+		 WHERE gm.group_id = ? AND NOT EXISTS (
+             SELECT 1 FROM posts p WHERE p.user_id = gm.user_id AND p.notification_id = ?
+             AND p.is_draft = 0 AND (p.status IS NULL OR p.status != 'missed')
+           )`,
+		[]interface{}{groupID, notificationID},
 	)
 	if errors.Is(err, d1.ErrNotFound) {
 		return []string{}, nil

@@ -50,6 +50,9 @@ func TestIntegration_Webhook_To_NiceWork_OwnerOnly_Idempotent(t *testing.T) {
 	// 冪等: 1回目は作成、2回目は UNIQUE 違反
 	draftCount := 0
 	postRepo := &mockPostRepository{
+		getByUserAndNotifFunc: func(ctx context.Context, userID, notifID int64) (*model.Post, error) {
+			return &model.Post{ID: 890, UserID: userID, NotificationID: &notifID}, nil
+		},
 		createDraftFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
 			draftCount++
 			if draftCount >= 2 {

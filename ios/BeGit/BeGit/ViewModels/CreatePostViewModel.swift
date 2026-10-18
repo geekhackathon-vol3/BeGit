@@ -27,7 +27,7 @@ final class CreatePostViewModel: ObservableObject {
     let githubLogin: String
     let accessToken: String
     let notificationID: Int64?
-    //  ② Nice Work! の下書き投稿ID。指定時は新規投稿を作らず、この下書きに写真を付けて確定する
+    //  既存の報告ID。指定時は新規投稿を作らず写真を添付する
     let draftPostID: Int64?
     let isPostTypeSelectionEnabled: Bool
 
@@ -50,13 +50,11 @@ final class CreatePostViewModel: ObservableObject {
         self.githubLogin = githubLogin
         self.accessToken = accessToken
         self.notificationID = notificationID
-        self.selectedType = initialPostType
-        self.contentSource = initialPostType == .memo ? .manual : .github
+        self.selectedType = notificationID != nil && draftPostID == nil ? .memo : initialPostType
+        self.contentSource = notificationID != nil && draftPostID == nil ? .photo : (initialPostType == .memo ? .manual : .github)
         self.draftPostID = draftPostID
         self.isPostTypeSelectionEnabled = draftPostID == nil
     }
-    // CreatePostViewModel.swift に追加
-
     @Published var isPosting = false
     @Published var postError: Error?
     @Published private(set) var postedActivity: RepositoryActivity?
@@ -67,6 +65,7 @@ final class CreatePostViewModel: ObservableObject {
         if draftPostID != nil {
             return true
         }
+        if contentSource == .photo { return mainImage != nil }
         if selectedType == .memo || contentSource == .manual {
             return bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false && isPosting == false
         }
@@ -176,9 +175,9 @@ final class CreatePostViewModel: ObservableObject {
 
         let frontData = frontImage?.jpegData(compressionQuality: 0.8)
 
-        //  ② Nice Work!：下書きに写真を付けてから確定する。写真が付かなければ確定しない（下書きが残り再試行できる）
+        //  既存の報告に写真を添付する。
         if let draftPostID {
-            //  確定だけ失敗して Post を押し直した場合に、写真が二重に付かないようにする
+            //  Post を押し直した場合に写真を二重に送らない。
             if draftPhotosUploaded == false {
                 try await uploadPhotosWithRetry(
                     api: api,
@@ -188,14 +187,7 @@ final class CreatePostViewModel: ObservableObject {
                 )
                 draftPhotosUploaded = true
             }
-            let trimmedBody = bodyText.trimmingCharacters(in: .whitespacesAndNewlines)
-            try await api.confirmPost(
-                repositoryID: repositoryID,
-                postID: draftPostID,
-                body: trimmedBody.isEmpty ? nil : trimmedBody,
-                accessToken: accessToken
-            )
-            // Result画面へ遷移した直後から、この下書き投稿に対して
+            // Result画面へ遷移した直後から、この投稿に対して
             // リアクションAPIを呼べるようバックエンドの投稿IDを保持する。
             postedActivity = makeDemoActivity(backendPostID: draftPostID)
             return
@@ -214,7 +206,7 @@ final class CreatePostViewModel: ObservableObject {
             accessToken: accessToken
         )
 
-        // 写真アップロード失敗時も投稿本体は残して再試行できる。
+        // 写真報告はこのアップロード成功時にサーバーが確定する。
         try await uploadPhotosWithRetry(api: api, postID: postID, mainData: mainData, frontData: frontData)
 
         // Result画面へ戻った直後にも、選択した投稿タイプを表示する。

@@ -38,7 +38,7 @@ type ConfirmPostRequest struct {
 type PostService interface {
 	CreatePost(ctx context.Context, req CreatePostRequest, groupID, userID int64) (*model.Post, error)
 	ListPosts(ctx context.Context, groupID, userID int64) ([]model.PostFeed, error)
-	// GetDraft は下書き投稿を取得する（② プレフィル元）。本人以外/別グループ/draft でない場合はエラー。
+	// GetDraft は写真添付用に本人の報告を取得する。確定済みの報告も返す。
 	GetDraft(ctx context.Context, groupID, postID, userID int64) (*model.Post, error)
 	// ConfirmPost は下書きを確定（is_draft=0）してフィード表示可能にする。べき等。
 	ConfirmPost(ctx context.Context, req ConfirmPostRequest, groupID, postID, userID int64) (*model.Post, error)
@@ -97,18 +97,44 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 		contentSource = "github"
 	}
 	if postType == "memo" {
-		contentSource = "manual"
+		if contentSource != "photo" {
+			contentSource = "manual"
+		}
 	}
-	if contentSource != "github" && contentSource != "manual" {
+	if contentSource != "github" && contentSource != "manual" && contentSource != "photo" {
 		return nil, fmt.Errorf("%w: unsupported content source %q", ErrValidation, contentSource)
 	}
 	if contentSource == "manual" && (req.Body == nil || strings.TrimSpace(*req.Body) == "") {
 		return nil, fmt.Errorf("%w: comment body is required for manual posts", ErrValidation)
 	}
 	if req.NotificationID != nil && s.notifRepo != nil {
-		if err := s.validateNotificationPost(ctx, groupID, *req.NotificationID); err != nil {
+		if err := s.validateNotificationPost(ctx, groupID, *req.NotificationID, contentSource == "photo"); err != nil {
 			return nil, err
 		}
+	}
+	if contentSource == "photo" {
+		if req.NotificationID == nil || postType != "memo" {
+			return nil, fmt.Errorf("%w: photo report requires a BeGit Time and memo post type", ErrValidation)
+		}
+		// A GitHub report may already exist. Attach the photo to that report.
+		existing, err := s.postRepo.GetByUserAndNotification(ctx, userID, *req.NotificationID)
+		if err == nil {
+			if existing.Status != nil && *existing.Status == "missed" {
+				return nil, ErrConflict
+			}
+			return existing, nil
+		}
+		if !errors.Is(err, repository.ErrNotFound) {
+			return nil, err
+		}
+		created, err := s.postRepo.CreateDraft(ctx, &model.Post{
+			NotificationID: req.NotificationID, UserID: userID, GroupID: groupID,
+			PostType: "memo", Body: req.Body, IsDraft: true,
+		})
+		if errors.Is(err, repository.ErrConstraintViolation) {
+			return s.postRepo.GetByUserAndNotification(ctx, userID, *req.NotificationID)
+		}
+		return created, err
 	}
 
 	repoFullName := req.RepoFullName
@@ -182,39 +208,11 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	if err != nil {
 		return nil, fmt.Errorf("post_service: CreatePost failed: %w", err)
 	}
-	if err := s.recordNotificationResponse(ctx, created); err != nil {
-		return nil, err
-	}
-
 	return created, nil
 }
 
-type notificationResponseRecorder interface {
-	RecordNotificationResponse(ctx context.Context, notificationID, userID, groupID int64) error
-}
-
-type notificationResponseReader interface {
-	LatestNotificationResponse(ctx context.Context, userID, groupID int64) (int64, error)
-}
-
-// recordNotificationResponse は確定済み投稿に対応する表示解除記録を残す。
-// テスト用など、対応していないリポジトリ実装では従来の投稿ベース判定を維持する。
-func (s *postService) recordNotificationResponse(ctx context.Context, post *model.Post) error {
-	if post.NotificationID == nil || post.IsDraft {
-		return nil
-	}
-	recorder, ok := s.postRepo.(notificationResponseRecorder)
-	if !ok {
-		return nil
-	}
-	if err := recorder.RecordNotificationResponse(ctx, *post.NotificationID, post.UserID, post.GroupID); err != nil {
-		return fmt.Errorf("post_service: record notification response failed: %w", err)
-	}
-	return nil
-}
-
 // validateNotificationPost は停止・期限切れのBeGit Timeへの新規投稿を拒否する。
-func (s *postService) validateNotificationPost(ctx context.Context, groupID, notificationID int64) error {
+func (s *postService) validateNotificationPost(ctx context.Context, groupID, notificationID int64, photoReport bool) error {
 	notif, err := s.notifRepo.GetByID(ctx, notificationID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
@@ -229,14 +227,18 @@ func (s *postService) validateNotificationPost(ctx context.Context, groupID, not
 	if sprint.GroupID != groupID {
 		return fmt.Errorf("%w: notification does not belong to group", ErrValidation)
 	}
-	if notif.StoppedAt != nil || !time.Now().UTC().Before(notif.SentAt.Add(challengeWindow)) {
+	deadline := notif.SentAt.Add(challengeWindow)
+	if photoReport {
+		deadline = sprint.EndsAt
+	}
+	if notif.StoppedAt != nil || !time.Now().UTC().Before(deadline) {
 		return fmt.Errorf("%w: notification is no longer accepting posts", ErrConflict)
 	}
 	return nil
 }
 
-// GetDraft は下書き投稿を取得する（② プレフィル元）。
-// 別グループ → ErrNotFound、本人以外 → ErrForbidden、draft でない → ErrNotFound。
+// GetDraft は写真添付用に本人の報告を取得する。
+// 別グループ → ErrNotFound、本人以外 → ErrForbidden。
 func (s *postService) GetDraft(ctx context.Context, groupID, postID, userID int64) (*model.Post, error) {
 	post, err := s.postRepo.GetByID(ctx, postID)
 	if err != nil {
@@ -250,10 +252,6 @@ func (s *postService) GetDraft(ctx context.Context, groupID, postID, userID int6
 	}
 	if post.UserID != userID {
 		return nil, ErrForbidden
-	}
-	if !post.IsDraft {
-		// 既に確定済み（draft ではない）
-		return nil, ErrNotFound
 	}
 	return post, nil
 }
@@ -276,10 +274,11 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 
 	// 既に確定済み（is_draft=0）の場合は本文更新をスキップし、現在の状態を返す（べき等）。
 	if !post.IsDraft {
-		if err := s.recordNotificationResponse(ctx, post); err != nil {
-			return nil, err
-		}
 		return post, nil
+	}
+	if post.PostType == "memo" && post.NotificationID != nil {
+		// 写真報告はアップロード成功後に PhotoService だけが確定する。
+		return nil, ErrConflict
 	}
 
 	// 下書き状態の場合のみ本文上書きと確定処理を実行
@@ -298,9 +297,6 @@ func (s *postService) ConfirmPost(ctx context.Context, req ConfirmPostRequest, g
 	confirmed, err := s.postRepo.GetByID(ctx, postID)
 	if err != nil {
 		return nil, fmt.Errorf("post_service: ConfirmPost re-fetch failed: %w", err)
-	}
-	if err := s.recordNotificationResponse(ctx, confirmed); err != nil {
-		return nil, err
 	}
 	return confirmed, nil
 }
@@ -348,34 +344,12 @@ func (s *postService) DeletePost(ctx context.Context, groupID, postID, userID in
 	return nil
 }
 
-// ListPosts はグループのフィードを取得し、最新の未回答 BeGit Time に対してロック制御を適用する。
-// 自分が最後に投稿した通知より前の投稿は過去分として常に表示する。より新しい通知に紐づく
-// 他メンバーの投稿だけを隠すため、次の通知で自分が投稿すれば、それ以前に隠れていた投稿も表示される。
+// ListPosts はグループの確定済み投稿を取得する。
 func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]model.PostFeed, error) {
 	// Step 1: グループの投稿一覧を取得
 	posts, err := s.postRepo.ListByGroupID(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("post_service: ListPosts failed: %w", err)
-	}
-
-	// Step 2: 閲覧者が最後に投稿した通知IDを求める。
-	// 本番リポジトリでは投稿削除後も残る達成記録を使う。未対応のテスト実装では、
-	// 後方互換のため取得済み投稿から算出する。
-	latestPostedNotificationID := int64(0)
-	if reader, ok := s.postRepo.(notificationResponseReader); ok {
-		latestPostedNotificationID, err = reader.LatestNotificationResponse(ctx, userID, groupID)
-		if err != nil {
-			return nil, fmt.Errorf("post_service: ListPosts latest notification response failed: %w", err)
-		}
-	} else {
-		for _, post := range posts {
-			if post.UserID != userID || post.NotificationID == nil || isMissedPost(&post) {
-				continue
-			}
-			if *post.NotificationID > latestPostedNotificationID {
-				latestPostedNotificationID = *post.NotificationID
-			}
-		}
 	}
 
 	// Step 3: グループメンバー情報を取得（Login/AvatarURL 付与のため）
@@ -403,37 +377,21 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		photoMap = m
 	}
 
-	// Step 5: PostFeed を構築し、ロック制御を適用
+	// Step 5: PostFeed を構築
 	feeds := make([]model.PostFeed, 0, len(posts))
 	for _, post := range posts {
+		if post.GroupID != groupID || post.IsDraft || isMissedPost(&post) {
+			continue
+		}
 		feed := model.PostFeed{
-			Post:    post,
-			Blurred: false,
+			Post:   post,
+			Photos: s.buildFeedPhotos(photoMap[post.ID]),
 		}
 
 		// メンバー情報を付与
 		if member, ok := memberMap[post.UserID]; ok {
 			feed.Login = member.Login
 			feed.AvatarURL = member.AvatarURL
-		}
-
-		// 最後に自分が投稿した通知より新しい投稿のみロックする。
-		// 通知以前の投稿（notification_idなし）と自分の投稿は常に表示する。
-		isLocked := post.UserID != userID && post.NotificationID != nil &&
-			*post.NotificationID > latestPostedNotificationID
-		if isLocked {
-			feed.Blurred = true
-			feed.Body = nil
-			feed.RepoFullName = nil
-			feed.LatestCommitMessage = nil
-			feed.BranchName = nil
-			feed.CommitCount = 0
-			feed.Additions = 0
-			feed.Deletions = 0
-			feed.Status = nil
-			// ロック対象は写真URLも返さない
-		} else {
-			feed.Photos = s.buildFeedPhotos(photoMap[post.ID])
 		}
 
 		feeds = append(feeds, feed)

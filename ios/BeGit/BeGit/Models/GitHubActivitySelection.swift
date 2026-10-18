@@ -6,11 +6,13 @@ import Foundation
 enum PostContentSource: String, CaseIterable, Sendable {
     case github
     case manual
+    case photo
 
     var displayName: String {
         switch self {
         case .github: "GitHubデータ"
         case .manual: "コメントのみ"
+        case .photo: "写真撮影"
         }
     }
 }
