@@ -100,7 +100,7 @@ func TestWebhook_DelegatesNiceWork_ForThreeEvents(t *testing.T) {
 	}{
 		{"push", map[string]interface{}{"repository": map[string]interface{}{"full_name": "o/r"}, "sender": map[string]interface{}{"login": "octocat"}, "ref": "refs/heads/main", "commits": []interface{}{map[string]interface{}{"message": "fix"}}}, "commit"},
 		{"issues", map[string]interface{}{"action": "opened", "repository": map[string]interface{}{"full_name": "o/r"}, "sender": map[string]interface{}{"login": "octocat"}}, "issue"},
-		{"pull_request_review", map[string]interface{}{"repository": map[string]interface{}{"full_name": "o/r"}, "sender": map[string]interface{}{"login": "octocat"}}, "review"},
+		{"pull_request_review", map[string]interface{}{"action": "submitted", "repository": map[string]interface{}{"full_name": "o/r"}, "sender": map[string]interface{}{"login": "octocat"}, "review": map[string]interface{}{"submitted_at": "2026-10-17T08:15:30Z"}}, "review"},
 	}
 
 	for _, tc := range cases {
@@ -117,6 +117,9 @@ func TestWebhook_DelegatesNiceWork_ForThreeEvents(t *testing.T) {
 		if c.groupID != 12 || c.senderLogin != "octocat" || c.postType != tc.wantType {
 			t.Errorf("event %s: unexpected delegation %+v", tc.event, c)
 		}
+		if tc.event == "pull_request_review" && c.detected.DetectionTime.IsZero() {
+			t.Error("submitted review should use submitted_at")
+		}
 	}
 }
 
@@ -131,6 +134,28 @@ func TestWebhook_IssuesNonOpened_NoDelegation(t *testing.T) {
 	}
 	if len(nw.calls) != 0 {
 		t.Error("expected no delegation for non-opened issues")
+	}
+}
+
+func TestWebhook_ReviewNonSubmitted_NoDelegation(t *testing.T) {
+	for _, action := range []string{"edited", "dismissed", ""} {
+		t.Run(action, func(t *testing.T) {
+			nw := &mockNiceWorkService{}
+			svc := NewWebhookServiceWithNiceWork(webhookGroupRepo(), &mockSprintRepository{}, nw)
+			payload := map[string]interface{}{
+				"action":     action,
+				"repository": map[string]interface{}{"full_name": "o/r"},
+				"sender":     map[string]interface{}{"login": "octocat"},
+				"review":     map[string]interface{}{"submitted_at": "2026-10-17T08:15:30Z"},
+			}
+			data, _ := json.Marshal(payload)
+			if err := svc.ProcessWebhook(context.Background(), WebhookRequest{DeliveryID: "d", EventType: "pull_request_review", Payload: data}); err != nil {
+				t.Fatalf("ProcessWebhook failed: %v", err)
+			}
+			if len(nw.calls) != 0 {
+				t.Fatalf("expected no delegation for review action %q, got %d calls", action, len(nw.calls))
+			}
+		})
 	}
 }
 

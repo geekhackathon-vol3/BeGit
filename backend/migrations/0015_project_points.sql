@@ -35,7 +35,7 @@ CREATE TRIGGER notification_capture_members AFTER INSERT ON notifications
 BEGIN
   INSERT INTO notification_members(notification_id, user_id)
   SELECT NEW.id, user_id FROM group_members
-  WHERE group_id = (SELECT group_id FROM sprints WHERE id = NEW.sprint_id);
+  WHERE group_id = (SELECT group_id FROM sprints WHERE id = NEW.sprint_id) AND role IN ('owner', 'poster')
 END;
 
 CREATE TRIGGER notification_after_completion BEFORE INSERT ON notifications
@@ -89,10 +89,15 @@ END;
 INSERT OR IGNORE INTO notification_members(notification_id, user_id)
 SELECT n.id, gm.user_id FROM notifications n
 JOIN sprints s ON s.id = n.sprint_id
-JOIN group_members gm ON gm.group_id = s.group_id;
+JOIN group_members gm ON gm.group_id = s.group_id
+WHERE gm.role IN ('owner', 'poster');
 
 INSERT OR IGNORE INTO point_awards(group_id, notification_id, user_id, kind, points)
 SELECT p.group_id, p.notification_id, p.user_id, 'report', 10
 FROM posts p
 WHERE p.notification_id IS NOT NULL AND p.is_draft = 0
-  AND COALESCE(p.status, '') != 'missed';
+  AND COALESCE(p.status, '') != 'missed'
+  AND (
+    p.post_type != 'memo'
+    OR EXISTS (SELECT 1 FROM photos ph WHERE ph.post_id = p.id)
+  );

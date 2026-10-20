@@ -212,7 +212,7 @@ struct RepoSettingView: View {
         do {
             finalResult = try await BeGitBackendAPI().getFinalResult(repositoryID: repositoryID, accessToken: accessToken)
         } catch {
-            completionError = error.localizedDescription
+            finalResult = nil
         }
     }
 

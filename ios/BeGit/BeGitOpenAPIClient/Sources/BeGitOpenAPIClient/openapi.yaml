@@ -224,6 +224,8 @@ components:
           $ref: '#/components/schemas/handler.ActiveChallengeJSON'
         avatar_url:
           type: string
+        completed_at:
+          type: string
         id:
           type: integer
         member_count:
@@ -247,6 +249,8 @@ components:
     handler.GroupJSON:
       properties:
         avatar_url:
+          type: string
+        completed_at:
           type: string
         id:
           type: integer

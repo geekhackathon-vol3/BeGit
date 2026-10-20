@@ -333,6 +333,9 @@
                     "avatar_url": {
                         "type": "string"
                     },
+                    "completed_at": {
+                        "type": "string"
+                    },
                     "id": {
                         "type": "integer"
                     },
@@ -367,6 +370,9 @@
             "handler.GroupJSON": {
                 "properties": {
                     "avatar_url": {
+                        "type": "string"
+                    },
+                    "completed_at": {
                         "type": "string"
                     },
                     "id": {

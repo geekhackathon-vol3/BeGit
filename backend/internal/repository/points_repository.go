@@ -38,6 +38,11 @@ func (r *PointsRepository) FinalizeBonuses(ctx context.Context, groupID int64) e
  WHERE (? = 0 OR s.group_id = ?) AND g.completed_at IS NULL
    AND n.stopped_at IS NULL
    AND datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour'))) <= datetime('now')
+   AND NOT EXISTS (
+     SELECT 1 FROM point_awards pa
+     WHERE pa.notification_id = n.id AND pa.user_id = n.sent_by
+       AND pa.kind = 'all_on_time_bonus'
+   )
    AND EXISTS (SELECT 1 FROM notification_members nm WHERE nm.notification_id = n.id)
    AND NOT EXISTS (
      SELECT 1 FROM notification_members nm

@@ -115,7 +115,7 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 	now := time.Now().UTC()
 	if s.pointsRepo != nil {
 		if err := s.pointsRepo.FinalizeBonuses(ctx, 0); err != nil {
-			return err
+			log.Printf("cron_service: FinalizeBonuses failed: %v", err)
 		}
 	}
 	s.runScheduledBeGitTimes(ctx, now)

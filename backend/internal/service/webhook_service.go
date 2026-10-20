@@ -68,7 +68,7 @@ func postTypeForEvent(eventType string) string {
 	}
 }
 
-// ProcessWebhook は push / issues(opened) / pull_request_review イベントを処理し、② を駆動する
+// ProcessWebhook は push / issues(opened) / pull_request_review(submitted) イベントを処理し、② を駆動する
 func (s *webhookService) ProcessWebhook(ctx context.Context, req WebhookRequest) error {
 	// 検知対象イベントのみ処理
 	if req.EventType != "push" && req.EventType != "issues" && req.EventType != "pull_request_review" {
@@ -84,6 +84,12 @@ func (s *webhookService) ProcessWebhook(ctx context.Context, req WebhookRequest)
 	if req.EventType == "issues" {
 		action, _ := payload["action"].(string)
 		if action != "opened" {
+			return nil
+		}
+	}
+	if req.EventType == "pull_request_review" {
+		action, _ := payload["action"].(string)
+		if action != "submitted" {
 			return nil
 		}
 	}
