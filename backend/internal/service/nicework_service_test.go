@@ -95,6 +95,9 @@ func TestNiceWork_OnTime_SendsToAuthorOnly(t *testing.T) {
 	}
 	var draftStatus string
 	p.createDraftFunc = func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		if post.IsDraft {
+			t.Fatal("GitHub activity must confirm report immediately")
+		}
 		if post.Status != nil {
 			draftStatus = *post.Status
 		}
@@ -124,6 +127,32 @@ func TestNiceWork_OnTime_SendsToAuthorOnly(t *testing.T) {
 	}
 	if call.data["type"] != "nice_work" || call.data["status"] != "on_time" || call.data["draft_post_id"] != "890" || call.data["notification_id"] != "345" {
 		t.Errorf("unexpected nice_work data: %v", call.data)
+	}
+}
+
+func TestNiceWork_PromotesPendingPhotoReport(t *testing.T) {
+	u, g, sp, n, p, ft, fc := niceWorkDeps()
+	u.getByLoginFunc = func(context.Context, string) (*model.User, error) { return &model.User{ID: 10}, nil }
+	g.isMemberFunc = func(context.Context, int64, int64) (bool, error) { return true, nil }
+	sp.getCurrentFunc = func(context.Context, int64) (*model.Sprint, error) { return &model.Sprint{ID: 7}, nil }
+	n.getLatestInSprintBeforeFunc = func(context.Context, int64, time.Time) (*model.Notification, error) {
+		return &model.Notification{ID: 345, SentAt: time.Now().Add(-10 * time.Minute)}, nil
+	}
+	p.createDraftFunc = func(context.Context, *model.Post) (*model.Post, error) { return nil, repository.ErrConstraintViolation }
+	p.getByUserAndNotifFunc = func(context.Context, int64, int64) (*model.Post, error) {
+		return &model.Post{ID: 890, IsDraft: true}, nil
+	}
+	promoted := false
+	p.promotePhotoDraftFunc = func(_ context.Context, post *model.Post) (*model.Post, error) {
+		promoted = true
+		post.ID = 890
+		return post, nil
+	}
+	if err := newNiceWorkSvc(u, g, sp, n, p, ft, fc).HandleActivity(context.Background(), 12, "octocat", "commit", ActivityData{CommitCount: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if !promoted {
+		t.Fatal("pending photo report was not confirmed by GitHub activity")
 	}
 }
 
@@ -173,6 +202,9 @@ func TestNiceWork_Idempotent_Skip(t *testing.T) {
 	}
 	p.createDraftFunc = func(ctx context.Context, post *model.Post) (*model.Post, error) {
 		return nil, repository.ErrConstraintViolation // 既発火
+	}
+	p.getByUserAndNotifFunc = func(ctx context.Context, userID, notifID int64) (*model.Post, error) {
+		return &model.Post{ID: 890, UserID: userID, NotificationID: &notifID}, nil
 	}
 
 	svc := newNiceWorkSvc(u, g, sp, n, p, ft, fc)

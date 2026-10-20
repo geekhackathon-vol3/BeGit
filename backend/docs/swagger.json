@@ -271,7 +271,8 @@
                         "default": "github",
                         "enum": [
                             "github",
-                            "manual"
+                            "manual",
+                            "photo"
                         ],
                         "type": "string"
                     },
@@ -564,9 +565,6 @@
                     },
                     "id": {
                         "type": "integer"
-                    },
-                    "is_locked": {
-                        "type": "boolean"
                     },
                     "latest_commit_message": {
                         "type": "string"
@@ -3195,7 +3193,7 @@
         },
         "/groups/{id}/posts/{postId}/draft": {
             "get": {
-                "description": "② Nice Work! 通知の draft_post_id に対応する下書きを取得する",
+                "description": "本人の報告を写真添付用に取得する（確定済みも可）",
                 "parameters": [
                     {
                         "description": "グループ ID",
@@ -3263,7 +3261,7 @@
                         "BearerAuth": []
                     }
                 ],
-                "summary": "下書き取得",
+                "summary": "本人の報告取得",
                 "tags": [
                     "posts"
                 ]

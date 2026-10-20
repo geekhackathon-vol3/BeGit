@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/irj0927/begit/internal/model"
+	"github.com/irj0927/begit/internal/repository"
 	githubpkg "github.com/irj0927/begit/pkg/github"
 )
 
@@ -41,17 +42,13 @@ func TestPostService_GetDraft_Forbidden(t *testing.T) {
 	}
 }
 
-// TestPostService_GetDraft_NotDraft は確定済み投稿の draft 取得で ErrNotFound を返すことを確認する
-func TestPostService_GetDraft_NotDraft(t *testing.T) {
-	postRepo := &mockPostRepository{
-		getByIDFunc: func(ctx context.Context, postID int64) (*model.Post, error) {
-			return &model.Post{ID: postID, GroupID: 12, UserID: 7, IsDraft: false}, nil
-		},
-	}
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	_, err := svc.GetDraft(context.Background(), 12, 890, 7)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound for non-draft, got %v", err)
+func TestPostService_GetDraft_ConfirmedOwnReport(t *testing.T) {
+	repo := &mockPostRepository{getByIDFunc: func(context.Context, int64) (*model.Post, error) {
+		return &model.Post{ID: 890, GroupID: 12, UserID: 7}, nil
+	}}
+	post, err := NewPostService(nil, nil, repo, nil, nil, nil).GetDraft(context.Background(), 12, 890, 7)
+	if err != nil || post.ID != 890 {
+		t.Fatalf("confirmed report must remain available for photo attachment: %+v %v", post, err)
 	}
 }
 
@@ -88,381 +85,54 @@ func TestPostService_ConfirmPost_Idempotent(t *testing.T) {
 	}
 }
 
-// TestPostService_ListPosts_Blurred は同じ通知回へ未投稿の場合に他メンバーの sensitive フィールドが nil で返ることを確認する
-func TestPostService_ListPosts_Blurred(t *testing.T) {
-	requestUserID := int64(1)
-	otherUserID := int64(2)
-	notificationID := int64(10)
-
-	body := "コードを書きました"
-	repo := "owner/repo"
-	msg := "Fix bug"
-
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{
-				{
-					ID:                  1,
-					NotificationID:      &notificationID,
-					UserID:              otherUserID,
-					GroupID:             1,
-					PostType:            "commit",
-					Body:                &body,
-					RepoFullName:        &repo,
-					LatestCommitMessage: &msg,
-					CommitCount:         3,
-					CreatedAt:           time.Now(),
-				},
-			}, nil
-		},
-	}
-	groupRepo := &mockGroupRepository{
-		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
-			return []model.GroupMember{
-				{UserID: otherUserID, Login: "other", AvatarURL: "https://example.com/2.png"},
-			}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, groupRepo, nil, nil)
-
-	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
+func TestPostService_ListPosts_ShowsConfirmedReportsWithoutOwnReport(t *testing.T) {
+	id := int64(10)
+	body := "作業しました"
+	repo := &mockPostRepository{listByGroupIDFunc: func(context.Context, int64) ([]model.Post, error) {
+		return []model.Post{
+			{ID: 1, NotificationID: &id, UserID: 2, GroupID: 3, Body: &body},
+			{ID: 2, NotificationID: &id, UserID: 4, GroupID: 3, IsDraft: true},
+			{ID: 3, NotificationID: &id, UserID: 5, GroupID: 4, Body: &body},
+		}, nil
+	}}
+	posts, err := NewPostService(nil, nil, repo, nil, nil, nil).ListPosts(context.Background(), 3, 1)
 	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
+		t.Fatal(err)
 	}
-	if len(posts) != 1 {
-		t.Fatalf("expected 1 post, got %d", len(posts))
-	}
-
-	// ぼかし制御: リクエストユーザーが未投稿の場合、他メンバーの sensitive フィールドは nil
-	post := posts[0]
-	if !post.Blurred {
-		t.Error("expected Blurred=true for other member's post when requester has not posted")
-	}
-	if post.Body != nil {
-		t.Errorf("expected Body=nil (blurred), got %v", post.Body)
-	}
-	if post.RepoFullName != nil {
-		t.Errorf("expected RepoFullName=nil (blurred), got %v", post.RepoFullName)
-	}
-	if post.LatestCommitMessage != nil {
-		t.Errorf("expected LatestCommitMessage=nil (blurred), got %v", post.LatestCommitMessage)
+	if len(posts) != 1 || posts[0].Body == nil || *posts[0].Body != body {
+		t.Fatalf("only confirmed group reports must be visible: %+v", posts)
 	}
 }
 
-// TestPostService_ListPosts_NotBlurred は同じ通知回へ投稿済みの場合に全フィールドが公開されることを確認する
-func TestPostService_ListPosts_NotBlurred(t *testing.T) {
-	requestUserID := int64(1)
-	otherUserID := int64(2)
-	notificationID := int64(10)
-
-	body := "コードを書きました"
-	repo := "owner/repo"
-	msg := "Fix bug"
-
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{
-				{
-					ID:                  1,
-					NotificationID:      &notificationID,
-					UserID:              otherUserID,
-					GroupID:             1,
-					PostType:            "commit",
-					Body:                &body,
-					RepoFullName:        &repo,
-					LatestCommitMessage: &msg,
-					CommitCount:         3,
-					CreatedAt:           time.Now(),
-				},
-				{
-					ID:             2,
-					NotificationID: &notificationID,
-					UserID:         requestUserID,
-					GroupID:        1,
-					PostType:       "memo",
-					CreatedAt:      time.Now(),
-				},
-			}, nil
-		},
-	}
-	groupRepo := &mockGroupRepository{
-		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
-			return []model.GroupMember{
-				{UserID: otherUserID, Login: "other", AvatarURL: "https://example.com/2.png"},
-			}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, groupRepo, nil, nil)
-
-	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-
-	post := posts[0]
-	if post.Blurred {
-		t.Error("expected Blurred=false for other member's post when requester has posted")
-	}
-	if post.Body == nil || *post.Body != "コードを書きました" {
-		t.Errorf("expected Body=コードを書きました (not blurred), got %v", post.Body)
+func TestPostService_CreatePhotoReport_UsesExistingGitHubPost(t *testing.T) {
+	id := int64(10)
+	existing := &model.Post{ID: 42, NotificationID: &id, UserID: 1, GroupID: 3}
+	repo := &mockPostRepository{getByUserAndNotifFunc: func(context.Context, int64, int64) (*model.Post, error) { return existing, nil }}
+	post, err := NewPostService(nil, nil, repo, nil, nil, nil).CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &id, PostType: "memo", ContentSource: "photo",
+	}, 3, 1)
+	if err != nil || post.ID != 42 {
+		t.Fatalf("expected existing report, got %+v, %v", post, err)
 	}
 }
 
-// TestPostService_ListPosts_OwnPost は自分自身の投稿がぼかされないことを確認する
-func TestPostService_ListPosts_OwnPost(t *testing.T) {
-	requestUserID := int64(1)
-
-	body := "自分のコード"
-	repo := "owner/repo"
-	msg := "My commit"
-
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{
-				{
-					ID:                  1,
-					UserID:              requestUserID, // 自分の投稿
-					GroupID:             1,
-					PostType:            "commit",
-					Body:                &body,
-					RepoFullName:        &repo,
-					LatestCommitMessage: &msg,
-					CreatedAt:           time.Now(),
-				},
-			}, nil
-		},
-	}
-	groupRepo := &mockGroupRepository{
-		getMembersFunc: func(ctx context.Context, groupID int64) ([]model.GroupMember, error) {
-			return []model.GroupMember{
-				{UserID: requestUserID, Login: "self", AvatarURL: "https://example.com/1.png"},
-			}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, groupRepo, nil, nil)
-
-	posts, err := svc.ListPosts(context.Background(), 1, requestUserID)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-
-	post := posts[0]
-	if post.Blurred {
-		t.Error("own post should never be blurred")
-	}
-	if post.Body == nil || *post.Body != "自分のコード" {
-		t.Errorf("expected own post Body to be visible, got %v", post.Body)
-	}
-}
-
-// TestPostService_ListPosts_PreNotificationPostStaysVisible は通知に紐づかない既存投稿を再ロックしないことを確認する。
-func TestPostService_ListPosts_PreNotificationPostStaysVisible(t *testing.T) {
-	body := "以前から表示されていた投稿"
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{{
-				ID:        1,
-				UserID:    2,
-				GroupID:   groupID,
-				PostType:  "memo",
-				Body:      &body,
-				CreatedAt: time.Now(),
-			}}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	posts, err := svc.ListPosts(context.Background(), 1, 1)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-	if len(posts) != 1 || posts[0].Blurred {
-		t.Fatalf("notification以前の投稿は表示されるべき: %+v", posts)
-	}
-	if posts[0].Body == nil || *posts[0].Body != body {
-		t.Errorf("expected historical post body to remain visible, got %v", posts[0].Body)
-	}
-}
-
-// TestPostService_ListPosts_MissedDoesNotUnlock は missed レコードでは同じ通知回を解除しないことを確認する。
-func TestPostService_ListPosts_MissedDoesNotUnlock(t *testing.T) {
-	notificationID := int64(10)
-	status := "missed"
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{
-				{
-					ID:             1,
-					NotificationID: &notificationID,
-					UserID:         2,
-					GroupID:        groupID,
-					PostType:       "commit",
-				},
-				{
-					ID:             2,
-					NotificationID: &notificationID,
-					UserID:         1,
-					GroupID:        groupID,
-					PostType:       "memo",
-					Status:         &status,
-				},
-			}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	posts, err := svc.ListPosts(context.Background(), 1, 1)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-	if len(posts) != 2 || !posts[0].Blurred {
-		t.Fatalf("missed post must not unlock notification: %+v", posts)
-	}
-}
-
-// TestPostService_ListPosts_NewerPostUnlocksPastNotifications は、新しい通知で自分が
-// 投稿すると、それ以前の通知でロックされていた投稿も表示されることを確認する。
-func TestPostService_ListPosts_NewerPostUnlocksPastNotifications(t *testing.T) {
-	previousNotificationID := int64(10)
-	currentNotificationID := int64(11)
-	body := "前回の投稿"
-
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{
-				{
-					ID:             1,
-					NotificationID: &previousNotificationID,
-					UserID:         2,
-					GroupID:        groupID,
-					PostType:       "memo",
-					Body:           &body,
-				},
-				{
-					ID:             2,
-					NotificationID: &currentNotificationID,
-					UserID:         1,
-					GroupID:        groupID,
-					PostType:       "memo",
-				},
-			}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	posts, err := svc.ListPosts(context.Background(), 1, 1)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-	if len(posts) != 2 || posts[0].Blurred {
-		t.Fatalf("newer self post should unlock previous notification posts: %+v", posts)
-	}
-	if posts[0].Body == nil || *posts[0].Body != body {
-		t.Errorf("expected previous post body to be visible, got %v", posts[0].Body)
-	}
-}
-
-// TestPostService_ListPosts_NewNotificationStaysLocked は、最後の自分の投稿より新しい
-// 通知に紐づく投稿は、自分がその通知で投稿するまで隠れることを確認する。
-func TestPostService_ListPosts_NewNotificationStaysLocked(t *testing.T) {
-	previousNotificationID := int64(10)
-	currentNotificationID := int64(11)
-
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			return []model.Post{
-				{
-					ID:             1,
-					NotificationID: &currentNotificationID,
-					UserID:         2,
-					GroupID:        groupID,
-					PostType:       "memo",
-				},
-				{
-					ID:             2,
-					NotificationID: &previousNotificationID,
-					UserID:         1,
-					GroupID:        groupID,
-					PostType:       "memo",
-				},
-			}, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	posts, err := svc.ListPosts(context.Background(), 1, 1)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-	if len(posts) != 2 || !posts[0].Blurred {
-		t.Fatalf("post from newer notification should remain locked: %+v", posts)
-	}
-}
-
-// TestPostService_ListPosts_PersistentResponseUnlocksAfterDeletion は、投稿本体が消えても
-// 達成記録が残っていれば、その通知以降の投稿を表示し続けることを確認する。
-func TestPostService_ListPosts_PersistentResponseUnlocksAfterDeletion(t *testing.T) {
-	notificationID := int64(10)
-	body := "削除済みの自分の投稿後にも表示される"
-
-	postRepo := &mockPostRepository{
-		listByGroupIDFunc: func(ctx context.Context, groupID int64) ([]model.Post, error) {
-			// 自分の posts レコードは削除済みで、他メンバーの投稿だけが残っている状態。
-			return []model.Post{{
-				ID:             1,
-				NotificationID: &notificationID,
-				UserID:         2,
-				GroupID:        groupID,
-				PostType:       "memo",
-				Body:           &body,
-			}}, nil
-		},
-		latestResponseFunc: func(ctx context.Context, userID, groupID int64) (int64, error) {
-			return notificationID, nil
-		},
-	}
-
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	posts, err := svc.ListPosts(context.Background(), 1, 1)
-	if err != nil {
-		t.Fatalf("ListPosts() failed: %v", err)
-	}
-	if len(posts) != 1 || posts[0].Blurred {
-		t.Fatalf("persistent response should keep post visible after deletion: %+v", posts)
-	}
-	if posts[0].Body == nil || *posts[0].Body != body {
-		t.Errorf("expected post body to remain visible, got %v", posts[0].Body)
-	}
-}
-
-func TestPostService_CreatePost_RecordsNotificationResponse(t *testing.T) {
-	notificationID := int64(10)
-	recorded := false
-	postRepo := &mockPostRepository{
-		createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
-			post.ID = 1
+func TestPostService_CreatePhotoReport_RemainsDraftUntilUpload(t *testing.T) {
+	id := int64(10)
+	repo := &mockPostRepository{
+		getByUserAndNotifFunc: func(context.Context, int64, int64) (*model.Post, error) { return nil, repository.ErrNotFound },
+		createDraftFunc: func(_ context.Context, post *model.Post) (*model.Post, error) {
+			if !post.IsDraft {
+				t.Fatal("photo report must start as draft")
+			}
+			post.ID = 42
 			return post, nil
 		},
-		recordResponseFunc: func(ctx context.Context, notifID, userID, groupID int64) error {
-			recorded = notifID == notificationID && userID == 1 && groupID == 1
-			return nil
-		},
 	}
-	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
-	body := "進捗を共有しました"
-	if _, err := svc.CreatePost(context.Background(), CreatePostRequest{
-		NotificationID: &notificationID,
-		PostType:       "memo",
-		ContentSource:  "manual",
-		Body:           &body,
-	}, 1, 1); err != nil {
-		t.Fatalf("CreatePost() failed: %v", err)
-	}
-	if !recorded {
-		t.Error("expected notification response to be recorded")
+	post, err := NewPostService(nil, nil, repo, nil, nil, nil).CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &id, PostType: "memo", ContentSource: "photo",
+	}, 3, 1)
+	if err != nil || post.ID != 42 || !post.IsDraft {
+		t.Fatalf("expected photo draft, got %+v, %v", post, err)
 	}
 }
 
@@ -632,5 +302,36 @@ func TestPostService_CreatePost_ManualSkipsGitHub(t *testing.T) {
 	}
 	if created.Body == nil || *created.Body != body || created.LatestCommitMessage != nil {
 		t.Fatalf("unexpected post: %+v", created)
+	}
+}
+
+func TestPostService_ConfirmPost_RejectsPhotoDraftWithoutUpload(t *testing.T) {
+	id := int64(9)
+	repo := &mockPostRepository{getByIDFunc: func(context.Context, int64) (*model.Post, error) {
+		return &model.Post{ID: 42, GroupID: 3, UserID: 1, NotificationID: &id, PostType: "memo", IsDraft: true}, nil
+	}}
+	_, err := NewPostService(nil, nil, repo, nil, nil, nil).ConfirmPost(context.Background(), ConfirmPostRequest{}, 3, 42, 1)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("photo draft confirmed without upload: %v", err)
+	}
+}
+
+func TestPostService_PhotoReportAcceptedLateWithinSprint(t *testing.T) {
+	id := int64(9)
+	notif := &mockNotificationRepository{getByIDFunc: func(context.Context, int64) (*model.Notification, error) {
+		return &model.Notification{ID: id, SprintID: 7, SentAt: time.Now().Add(-2 * time.Hour)}, nil
+	}}
+	sprint := &mockSprintRepository{getByIDFunc: func(context.Context, int64) (*model.Sprint, error) {
+		return &model.Sprint{ID: 7, GroupID: 3, EndsAt: time.Now().Add(time.Hour)}, nil
+	}}
+	repo := &mockPostRepository{createDraftFunc: func(_ context.Context, post *model.Post) (*model.Post, error) {
+		post.ID = 42
+		return post, nil
+	}}
+	post, err := NewPostService(nil, sprint, repo, nil, nil, nil, notif).CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &id, PostType: "memo", ContentSource: "photo",
+	}, 3, 1)
+	if err != nil || !post.IsDraft {
+		t.Fatalf("late photo report must be uploadable: %+v %v", post, err)
 	}
 }

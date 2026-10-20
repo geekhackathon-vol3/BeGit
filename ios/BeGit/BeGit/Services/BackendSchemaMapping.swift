@@ -140,7 +140,6 @@ extension Components.Schemas.Handler_PostFeedJSON {
            return RepositoryActivity(
                backendPostID: id.map(Int64.init),
                notificationID: notificationId.map(Int64.init),
-               isLocked: isLocked ?? false,
                type: typeOverride ?? activityType,
                title: activityTitle(fallbackRepository: fallbackRepository),
                comment: {

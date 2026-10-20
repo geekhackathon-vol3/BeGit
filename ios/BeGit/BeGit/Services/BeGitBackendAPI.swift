@@ -624,7 +624,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
         }
     }
 
-    // GET /groups/{id}/posts/{postId}/draft : ② Nice Work! の下書きを取得（確定済みなら 404）
+    // GET /groups/{id}/posts/{postId}/draft : 写真添付用に本人の報告を取得する
     func getDraftPost(repositoryID: Int64, postID: Int64, accessToken: String) async throws -> DraftPost {
         let output = try await makeClient(accessToken: accessToken).getGroupsIdPostsPostIdDraft(
             path: .init(id: Int(repositoryID), postId: Int(postID))

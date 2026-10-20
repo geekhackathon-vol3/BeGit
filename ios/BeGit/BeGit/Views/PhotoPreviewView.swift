@@ -158,7 +158,9 @@ struct PhotoPreviewView: View {
     }
 
     private var postControls: some View {
-        postTypePicker
+        Group {
+            if viewModel.contentSource != .photo && viewModel.draftPostID == nil { postTypePicker }
+        }
             .padding(.horizontal, 30)
     }
 
@@ -256,7 +258,7 @@ struct PhotoPreviewView: View {
     }
 
     private var shouldShowCommentSection: Bool {
-        if viewModel.selectedType == .memo || viewModel.contentSource == .manual {
+        if viewModel.selectedType == .memo || viewModel.contentSource == .manual || viewModel.contentSource == .photo {
             return true
         }
         return viewModel.selectedGitHubActivityTitle != nil

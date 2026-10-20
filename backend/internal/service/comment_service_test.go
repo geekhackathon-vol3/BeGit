@@ -179,3 +179,13 @@ func TestComment_FCMFailure_DoesNotFail(t *testing.T) {
 		t.Fatalf("CreateComment() should succeed even if FCM fails, got: %v", err)
 	}
 }
+
+func TestComment_DraftNotAccessible(t *testing.T) {
+	posts := &mockPostRepository{getByIDFunc: func(context.Context, int64) (*model.Post, error) {
+		return &model.Post{ID: 1, GroupID: 12, IsDraft: true}, nil
+	}}
+	_, err := NewCommentService(&mockCommentRepository{}, posts).ListComments(context.Background(), 12, 1)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("draft comments must be hidden: %v", err)
+	}
+}

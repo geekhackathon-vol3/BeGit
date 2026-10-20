@@ -156,12 +156,12 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 		statusStr = "late"
 	}
 
-	// Step 6: draft INSERT を UNIQUE(notification_id,user_id) で先取り。
+	// GitHub 活動の検知時点で報告を確定する。写真は後から添付できる。
 	// 違反＝既発火 → 再発火しない（冪等 skip、Req2.6）。
 	repoFullName := detected.RepoFullName
 	branchName := detected.BranchName
 	latestMsg := detected.LatestCommitMessage
-	draft := &model.Post{
+	post := &model.Post{
 		NotificationID:      &anchor.ID,
 		UserID:              user.ID,
 		GroupID:             groupID,
@@ -173,14 +173,31 @@ func (s *niceWorkService) HandleActivity(ctx context.Context, groupID int64, sen
 		Deletions:           detected.Deletions,
 		LatestCommitMessage: strOrNil(latestMsg),
 		Status:              &statusStr,
+		CreatedAt:           detectionTime,
 	}
-	created, err := s.postRepo.CreateDraft(ctx, draft)
+	created, err := s.postRepo.CreateDraft(ctx, post)
 	if err != nil {
 		if errors.Is(err, repository.ErrConstraintViolation) {
-			// 既に当該チャレンジで発火済み → no-op
-			return nil
+			existing, lookupErr := s.postRepo.GetByUserAndNotification(ctx, user.ID, anchor.ID)
+			if lookupErr != nil {
+				return fmt.Errorf("nicework_service: existing report lookup failed: %w", lookupErr)
+			}
+			if !existing.IsDraft {
+				return nil
+			}
+			promoter, ok := s.postRepo.(interface {
+				PromotePhotoDraft(context.Context, *model.Post) (*model.Post, error)
+			})
+			if !ok {
+				return fmt.Errorf("nicework_service: photo draft promotion unsupported")
+			}
+			created, err = promoter.PromotePhotoDraft(ctx, post)
+			if err != nil {
+				return fmt.Errorf("nicework_service: promote photo draft failed: %w", err)
+			}
+		} else {
+			return fmt.Errorf("nicework_service: CreateDraft failed: %w", err)
 		}
-		return fmt.Errorf("nicework_service: CreateDraft failed: %w", err)
 	}
 
 	// Step 7: 本人のみへ nice_work data 送信（グループ全体へは送らない、Req2.8）。ベストエフォート。

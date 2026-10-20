@@ -207,3 +207,13 @@ func TestReactionService_AddReaction_PostNotFound(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestReaction_DraftNotAccessible(t *testing.T) {
+	posts := &mockPostRepository{getByIDFunc: func(context.Context, int64) (*model.Post, error) {
+		return &model.Post{ID: 1, GroupID: 12, IsDraft: true}, nil
+	}}
+	_, err := NewReactionService(&mockReactionRepository{}, posts).ListReactions(context.Background(), 12, 1)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("draft reactions must be hidden: %v", err)
+	}
+}

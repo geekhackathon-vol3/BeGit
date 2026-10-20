@@ -15,7 +15,7 @@ struct ActiveChallenge: Hashable, Sendable {
     //  自分（ログインユーザー）のこのチャレンジへの投稿
     struct MyPost: Hashable, Sendable {
         let postID: Int64
-        let isDraft: Bool       //  true = ② Nice Work! の下書き（撮影して確定する対象）
+        let isDraft: Bool       //  true = 写真アップロード待ちの報告
         let status: String?     //  "on_time" | "late"
     }
 
@@ -27,8 +27,4 @@ struct ActiveChallenge: Hashable, Sendable {
     let canEnd: Bool            //  自分が発行者で途中終了できるか
     let myPost: MyPost?
 
-    //  自分の Nice Work! 下書きがあり、アプリ内から撮影に進めるか
-    var hasDraftToCapture: Bool {
-        myPost?.isDraft == true
-    }
 }

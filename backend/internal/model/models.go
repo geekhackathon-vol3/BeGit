@@ -131,13 +131,12 @@ type Post struct {
 	CreatedAt time.Time
 }
 
-// PostFeed はフィード表示用の投稿（ぼかし制御フラグ付き）
+// PostFeed はフィード表示用の確定済み投稿。
 type PostFeed struct {
 	Post
 	Login     string
 	AvatarURL string
-	Blurred   bool
-	// Photos は投稿に紐づく写真（presigned URL 付き）。ぼかし対象では空にする。
+	// Photos は投稿に紐づく写真（presigned URL 付き）。
 	Photos []FeedPhoto
 }
 

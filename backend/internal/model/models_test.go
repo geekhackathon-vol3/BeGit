@@ -140,13 +140,10 @@ func TestPostFeedModel(t *testing.T) {
 		},
 		Login:     "testuser",
 		AvatarURL: "https://example.com/avatar.png",
-		Blurred:   false,
 	}
 
 	if pf.Login != "testuser" {
 		t.Errorf("expected Login=testuser, got %s", pf.Login)
 	}
-	if pf.Blurred {
-		t.Error("expected Blurred=false")
-	}
+
 }

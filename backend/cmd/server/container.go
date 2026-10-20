@@ -127,7 +127,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client, notifRepo)
 
-	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo)
+	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo, notifRepo)
 
 	// ② Nice Work! 発火サービス（webhook_service から委譲される）
 	niceWorkSvc := service.NewNiceWorkServiceWithPublisher(userRepo, groupRepo, sprintRepo, notifRepo, postRepo, fcmTokenRepo, fcmClient, externalPublisher)

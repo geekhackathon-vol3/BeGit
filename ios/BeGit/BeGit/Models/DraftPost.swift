@@ -1,5 +1,5 @@
 //  DraftPost.swift
-//  ② Nice Work! でサーバーが作成した下書き投稿（撮影後に写真を付けて確定する対象）
+//  写真添付の対象となる本人の報告（確定済みも含む）
 
 import Foundation
 

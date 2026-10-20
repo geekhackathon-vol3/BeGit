@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/irj0927/begit/internal/repository"
 )
@@ -147,6 +148,12 @@ func senderLoginFromPayload(payload map[string]interface{}) string {
 // detectedActivity は ② の draft プレフィル用にペイロードから検知データを抽出する
 func detectedActivity(eventType, repoFullName string, payload map[string]interface{}) ActivityData {
 	data := ActivityData{RepoFullName: repoFullName}
+	// issue / review はイベント時刻を使う。push はコミット時刻を push 時刻として扱わない。
+	readTime := func(raw interface{}) time.Time {
+		value, _ := raw.(string)
+		parsed, _ := time.Parse(time.RFC3339, value)
+		return parsed
+	}
 
 	if eventType == "push" {
 		// ref（refs/heads/main）から branch_name を抽出
@@ -166,6 +173,16 @@ func detectedActivity(eventType, repoFullName string, payload map[string]interfa
 					}
 				}
 			}
+		}
+	}
+	if eventType == "issues" {
+		if issue, ok := payload["issue"].(map[string]interface{}); ok {
+			data.DetectionTime = readTime(issue["created_at"])
+		}
+	}
+	if eventType == "pull_request_review" {
+		if review, ok := payload["review"].(map[string]interface{}); ok {
+			data.DetectionTime = readTime(review["submitted_at"])
 		}
 	}
 

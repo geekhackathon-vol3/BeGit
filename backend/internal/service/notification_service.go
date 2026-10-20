@@ -400,7 +400,7 @@ func computeMemberStatuses(
 			} else {
 				return nil, fmt.Errorf("GetByUserAndNotification for user %d failed: %w", member.UserID, err)
 			}
-		} else if post == nil {
+		} else if post == nil || post.IsDraft {
 			status = "Missed"
 		} else if post.Status != nil && *post.Status == "missed" {
 			status = "Missed"

@@ -155,3 +155,17 @@ func TestWebhook_GroupNotFound_NoDelegation(t *testing.T) {
 
 // Ensure errors package is used
 var _ = errors.New
+
+func TestDetectedActivity_PushIgnoresCommitTimestamps(t *testing.T) {
+	timestamp := "2026-10-17T08:15:30Z"
+	data := detectedActivity("push", "owner/repo", map[string]interface{}{
+		"commits":     []interface{}{map[string]interface{}{"timestamp": timestamp, "message": "work"}},
+		"head_commit": map[string]interface{}{"timestamp": timestamp},
+	})
+	if !data.DetectionTime.IsZero() {
+		t.Fatalf("push detection time should be unset, got %v", data.DetectionTime)
+	}
+	if data.CommitCount != 1 || data.LatestCommitMessage != "work" {
+		t.Fatalf("push commit data was lost: %+v", data)
+	}
+}

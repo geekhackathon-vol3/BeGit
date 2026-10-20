@@ -24,7 +24,7 @@ iOS が通知を受け取ったら `type` で分岐し、所定の画面へ遷�
 |---|---|---|---|---|
 | ① | BeGit Time! | `begit_time` | 自分がメンバーのグループで誰かが発行 | チャレンジ中 → 投稿作成 UI（後述§3） |
 | ①a | 残り時間リマインド | `challenge_reminder` | 残り30分/10分時点の未投稿者のみ | 投稿作成 UI（後述§3） |
-| ② | Nice Work! | `nice_work` | **自分が**コミット/issue/review した時 | 写真撮影 → 下書きプレフィル → 投稿確定（§4） |
+| ② | Nice Work! | `nice_work` | **自分が**コミット/issue/review した時 | 報告は確定済み。写真は後から添付できる（§4） |
 | ③ | チャレンジ終了 | `challenge_end` | グループ全員 | チャレンジ結果画面へ |
 | ④ | スプリント終了3日前 | `sprint_reminder` | グループ全員 | スプリント概要画面へ |
 | ⑤ | スプリント終了 | `sprint_end` | グループ全員 | スプリント結果画面へ |
@@ -92,26 +92,25 @@ iOS が通知を受け取ったら `type` で分岐し、所定の画面へ遷�
 
 ## 3. ① BeGit Time! タップ時の導線（iOS 実装）
 
-- チャレンジ中（発行から1h以内）に通知をタップしたら、**投稿作成 UI** を開く。
-- コミット等ができない人向けに、**memo（進捗メッセージ）タイプの投稿** をこの UI から作成できるようにする。
-  - 「今は作業できないけど近況だけ共有」というユースケース。
-  - post_type は `memo`。写真は任意（無くても投稿成立）。
+- BeGit Time! 通知をタップすると撮影画面を開く。GitHub活動がなくても写真だけで報告できる。
+- 写真報告の `post_type` は `memo`、`content_source` は `photo`。本文は任意で、写真アップロード成功時に報告が確定する。
+- 発行から1時間以内は On Time、以降スプリント終了までは Late として扱う。
 
 ---
 
 ## 4. ② Nice Work! タップ時の導線（iOS 実装の中心）
 
-バックエンドが GitHub アクティビティ（commit/issue/review）を検知すると、**下書き（draft）post** をサーバー側に作成し、`draft_post_id` を載せて Nice Work! を Push する。
+バックエンドが GitHub アクティビティ（commit/issue/review）を検知すると、その時点で報告を確定し、`post_id` を載せて Nice Work! を Push する。既存クライアント向けの `draft_post_id` にも同じ ID を残す。
 
 iOS のフロー：
 
 1. `nice_work` 通知をタップ → アプリ起動。
-2. `draft_post_id` の下書きを取得（commit 数・変更行数・repo・branch・最新コミットメッセージ等がプレフィル済み）。
+2. `post_id`（旧クライアントは `draft_post_id`）の報告を取得する。
 3. **写真撮影**画面へ（BeReal 型）。
-4. 撮影した写真 + プレフィル内容で **投稿を確定**（draft 解除）。
+4. 撮影した写真を既存の報告に添付する。写真は任意で、撮影前からフィードに表示される。
 5. `status`（`on_time` / `late`）に応じてバッジ表示（On Time / Late）。
 
-> 下書きの取得・確定 API の正確な形は OpenAPI を参照。draft は「写真の有無」ではなく明示的な状態で管理されているので、写真なし＝下書きという前提で UI を組まないこと。
+写真だけの報告は `content_source=photo` で下書きを作り、写真アップロード成功時に確定する。アップロード失敗時は下書きを残し、同じ報告 ID で再試行できる。
 
 ---
 
@@ -149,9 +148,9 @@ Push をタップしなくても「今チャレンジ中かどうか」「自分
 
 | `my_post` | 状態 | 表示 / 遷移 |
 |---|---|---|
-| 省略 | まだ何もしていない | 「投稿する」→ 投稿作成（memo 可、§3 と同じ） |
-| `is_draft: true` | ② Nice Work! の下書きがある（GitHub 活動を検知済み） | 「撮影して投稿」→ 既存の deep-link ルート `.notificationNiceWorkDraft(groupId:, draftPostId: my_post.post_id, status: my_post.status)` と同じ画面（Push タップと同じフロー、§4） |
-| `is_draft: false` | 投稿済み | 「投稿済み（On Time / Late）」バッジ。`status` は `on_time` / `late` |
+| 省略 | まだ何もしていない | 「写真で報告する」→ 撮影画面。GitHub活動でも自動確定する |
+| `is_draft: true` | 写真アップロード待ち | 「写真で報告を完了」→ 同じ報告へ写真をアップロードして確定 |
+| `is_draft: false` | 投稿済み | 「投稿済み（On Time / Late）」バッジ。写真がまだなければ後から添付できる |
 
 進行中バナーが出ている間、`MakeNotificationView` の送信ボタンは無効化してよい（送ってから 409 を待つ必要がない）。
 
@@ -191,8 +190,8 @@ Push をタップしなくても「今チャレンジ中かどうか」「自分
 | リポジトリ画面を開く | `GET /groups/:id` | `active_challenge` があれば進行中バナー（§4.5.1）。`my_post.is_draft` でカメラ導線 |
 | チャレンジを途中で終了する（発行者） | `POST /groups/:id/notifications/:nid/end` | `can_end: true` のときだけ。終了後は即再発行可（§4.5.2） |
 | チャレンジ結果を見る | `GET /groups/:id/notifications/:nid` | On Time/Late/Missed の各メンバー状況 |
-| Nice Work! 後に投稿確定 | 下書き取得 → 投稿確定（OpenAPI 参照） | `draft_post_id` を使用 |
-| memo 投稿 | 投稿作成 API（post_type=`memo`） | §3 |
+| Nice Work! 後に写真を添付 | 本人の報告取得 → 写真アップロード | `post_id`。旧 `draft_post_id` も同じ ID |
+| 写真だけで報告 | `POST /groups/:id/posts` → 写真アップロード | `post_type=memo`, `content_source=photo`。成功時に確定 |
 
 ---
 
@@ -200,13 +199,13 @@ Push をタップしなくても「今チャレンジ中かどうか」「自分
 
 - [x] `AppDelegate` で `type` 別の画面遷移を実装（§1・§2）※遷移先は #55 ではスタブ、中身は #56/#57
 - [x] FCM data ペイロードのパース（文字列→Int 変換含む）
-- [ ] ① memo タイプ投稿 UI
-- [ ] ② Nice Work! → 下書き取得 → 撮影 → 確定フロー
+- [x] ① 写真だけの報告 UI
+- [x] ② Nice Work! → 報告取得 → 撮影 → 写真添付フロー
 - [ ] On Time / Late バッジ表示
 - [ ] `POST /groups/:id/notifications` の 409（進行中チャレンジ）ハンドリング
 - [x] `GET /groups/:id` の `active_challenge` → 進行中バナー（残り時間・発行者）と送信ボタン無効化（§4.5.1）※ `ActiveChallengeBannerView` / `RepositoryDashboardViewModel` / `MakeNotificationViewModel`
 - [x] `can_end: true` のとき「終了する」→ `POST …/notifications/:nid/end` → グループ再取得（§4.5.2）
-- [x] `my_post.is_draft: true` のとき、アプリ内から `.notificationNiceWorkDraft` へ遷移する「撮影して投稿」導線（§4.5.1）
+- [x] `my_post.is_draft: true` のとき、アプリ内から同じ報告へ写真をアップロードして確定する導線（§4.5.1）
 - [ ] ⑦ リアクション/コメント通知 → 投稿詳細遷移
 
 ---
