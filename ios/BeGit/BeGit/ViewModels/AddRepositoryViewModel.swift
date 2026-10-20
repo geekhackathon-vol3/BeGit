@@ -35,6 +35,7 @@ final class AddRepositoryViewModel: ObservableObject {
 
     private let accessToken: String?
     private var installationID: Int64?
+    private var memberLoadTask: Task<Void, Never>?                              // 選択Repositoryのmember取得
     private let existingRepositoryNames: Set<String>
     private let backendRepositoryAPI: any RepositoryAPI                         // BeGit Repository関連API
     private let githubRepositoryAPI: any GitHubRepositoryAPI                    // GitHub Repository一覧API
@@ -247,14 +248,16 @@ final class AddRepositoryViewModel: ObservableObject {
         }
 
         errorMessage = nil
-
         selectedRepository = repository
+        cancelMemberLoad()
         if repository.isReadOnly {
             members = []
             repositoryMemberCandidates = []
             memberListErrorMessage = nil
         } else {
-            await loadRepositoryMembers(repoFullName: repository.fullName)
+            let task = Task { await loadRepositoryMembers(repoFullName: repository.fullName) }
+            memberLoadTask = task
+            await task.value
         }
     }
 
@@ -394,6 +397,9 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  選択RepositoryのGitHub collaboratorを取得
     private func loadRepositoryMembers(repoFullName: String) async {
+        //  開始前に選択が変わっていたら、何も書き換えない
+        guard !Task.isCancelled else { return }
+
         //  発表用デモリポジトリはモックメンバーを直接返す
         if repoFullName == Self.presentationRepo.fullName {
             let demoMembers = Self.presentationMembers
@@ -413,7 +419,8 @@ final class AddRepositoryViewModel: ObservableObject {
         memberListErrorMessage = nil
         members = []
         repositoryMemberCandidates = []
-        defer { isLoadingMembers = false }
+        //  キャンセル済みなら、loading表示は次の選択側に任せる
+        defer { if !Task.isCancelled { isLoadingMembers = false } }
 
         do {
             let repositoryMembers = try await githubRepositoryAPI.listRepositoryMembers(
@@ -421,17 +428,25 @@ final class AddRepositoryViewModel: ObservableObject {
                 accessToken: accessToken
             )
             //  取得中に選択が変わっていたら、古いRepositoryの結果は捨てる
-            guard selectedRepository?.fullName == repoFullName else { return }
+            guard !Task.isCancelled else { return }
             members = repositoryMembers
             repositoryMemberCandidates = repositoryMembers
         } catch {
-            guard selectedRepository?.fullName == repoFullName else { return }
+            guard !Task.isCancelled else { return }
             memberListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
+    //  取得中のmember一覧を止める
+    private func cancelMemberLoad() {
+        memberLoadTask?.cancel()
+        memberLoadTask = nil
+        isLoadingMembers = false
+    }
+
     //  Repository選択と、それに紐づくmember状態をリセット
     private func clearSelection() {
+        cancelMemberLoad()
         selectedRepository = nil
         members = []
         repositoryMemberCandidates = []
