@@ -31,6 +31,8 @@ interface Env {
   DEV_MODE: string;
   // "true" で BeGit Time! の「1スプリント1人1回」を解除する（[vars] / [env.dev.vars]）。未設定は制限あり。
   BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT: string;
+  // "true" で D1 呼び出しを計測し X-D1-* ヘッダーで返す（#126 Before 計測用。[env.loadtest.vars] のみ）。
+  D1_METRICS: string;
   // 内部 Cron 起動シークレット。dev は [env.dev.vars] の var、本番は secret 運用。
   // scheduled() が X-Cron-Secret ヘッダーで Go コンテナへ転送し、cron_handler が定数時間比較する。
   CRON_SECRET: string;
@@ -78,6 +80,7 @@ function internalHeaders(env: Env): Record<string, string> {
     'X-Internal-Notification-Queue-Secret': env.NOTIFICATION_QUEUE_SECRET ?? '',
     'X-Internal-Dev-Mode': env.DEV_MODE ?? '',
     'X-Internal-Begit-Time-Allow-Multiple-Per-Sprint': env.BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT ?? '',
+    'X-Internal-D1-Metrics': env.D1_METRICS ?? '',
   };
 }
 

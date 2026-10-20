@@ -29,6 +29,10 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// pkg 層の初期化
 	d1Client := d1.NewClient(cfg.CFAccountID, cfg.D1DatabaseID, cfg.CFAPIToken)
+	if cfg.D1Metrics {
+		d1Client = d1.NewMetricsClient(cfg.CFAccountID, cfg.D1DatabaseID, cfg.CFAPIToken)
+		log.Printf("D1_METRICS enabled: D1 calls are reported via X-D1-* headers and GET /internal/d1-metrics")
+	}
 
 	encryptor, err := crypto.NewEncryptor(cfg.DBEncryptionKey)
 	if err != nil {
@@ -209,6 +213,11 @@ func (s *server) buildHandler() (http.Handler, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// D1 呼び出しの計測（D1_METRICS=true のときだけ。#126 Before 計測用）
+	if cfg.D1Metrics {
+		r.Use(handler.D1Metrics())
+		r.GET("/internal/d1-metrics", handler.D1MetricsTotals)
+	}
 	// パスは一致するがメソッドが異なる場合は 404 ではなく 405 を返す（従来挙動を維持）
 	r.HandleMethodNotAllowed = true
 	r.NoMethod(func(c *gin.Context) {

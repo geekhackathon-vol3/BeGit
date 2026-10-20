@@ -143,3 +143,18 @@ func TestRequestMetricsConcurrent(t *testing.T) {
 		t.Errorf("Queries = %d, want 20", got)
 	}
 }
+
+// TestNewMetricsClient は計測付きクライアントが計測用 Transport と既存と同じタイムアウトを使うことを確認する
+func TestNewMetricsClient(t *testing.T) {
+	c, ok := NewMetricsClient("acc", "db", "token").(*d1Client)
+	if !ok {
+		t.Fatal("NewMetricsClient should return *d1Client")
+	}
+	if _, ok := c.httpClient.Transport.(*metricsTransport); !ok {
+		t.Errorf("Transport = %T, want *metricsTransport", c.httpClient.Transport)
+	}
+	plain := NewClient("acc", "db", "token").(*d1Client)
+	if c.httpClient.Timeout != plain.httpClient.Timeout {
+		t.Errorf("Timeout = %v, want %v (same as NewClient)", c.httpClient.Timeout, plain.httpClient.Timeout)
+	}
+}

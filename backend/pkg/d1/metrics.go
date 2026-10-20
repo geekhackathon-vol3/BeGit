@@ -87,6 +87,14 @@ func NewMetricsTransport(base http.RoundTripper) http.RoundTripper {
 	return &metricsTransport{base: base}
 }
 
+// NewMetricsClient は計測付きの D1 REST API クライアントを作成する。
+// 計測用 Transport を挟む以外は NewClient と同じ設定にする
+func NewMetricsClient(accountID, databaseID, apiToken string) Client {
+	c := NewClient(accountID, databaseID, apiToken).(*d1Client)
+	c.httpClient.Transport = NewMetricsTransport(nil)
+	return c
+}
+
 func (t *metricsTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	start := time.Now()
 	resp, err := t.base.RoundTrip(req)

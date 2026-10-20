@@ -54,6 +54,10 @@ type Config struct {
 	// DevMode が true のとき dev 認証バイパス（POST /auth/dev）と
 	// スタブ GitHub クライアントを有効化する。本番では未設定＝false。
 	DevMode bool
+
+	// D1Metrics が true のとき D1 呼び出しを計測し、X-D1-* ヘッダーと
+	// GET /internal/d1-metrics で返す（#126 Before 計測用。env.loadtest でのみ有効）。
+	D1Metrics bool
 }
 
 // loadConfig は環境変数から Config を読み込む
@@ -79,6 +83,7 @@ func loadConfig() (*Config, error) {
 		NotificationQueueSecret:         os.Getenv("NOTIFICATION_QUEUE_SECRET"),
 		DevMode:                         os.Getenv("DEV_MODE") == "true",
 		BeGitTimeAllowMultiplePerSprint: os.Getenv("BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT") == "true",
+		D1Metrics:                       os.Getenv("D1_METRICS") == "true",
 	}
 
 	// 必須環境変数の検証
@@ -177,6 +182,9 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 	if v := r.Header.Get("X-Internal-Begit-Time-Allow-Multiple-Per-Sprint"); v != "" {
 		cfg.BeGitTimeAllowMultiplePerSprint = v == "true"
 	}
+	if v := r.Header.Get("X-Internal-D1-Metrics"); v != "" {
+		cfg.D1Metrics = v == "true"
+	}
 }
 
 // internalConfigHeaders は configFromHeaders が読む X-Internal-* ヘッダー名の一覧。
@@ -203,6 +211,7 @@ var internalConfigHeaders = []string{
 	"X-Internal-Notification-Queue-Secret",
 	"X-Internal-Dev-Mode",
 	"X-Internal-Begit-Time-Allow-Multiple-Per-Sprint",
+	"X-Internal-D1-Metrics",
 }
 
 // configFingerprint は X-Internal-* ヘッダーの内容から設定の同一性を表すハッシュを返す。
