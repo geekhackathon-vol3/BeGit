@@ -80,6 +80,15 @@ func scanGroup(row map[string]interface{}) (*model.Group, error) {
 			group.OwnerClaimedAt = &claimedAt
 		}
 	}
+	if v, ok := row["completed_at"].(string); ok && v != "" {
+		completedAt, err := time.Parse(time.RFC3339, v)
+		if err != nil {
+			completedAt, err = time.Parse("2006-01-02 15:04:05", v)
+		}
+		if err == nil {
+			group.CompletedAt = &completedAt
+		}
+	}
 	if v, ok := row["member_count"].(float64); ok {
 		group.MemberCount = int(v)
 	}
@@ -125,7 +134,7 @@ func scanGroupMember(row map[string]interface{}) model.GroupMember {
 func (r *groupRepository) ListByUserID(ctx context.Context, userID int64) ([]model.Group, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT g.id, g.repo_full_name, g.name, g.avatar_url, g.read_only, g.owner_user_id,
-		        g.owner_verified, g.owner_claimed_at,
+		        g.owner_verified, g.owner_claimed_at, g.completed_at,
 		        (SELECT COUNT(*) FROM group_members all_gm WHERE all_gm.group_id = g.id) AS member_count,
 		        g.sprint_duration_days, g.created_at
 		 FROM groups g
@@ -172,7 +181,7 @@ func (r *groupRepository) Create(ctx context.Context, input *GroupCreateInput) (
 func (r *groupRepository) GetByID(ctx context.Context, groupID int64) (*model.Group, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id,
-		        owner_verified, owner_claimed_at, sprint_duration_days, created_at
+		        owner_verified, owner_claimed_at, completed_at, sprint_duration_days, created_at
 		 FROM groups WHERE id = ? LIMIT 1`,
 		[]interface{}{groupID},
 	)
@@ -190,7 +199,7 @@ func (r *groupRepository) GetByID(ctx context.Context, groupID int64) (*model.Gr
 func (r *groupRepository) GetByRepoFullName(ctx context.Context, repoFullName string) (*model.Group, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT id, repo_full_name, name, avatar_url, read_only, owner_user_id,
-		        owner_verified, owner_claimed_at, sprint_duration_days, created_at
+		        owner_verified, owner_claimed_at, completed_at, sprint_duration_days, created_at
 		 FROM groups WHERE repo_full_name = ? LIMIT 1`,
 		[]interface{}{repoFullName},
 	)

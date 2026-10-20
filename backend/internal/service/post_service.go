@@ -85,6 +85,15 @@ func NewPostService(
 
 // CreatePost は投稿種別に対応する GitHub 情報を取得して posts テーブルに INSERT する。
 func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, groupID, userID int64) (*model.Post, error) {
+	if s.groupRepo != nil && req.NotificationID != nil {
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if group.CompletedAt != nil {
+			return nil, ErrConflict
+		}
+	}
 	postType := req.PostType
 	if postType == "" {
 		postType = "commit"
@@ -106,6 +115,9 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	}
 	if contentSource == "manual" && (req.Body == nil || strings.TrimSpace(*req.Body) == "") {
 		return nil, fmt.Errorf("%w: comment body is required for manual posts", ErrValidation)
+	}
+	if req.NotificationID != nil && contentSource == "manual" {
+		return nil, fmt.Errorf("%w: BeGit Time reports require GitHub activity or a photo", ErrValidation)
 	}
 	if req.NotificationID != nil && s.notifRepo != nil {
 		if err := s.validateNotificationPost(ctx, groupID, *req.NotificationID, contentSource == "photo"); err != nil {

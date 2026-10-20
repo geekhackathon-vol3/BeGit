@@ -95,6 +95,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	notificationChannelRepo := repository.NewNotificationChannelRepository(d1Client)
 	notificationDeliveryJobRepo := repository.NewNotificationDeliveryJobRepository(d1Client)
 	beGitTimeScheduleRepo := repository.NewBeGitTimeScheduleRepository(d1Client)
+	pointsRepo := repository.NewPointsRepository(d1Client)
 
 	externalSender := externalnotify.NewClient()
 	queueClient := notificationqueue.NewClient(cfg.AppBaseURL, cfg.NotificationQueueSecret)
@@ -143,6 +144,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// ③④⑤⑥ Cron サービス
 	cronSvc := service.NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient, externalPublisher, beGitTimeScheduleRepo)
+	service.AttachPointsToCron(cronSvc, pointsRepo)
 
 	appInstallationClient, ok := githubClient.(githubpkg.AppInstallationClient)
 	if !ok {
@@ -185,6 +187,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
 	groupHandler := handler.NewGroupHandler(groupSvc, notifSvc)
+	pointsHandler := handler.NewPointsHandler(service.NewPointsService(groupRepo, pointsRepo))
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	postHandler := handler.NewPostHandler(postSvc)
 	photoHandler := handler.NewPhotoHandler(photoSvc, r2Client)
@@ -259,6 +262,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
+	r.GET("/groups/:id/final-result", bearerAuth, groupMember, pointsHandler.Result)
+	r.POST("/groups/:id/complete", bearerAuth, groupOwner, pointsHandler.Complete)
 	r.POST("/groups/:id/sync-members", bearerAuth, groupOwner, groupHandler.SyncMembers)
 	r.PATCH("/groups/:id/members/:userId", bearerAuth, groupOwner, groupHandler.UpdateMemberRole)
 	r.POST("/groups/:id/notifications", bearerAuth, groupPoster, notifHandler.Send)

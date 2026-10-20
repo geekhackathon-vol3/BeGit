@@ -211,12 +211,16 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 	}
 	query := `INSERT INTO notifications (sprint_id, sent_by, message, source)
 		 SELECT ?, ?, ?, ?
-		 WHERE NOT EXISTS (
+		 WHERE EXISTS (
+		   SELECT 1 FROM sprints s JOIN groups g ON g.id = s.group_id
+		   WHERE s.id = ? AND g.completed_at IS NULL
+		 )
+		 AND NOT EXISTS (
 		   SELECT 1 FROM notifications
 		   WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
 		     AND datetime(sent_at, '+1 hour') > datetime('now')
 		 )`
-	params := []interface{}{notif.SprintID, notif.SentBy, message, source, notif.SprintID}
+	params := []interface{}{notif.SprintID, notif.SentBy, message, source, notif.SprintID, notif.SprintID}
 	if !allowMultiplePerSprint {
 		query += `
 		 AND NOT EXISTS (

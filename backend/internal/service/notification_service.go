@@ -141,6 +141,15 @@ func NewNotificationServiceFullWithPublisher(
 
 // SendNotification は現スプリントの取得/作成 → 時間非共存判定 → 通知 INSERT → FCM 送信を行う
 func (s *notificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
+	if s.groupRepo != nil {
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if group.CompletedAt != nil {
+			return nil, ErrConflict
+		}
+	}
 	// Step 1: 現在のスプリントを取得または作成
 	sprint, err := s.sprintRepo.GetOrCreateCurrentSprint(ctx, groupID, 7)
 	if err != nil {
