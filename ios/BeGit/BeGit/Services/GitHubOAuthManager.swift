@@ -150,8 +150,12 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
     private func mapFlowError(_ error: Error) -> Error {
         // BeGitAPIError はステータスコード/サーバメッセージを持つので、汎用の
         // networkFailure に潰さずそのまま見せる（原因が分かるようにする）。
-        if error is GitHubOAuthError || error is KeychainError || error is BeGitAPIError {
+        // 生成クライアント経由だと ClientError に包まれて届くため、中から取り出す。
+        if error is GitHubOAuthError || error is KeychainError {
             return error
+        }
+        if let apiError = beGitAPIError(from: error) {
+            return apiError
         }
 
         return GitHubOAuthError.networkFailure(underlying: error)
