@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
@@ -157,13 +156,16 @@ func TestWebhook_GroupNotFound_NoDelegation(t *testing.T) {
 // Ensure errors package is used
 var _ = errors.New
 
-func TestDetectedActivity_UsesGitHubEventTime(t *testing.T) {
+func TestDetectedActivity_PushIgnoresCommitTimestamps(t *testing.T) {
 	timestamp := "2026-10-17T08:15:30Z"
 	data := detectedActivity("push", "owner/repo", map[string]interface{}{
-		"commits": []interface{}{map[string]interface{}{"timestamp": timestamp, "message": "work"}},
+		"commits":     []interface{}{map[string]interface{}{"timestamp": timestamp, "message": "work"}},
+		"head_commit": map[string]interface{}{"timestamp": timestamp},
 	})
-	want, _ := time.Parse(time.RFC3339, timestamp)
-	if !data.DetectionTime.Equal(want) {
-		t.Fatalf("got %v, want %v", data.DetectionTime, want)
+	if !data.DetectionTime.IsZero() {
+		t.Fatalf("push detection time should be unset, got %v", data.DetectionTime)
+	}
+	if data.CommitCount != 1 || data.LatestCommitMessage != "work" {
+		t.Fatalf("push commit data was lost: %+v", data)
 	}
 }

@@ -148,7 +148,7 @@ func senderLoginFromPayload(payload map[string]interface{}) string {
 // detectedActivity は ② の draft プレフィル用にペイロードから検知データを抽出する
 func detectedActivity(eventType, repoFullName string, payload map[string]interface{}) ActivityData {
 	data := ActivityData{RepoFullName: repoFullName}
-	// GitHub が記録したイベント時刻を優先する。Webhook の配送遅延で判定が変わらない。
+	// issue / review はイベント時刻を使う。push はコミット時刻を push 時刻として扱わない。
 	readTime := func(raw interface{}) time.Time {
 		value, _ := raw.(string)
 		parsed, _ := time.Parse(time.RFC3339, value)
@@ -168,16 +168,10 @@ func detectedActivity(eventType, repoFullName string, payload map[string]interfa
 			data.CommitCount = len(commits)
 			if len(commits) > 0 {
 				if last, ok := commits[len(commits)-1].(map[string]interface{}); ok {
-					data.DetectionTime = readTime(last["timestamp"])
 					if msg, ok := last["message"].(string); ok {
 						data.LatestCommitMessage = msg
 					}
 				}
-			}
-		}
-		if data.DetectionTime.IsZero() {
-			if head, ok := payload["head_commit"].(map[string]interface{}); ok {
-				data.DetectionTime = readTime(head["timestamp"])
 			}
 		}
 	}
