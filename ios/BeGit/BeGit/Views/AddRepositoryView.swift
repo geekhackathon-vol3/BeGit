@@ -350,7 +350,7 @@ struct AddRepositoryView: View {
 
         return Button {
             Task {
-                await viewModel.selectRepository(repository)
+                await viewModel.toggleRepositorySelection(repository)
             }
         } label: {
             HStack(spacing: 12) {

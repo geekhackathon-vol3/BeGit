@@ -6,7 +6,6 @@ import Combine
 
 @MainActor
 final class AddRepositoryViewModel: ObservableObject {
-    @Published var repositoryURLText = ""                                      // Repository URL入力値
     @Published var repositorySearchText = ""                                   // Repository検索入力値
 
     @Published private(set) var availableRepositories: [GitHubRepository] = []  // GitHub Repository候補一覧
@@ -75,12 +74,8 @@ final class AddRepositoryViewModel: ObservableObject {
 
     //  Repository preview用のowner avatar URL
     var repositoryPreviewAvatarURL: URL? {
-        if let selectedRepository {
-            return selectedRepository.ownerAvatarURL ?? ownerAvatarURL(from: selectedRepository.fullName)
-        }
-
-        guard let repositoryName else { return nil }
-        return ownerAvatarURL(from: repositoryName)
+        guard let selectedRepository else { return nil }
+        return selectedRepository.ownerAvatarURL ?? ownerAvatarURL(from: selectedRepository.fullName)
     }
 
     //  画面に表示するRepository候補
@@ -167,7 +162,7 @@ final class AddRepositoryViewModel: ObservableObject {
         guard self.installationID != installationID else { return }
         self.installationID = installationID
         availableRepositories = []
-        selectedRepository = nil
+        clearSelection()
         repositoryListErrorMessage = nil
         visibleRepositoryCount = 3
     }
@@ -175,7 +170,7 @@ final class AddRepositoryViewModel: ObservableObject {
     /// OAuth一覧とGitHub App許可一覧を再取得する。
     func reloadRepositories() async {
         availableRepositories = []
-        selectedRepository = nil
+        clearSelection()
         repositoryListErrorMessage = nil
         visibleRepositoryCount = 3
         await loadRepositories()
@@ -233,16 +228,27 @@ final class AddRepositoryViewModel: ObservableObject {
         isLoadingRepositories = false
     }
 
+    //  Repository候補の選択を切り替え（選択中の候補なら解除）
+    func toggleRepositorySelection(_ repository: GitHubRepository) async {
+        guard selectedRepository?.id == repository.id else {
+            await selectRepository(repository)
+            return
+        }
+
+        errorMessage = nil
+        clearSelection()
+    }
+
     //  Repository候補を選択
-    func selectRepository(_ repository: GitHubRepository) async {
+    private func selectRepository(_ repository: GitHubRepository) async {
         if isAlreadyAdded(repository) {
             reportAlreadyAdded(repository.fullName)
             return
         }
 
         errorMessage = nil
+
         selectedRepository = repository
-        repositoryURLText = "https://github.com/\(repository.fullName)"
         if repository.isReadOnly {
             members = []
             repositoryMemberCandidates = []
@@ -414,11 +420,22 @@ final class AddRepositoryViewModel: ObservableObject {
                 repoFullName: repoFullName,
                 accessToken: accessToken
             )
+            //  取得中に選択が変わっていたら、古いRepositoryの結果は捨てる
+            guard selectedRepository?.fullName == repoFullName else { return }
             members = repositoryMembers
             repositoryMemberCandidates = repositoryMembers
         } catch {
+            guard selectedRepository?.fullName == repoFullName else { return }
             memberListErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
+    }
+
+    //  Repository選択と、それに紐づくmember状態をリセット
+    private func clearSelection() {
+        selectedRepository = nil
+        members = []
+        repositoryMemberCandidates = []
+        memberListErrorMessage = nil
     }
 
     //  前後空白を除去したmember login
@@ -579,20 +596,8 @@ final class AddRepositoryViewModel: ObservableObject {
         )
     }
 
-    //  GitHub URLからRepository名を抽出
+    //  選択中のRepository名
     private var repositoryName: String? {
-        if let selectedRepository {
-            return selectedRepository.fullName
-        }
-
-        let trimmedText = repositoryURLText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmedText), url.host?.lowercased() == "github.com" else {
-            return nil
-        }
-
-        let pathComponents = url.pathComponents.filter { $0 != "/" }
-        guard pathComponents.count >= 2 else { return nil }
-
-        return "\(pathComponents[0])/\(pathComponents[1])"
+        selectedRepository?.fullName
     }
 }
