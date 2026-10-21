@@ -11,11 +11,14 @@ Before / After で同じスクリプトを使う。
 | `scenario.js` | 計測本体。トリガー → フィード取得 → 投稿作成 → 写真アップロード → 投稿確定 → リアクション |
 | `lib.js` | 共通処理（API 呼び出し、`X-D1-*` ヘッダーの記録） |
 | `run-stage.sh` | 1段階ぶんを、回の間を5分以上あけて繰り返す |
+| `run-all.sh` | 全段階（3 → 102人）をまとめて実行する |
 | `results/` | 計測結果（git 管理外） |
 
 ## 前提
 
-- 計測先は `D1_METRICS=true` の環境（Before は `env.loadtest`）。無効な環境でも動くが、D1 の内訳は取れない
+- 計測先は `D1_METRICS=true` の環境。無効な環境でも動くが、D1 の内訳は取れない
+  - 計測用の Wrangler 設定は `backend/wrangler.loadtest.toml.example` を `backend/wrangler.loadtest.toml` にコピーし、`<...>` を計測用アカウントの値に置き換えて作る（`.gitignore` 済み）
+  - wrangler のコマンドには `-c wrangler.loadtest.toml` を付ける（例：`npx wrangler deploy -c wrangler.loadtest.toml`）
 - `DEV_MODE=true`（`/auth/dev` を使う）と `BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true`
 - GitHub / R2 / FCM はスタブ（認証情報を登録しない）
 - k6 v2 以降
@@ -35,7 +38,7 @@ k6 run -e BASE_URL=$BASE_URL prepare.js
 
 # 2. 2・3人目を poster としてグループに登録する
 (cd ../backend && CLOUDFLARE_ACCOUNT_ID=<計測用アカウントの ID> \
-  npx wrangler d1 execute begit-loadtest-db --env loadtest --remote --yes --file ../loadtest/members.sql)
+  npx wrangler d1 execute begit-loadtest-db -c wrangler.loadtest.toml --remote --yes --file ../loadtest/members.sql)
 
 # 3. 1人1件のシード投稿（1周目からリアクション先があるように）
 k6 run -e BASE_URL=$BASE_URL -e PHASE=seed prepare.js
@@ -95,7 +98,7 @@ k6 run -e BASE_URL=$BASE_URL -e PHASE=seed prepare.js
 ```sh
 cd backend
 export CLOUDFLARE_ACCOUNT_ID=<計測用アカウントの ID>
-npx wrangler delete --env loadtest
+npx wrangler delete -c wrangler.loadtest.toml
 npx wrangler d1 delete begit-loadtest-db
 npx wrangler queues delete begit-loadtest-external-notifications
 npx wrangler queues delete begit-loadtest-external-notifications-dlq

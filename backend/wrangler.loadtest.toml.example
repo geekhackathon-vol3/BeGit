@@ -1,0 +1,60 @@
+# 負荷試験（loadtest/）用の Wrangler 設定の例。本番の wrangler.toml とは別ファイルにして、計測用アカウントにだけデプロイする。
+#   cp wrangler.loadtest.toml.example wrangler.loadtest.toml   # <...> を計測用アカウントの値に置き換える
+#   npx wrangler deploy -c wrangler.loadtest.toml
+# wrangler.loadtest.toml は .gitignore 済み（アカウント ID などが入るため）。
+name = "begit-loadtest"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+account_id = "<計測用アカウントの ID>"
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
+[vars]
+DEV_MODE = "true"
+# 同一スプリントでトリガーを繰り返すため
+BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT = "true"
+# D1 呼び出しを計測し X-D1-* ヘッダーと GET /internal/d1-metrics で返す
+D1_METRICS = "true"
+CF_ACCOUNT_ID = "<計測用アカウントの ID>"
+D1_DATABASE_ID = "<begit-loadtest-db の ID>"
+R2_BUCKET = "begit-photos"
+APP_BASE_URL = "https://begit-loadtest.<subdomain>.workers.dev"
+GITHUB_APP_IOS_REDIRECT_URI = "begit://github-app-setup"
+
+# Cron は D1 を叩いて上限の枠を消費するため設定しない
+[triggers]
+crons = []
+
+[[containers]]
+name = "begit-loadtest-begitapi"
+class_name = "BeGitAPI"
+image = "./Dockerfile"
+max_instances = 2
+
+[[durable_objects.bindings]]
+name = "BEGIT_API"
+class_name = "BeGitAPI"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BeGitAPI"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "begit-loadtest-db"
+database_id = "<begit-loadtest-db の ID>"
+
+[[queues.producers]]
+binding = "NOTIFICATION_QUEUE"
+queue = "begit-loadtest-external-notifications"
+
+[[queues.consumers]]
+queue = "begit-loadtest-external-notifications"
+dead_letter_queue = "begit-loadtest-external-notifications-dlq"
+max_batch_size = 10
+max_batch_timeout = 1
+max_retries = 5

@@ -15,6 +15,9 @@ node_modules/
 # Wrangler local state
 backend/.wrangler/
 
+# 負荷試験用の Wrangler 設定（計測用アカウントの ID などが入る。例は backend/wrangler.loadtest.toml.example）
+backend/wrangler.loadtest.toml
+
 # Go build artifacts
 backend/server
 
