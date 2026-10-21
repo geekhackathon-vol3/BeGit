@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -226,6 +227,25 @@ func configFingerprint(r *http.Request) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// hasDuplicateInternalHeader は、Worker だけが付与する内部ヘッダー（X-Internal-* と
+// 内部エンドポイント用シークレット）に複数の値が付いているかを返す。
+// Header.Get は先頭の値を採用するため、外部から同名ヘッダーを差し込まれると
+// Worker の値より優先されてしまう。Worker は各ヘッダーを1つずつしか付けないので、
+// 複数あるリクエストは改ざんとみなして拒否する。
+func hasDuplicateInternalHeader(r *http.Request) bool {
+	for name, values := range r.Header {
+		if len(values) < 2 {
+			continue
+		}
+		if strings.HasPrefix(name, "X-Internal-") ||
+			name == "X-Cron-Secret" ||
+			name == "X-Notification-Queue-Secret" {
+			return true
+		}
+	}
+	return false
+}
+
 // server はすべての依存関係を保持するサーバー構造体
 type server struct {
 	// baseCfg は起動時に環境変数から読んだ設定。再構築のたびにここからヘッダーを重ねる。
@@ -284,6 +304,13 @@ func main() {
 // （Workers Secrets / vars）が変わったときだけ再構築する。コンテナは Cron で常時起動し続けるため、
 // 再構築しないと `wrangler secret put` した値が再起動まで反映されない（FCM が送られない等）。
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 設定を読む前に拒否し、改ざんされた値でのハンドラー再構築も起こさない
+	if hasDuplicateInternalHeader(r) {
+		log.Printf("Warning: rejected request with duplicated internal headers: %s %q", r.Method, r.URL.Path)
+		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+		return
+	}
+
 	fp := configFingerprint(r)
 
 	s.mu.RLock()

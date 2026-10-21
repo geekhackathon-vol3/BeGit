@@ -266,3 +266,52 @@ func TestServeHTTP_RebuildsWhenAllowMultiplePerSprintChanges(t *testing.T) {
 		t.Fatal("rebuilt config should enable BeGitTimeAllowMultiplePerSprint")
 	}
 }
+
+// 内部ヘッダーに複数の値が付いたリクエスト（クライアントによる差し込み）は拒否し、
+// その値でハンドラーを再構築しない
+func TestServeHTTP_RejectsDuplicatedInternalHeaders(t *testing.T) {
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"dev mode", "X-Internal-Dev-Mode"},
+		{"unlisted internal header", "X-Internal-Firebase-Service-Account"},
+		{"cron secret", "X-Cron-Secret"},
+		{"notification queue secret", "X-Notification-Queue-Secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, builds, _ := countingServer(nil)
+
+			req := httptest.NewRequest(http.MethodPost, "/auth/dev", nil)
+			req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+			// Go は受信時にキーを正規化するため、大文字小文字の違う同名ヘッダーは同じキーの2値になる
+			req.Header[tc.header] = []string{"attacker", ""}
+			rr := httptest.NewRecorder()
+			srv.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", rr.Code)
+			}
+			if *builds != 0 {
+				t.Fatalf("handler should not be built from duplicated headers, got %d builds", *builds)
+			}
+		})
+	}
+}
+
+// Worker が付ける1値ずつの内部ヘッダーは従来どおり受け付ける
+func TestServeHTTP_AllowsSingleInternalHeaders(t *testing.T) {
+	srv, builds, _ := countingServer(nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/cron?kind=minutely", nil)
+	req.Header.Set("X-Internal-DB-Encryption-Key", "key")
+	req.Header.Set("X-Internal-Dev-Mode", "")
+	req.Header.Set("X-Cron-Secret", "secret")
+	rr := httptest.NewRecorder()
+	srv.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK || *builds != 1 {
+		t.Fatalf("expected request to be served, got code=%d builds=%d", rr.Code, *builds)
+	}
+}
