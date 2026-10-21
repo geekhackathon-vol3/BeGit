@@ -35,7 +35,7 @@ k6 run -e BASE_URL=$BASE_URL prepare.js
 
 # 2. 2・3人目を poster としてグループに登録する
 (cd ../backend && CLOUDFLARE_ACCOUNT_ID=<計測用アカウントの ID> \
-  npx wrangler d1 execute begit-loadtest-db --env loadtest --remote --file ../loadtest/members.sql)
+  npx wrangler d1 execute begit-loadtest-db --env loadtest --remote --yes --file ../loadtest/members.sql)
 
 # 3. 1人1件のシード投稿（1周目からリアクション先があるように）
 k6 run -e BASE_URL=$BASE_URL -e PHASE=seed prepare.js
