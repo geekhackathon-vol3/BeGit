@@ -137,10 +137,6 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 		} else {
 			cfg.FirebaseServiceAccountJSON = string(decoded)
 		}
-	} else if v := r.Header.Get("X-Internal-Firebase-Service-Account"); v != "" {
-		// Backward compatibility for an older Worker deployment. New deployments
-		// use the Base64 header above because JSON private keys may contain newlines.
-		cfg.FirebaseServiceAccountJSON = v
 	}
 	if v := r.Header.Get("X-Internal-CF-Account-Id"); v != "" {
 		cfg.CFAccountID = v
@@ -191,7 +187,6 @@ var internalConfigHeaders = []string{
 	"X-Internal-Github-App-Id",
 	"X-Internal-Github-App-Private-Key-B64",
 	"X-Internal-Firebase-Service-Account-B64",
-	"X-Internal-Firebase-Service-Account",
 	"X-Internal-CF-Account-Id",
 	"X-Internal-D1-Database-Id",
 	"X-Internal-CF-Api-Token",

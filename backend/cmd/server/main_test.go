@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"encoding/base64"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestConfigFromHeaders_DecodesGitHubAppCredentials(t *testing.T) {
@@ -275,7 +278,7 @@ func TestServeHTTP_RejectsDuplicatedInternalHeaders(t *testing.T) {
 		header string
 	}{
 		{"dev mode", "X-Internal-Dev-Mode"},
-		{"unlisted internal header", "X-Internal-Firebase-Service-Account"},
+		{"unknown internal header", "X-Internal-Foo"},
 		{"cron secret", "X-Cron-Secret"},
 		{"notification queue secret", "X-Notification-Queue-Secret"},
 	}
@@ -285,7 +288,8 @@ func TestServeHTTP_RejectsDuplicatedInternalHeaders(t *testing.T) {
 
 			req := httptest.NewRequest(http.MethodPost, "/auth/dev", nil)
 			req.Header.Set("X-Internal-DB-Encryption-Key", "key")
-			// Go は受信時にキーを正規化するため、大文字小文字の違う同名ヘッダーは同じキーの2値になる
+			// 受信時に正規化された後の形（同じキーに2値）を直接作る。実通信での正規化は
+			// TestServeHTTP_RejectsDuplicatedInternalHeadersOverWire で確認する
 			req.Header[tc.header] = []string{"attacker", ""}
 			rr := httptest.NewRecorder()
 			srv.ServeHTTP(rr, req)
@@ -313,5 +317,60 @@ func TestServeHTTP_AllowsSingleInternalHeaders(t *testing.T) {
 
 	if rr.Code != http.StatusOK || *builds != 1 {
 		t.Fatalf("expected request to be served, got code=%d builds=%d", rr.Code, *builds)
+	}
+}
+
+// 実通信で大文字小文字の違う同名ヘッダーを別行で送ると、net/http が同じキーの2値に
+// 正規化し、hasDuplicateInternalHeader で拒否される。
+// なお1行にカンマ連結された値（"true, "）は区別できないため、Worker 側の除去で防ぐ。
+func TestServeHTTP_RejectsDuplicatedInternalHeadersOverWire(t *testing.T) {
+	srv, builds, _ := countingServer(nil)
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	conn, err := net.Dial("tcp", ts.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	// 退行でサーバーが応答しなくなってもテストが止まり続けないようにする
+	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("set deadline: %v", err)
+	}
+
+	raw := "POST /auth/dev HTTP/1.1\r\n" +
+		"Host: example.com\r\n" +
+		"x-internal-dev-mode: true\r\n" +
+		"X-Internal-Dev-Mode: \r\n" +
+		"X-Internal-DB-Encryption-Key: key\r\n" +
+		"Content-Length: 0\r\n" +
+		"Connection: close\r\n\r\n"
+	if _, err := conn.Write([]byte(raw)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	if *builds != 0 {
+		t.Fatalf("handler should not be built from duplicated headers, got %d builds", *builds)
+	}
+}
+
+// Worker が付けない旧 Firebase ヘッダーは読まない（値が1つだけ差し込まれても設定に入らない）
+func TestConfigFromHeaders_IgnoresLegacyFirebaseServiceAccountHeader(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("X-Internal-Firebase-Service-Account", `{"project_id":"attacker"}`)
+
+	cfg := &Config{}
+	configFromHeaders(req, cfg)
+
+	if cfg.FirebaseServiceAccountJSON != "" {
+		t.Fatalf("legacy header should be ignored, got %q", cfg.FirebaseServiceAccountJSON)
 	}
 }
