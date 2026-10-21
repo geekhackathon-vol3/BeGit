@@ -1,0 +1,77 @@
+# 依存の更新 PR を毎週月曜にまとめて出す。
+# PR が増えすぎないよう、エコシステムごとに minor / patch を 1 本にまとめ、major だけ別の PR にする。
+# セキュリティ修正の PR は、この設定とは別に（リポジトリの Dependabot security updates が）すぐ出す。
+version: 2
+
+updates:
+  # Go のモジュール
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      go-minor-patch:
+        update-types: [minor, patch]
+
+  # backend/Dockerfile のベースイメージ（golang:1.27.3-alpine など）
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+
+  # Worker（wrangler など）の npm パッケージ
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  # Terraform のプロバイダ
+  - package-ecosystem: terraform
+    directory: /infra/terraform
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      terraform-minor-patch:
+        update-types: [minor, patch]
+
+  # iOS の OpenAPI クライアントの Swift パッケージ
+  - package-ecosystem: swift
+    directory: /ios/BeGit/BeGitOpenAPIClient
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      swift-minor-patch:
+        update-types: [minor, patch]
+
+  # GitHub Actions（actions/setup-go など）
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Tokyo
+    groups:
+      actions:
+        patterns: ["*"]
