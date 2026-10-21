@@ -35,7 +35,7 @@ CREATE TRIGGER notification_capture_members AFTER INSERT ON notifications
 BEGIN
   INSERT INTO notification_members(notification_id, user_id)
   SELECT NEW.id, user_id FROM group_members
-  WHERE group_id = (SELECT group_id FROM sprints WHERE id = NEW.sprint_id) AND role IN ('owner', 'poster')
+  WHERE group_id = (SELECT group_id FROM sprints WHERE id = NEW.sprint_id) AND role IN ('owner', 'poster');
 END;
 
 CREATE TRIGGER notification_after_completion BEFORE INSERT ON notifications
