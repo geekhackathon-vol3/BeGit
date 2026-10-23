@@ -10,7 +10,7 @@
   "devDependencies": {
     "@cloudflare/containers": "latest",
     "@cloudflare/workers-types": "latest",
-    "typescript": "^5.0.0",
+    "typescript": "^7.0.2",
     "wrangler": "latest"
   }
 }
