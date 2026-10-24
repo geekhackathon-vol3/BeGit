@@ -58,7 +58,8 @@ type ActiveChallengeJSON struct {
 	// CanEnd は要求ユーザーが発行者で、途中中断（POST /groups/:id/notifications/:nid/end）できるか
 	CanEnd bool `json:"can_end"`
 	// MyPost は要求ユーザー自身のこの通知への投稿。無ければ省略。is_draft=true なら投稿作成（カメラ）へ誘導できる
-	MyPost *ActiveChallengePostJSON `json:"my_post,omitempty"`
+	MyPost   *ActiveChallengePostJSON `json:"my_post,omitempty"`
+	GameMode string                   `json:"game_mode" enums:"everyone,spotlight"`
 }
 
 // ActiveChallengeIssuerJSON は進行中チャレンジの発行者
@@ -375,6 +376,7 @@ func toActiveChallengeJSON(active *service.ActiveChallenge, members []model.Grou
 		SentAt:         notif.SentAt.UTC().Format(time.RFC3339),
 		EndsAt:         active.EndsAt.UTC().Format(time.RFC3339),
 		CanEnd:         notif.SentBy == userID,
+		GameMode:       string(notif.GameMode),
 	}
 	if active.MyPost != nil {
 		out.MyPost = &ActiveChallengePostJSON{

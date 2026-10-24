@@ -125,6 +125,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 		cfg.BeGitTimeAllowMultiplePerSprint,
 		externalPublisher,
 	)
+	service.AttachPointsToNotifications(notifSvc, pointsRepo)
 
 	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client, notifRepo)
 

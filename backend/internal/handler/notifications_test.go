@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,16 +17,16 @@ import (
 
 // mockNotificationService はテスト用の NotificationService モック
 type mockNotificationService struct {
-	sendFunc              func(ctx context.Context, groupID, userID int64) (*model.Notification, error)
+	sendFunc              func(ctx context.Context, groupID, userID int64, request service.SendNotificationRequest) (*model.Notification, error)
 	getActiveNotification func(ctx context.Context, groupID int64) (*service.ActiveNotification, error)
 	getStatusFunc         func(ctx context.Context, notifID, groupID int64) (*service.NotificationStatus, error)
 	getActiveFunc         func(ctx context.Context, groupID, userID int64) (*service.ActiveChallenge, error)
 	endFunc               func(ctx context.Context, groupID, notifID, userID int64) (*model.Notification, error)
 }
 
-func (m *mockNotificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
+func (m *mockNotificationService) SendNotification(ctx context.Context, groupID, userID int64, request service.SendNotificationRequest) (*model.Notification, error) {
 	if m.sendFunc != nil {
-		return m.sendFunc(ctx, groupID, userID)
+		return m.sendFunc(ctx, groupID, userID, request)
 	}
 	return &model.Notification{ID: 1, SprintID: 1, SentBy: userID, SentAt: time.Now()}, nil
 }
@@ -158,5 +159,34 @@ func TestNotificationHandler_Send_NoEndedAt(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &raw)
 	if _, ok := raw["ended_at"]; ok {
 		t.Errorf("ended_at must be omitted when not ended: %s", w.Body.String())
+	}
+}
+
+func TestNotificationHandler_Send_ForwardsModeMembersAndMessage(t *testing.T) {
+	var captured service.SendNotificationRequest
+	svc := &mockNotificationService{
+		sendFunc: func(_ context.Context, groupID, userID int64, request service.SendNotificationRequest) (*model.Notification, error) {
+			if groupID != 12 || userID != 23 {
+				t.Fatalf("unexpected ids: group=%d user=%d", groupID, userID)
+			}
+			captured = request
+			return &model.Notification{ID: 9, SprintID: 4, SentBy: userID, SentAt: time.Now(), GameMode: request.GameMode}, nil
+		},
+	}
+	r := newNotificationRouter(svc, 23)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/groups/12/notifications",
+		strings.NewReader(`{"game_mode":"spotlight","member_ids":[23,45],"message":"ship it"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	if captured.GameMode != model.GameModeSpotlight || captured.Message != "ship it" || len(captured.MemberIDs) != 2 || captured.MemberIDs[1] != 45 {
+		t.Fatalf("unexpected request: %+v", captured)
 	}
 }

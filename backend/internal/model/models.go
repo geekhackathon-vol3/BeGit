@@ -35,6 +35,26 @@ const (
 	GroupRoleViewer = "viewer"
 )
 
+type GameMode string
+
+const (
+	GameModeEveryone  GameMode = "everyone"
+	GameModeSpotlight GameMode = "spotlight"
+)
+
+func IsValidGameMode(mode GameMode) bool {
+	return mode == GameModeEveryone || mode == GameModeSpotlight
+}
+
+type GameOutcome string
+
+const (
+	GameOutcomePending   GameOutcome = "pending"
+	GameOutcomeSucceeded GameOutcome = "succeeded"
+	GameOutcomeFailed    GameOutcome = "failed"
+	GameOutcomeCancelled GameOutcome = "cancelled"
+)
+
 // NormalizeGroupRole は旧role名を現行の権限名へ読み替える。
 func NormalizeGroupRole(role string) string {
 	if role == "member" {
@@ -95,6 +115,19 @@ type Notification struct {
 	EndedAt *time.Time
 	// Source は "manual" または "scheduled"。空文字は後方互換上 manual と同義。
 	Source string
+	// GameMode は通知発行時に固定するゲームモード。空文字は everyone と同義。
+	GameMode GameMode
+	// AudienceUserIDs は通知発行時に選択された対象者。空なら投稿可能メンバー全員。
+	AudienceUserIDs []int64
+}
+
+type NotificationGameResult struct {
+	NotificationID int64
+	GameMode       GameMode
+	Outcome        GameOutcome
+	BonusUserID    *int64
+	BonusPoints    int
+	FinalizedAt    time.Time
 }
 
 // BeGitTimeSchedule はグループ単位の自動開催設定。

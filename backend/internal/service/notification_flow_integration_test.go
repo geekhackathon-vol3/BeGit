@@ -111,7 +111,7 @@ func TestIntegration_BeGitTime_NonCoexistence_409(t *testing.T) {
 	fc := &fakeFCMClient{}
 	svc := NewNotificationService(sprintRepo, notifRepo, &mockFCMTokenRepository{}, fc)
 
-	_, err := svc.SendNotification(context.Background(), 12, 2)
+	_, err := svc.SendNotification(context.Background(), 12, 2, SendNotificationRequest{})
 	if err != ErrConflict {
 		t.Errorf("expected ErrConflict (409) for active challenge, got %v", err)
 	}

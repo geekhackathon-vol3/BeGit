@@ -352,7 +352,7 @@ func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 
 	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, nil)
 
-	_, err := svc.SendNotification(context.Background(), 1, 2)
+	_, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{})
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict, got %v", err)
 	}
@@ -385,7 +385,7 @@ func TestNotificationService_SendNotification_OncePerSprintByDefault(t *testing.
 	notifRepo := &mockNotificationRepository{}
 	svc := NewNotificationService(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil)
 
-	if _, err := svc.SendNotification(context.Background(), 1, 2); err != nil {
+	if _, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(notifRepo.createIfNoActiveAllowMultiple) != 1 || notifRepo.createIfNoActiveAllowMultiple[0] {
@@ -400,7 +400,7 @@ func TestNotificationService_SendNotification_AllowMultiplePerSprint(t *testing.
 	svc := NewNotificationServiceFull(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil, nil, nil, true)
 
 	for i := 0; i < 2; i++ {
-		if _, err := svc.SendNotification(context.Background(), 1, 2); err != nil {
+		if _, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{}); err != nil {
 			t.Fatalf("send #%d: unexpected error: %v", i+1, err)
 		}
 	}
@@ -425,7 +425,7 @@ func TestNotificationService_SendNotification_ActiveConflict(t *testing.T) {
 
 	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, fcmClient)
 
-	_, err := svc.SendNotification(context.Background(), 1, 2)
+	_, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{})
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict when active challenge exists, got %v", err)
 	}
@@ -456,7 +456,7 @@ func TestNotificationService_SendNotification_SuccessSendsBeGitTimeData(t *testi
 
 	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, fcmClient)
 
-	notif, err := svc.SendNotification(context.Background(), 12, 2)
+	notif, err := svc.SendNotification(context.Background(), 12, 2, SendNotificationRequest{})
 	if err != nil {
 		t.Fatalf("SendNotification() failed: %v", err)
 	}
@@ -472,6 +472,58 @@ func TestNotificationService_SendNotification_SuccessSendsBeGitTimeData(t *testi
 	}
 	if call.data["type"] != "begit_time" || call.data["notification_id"] != "345" || call.data["sprint_id"] != "7" || call.data["group_id"] != "12" {
 		t.Errorf("unexpected begit_time data: %v", call.data)
+	}
+}
+
+func TestNotificationService_SendNotification_ValidatesAndFreezesSelectedMembers(t *testing.T) {
+	var created *model.Notification
+	notifRepo := &mockNotificationRepository{
+		createIfNoActiveFunc: func(_ context.Context, notif *model.Notification) (*model.Notification, error) {
+			copy := *notif
+			created = &copy
+			notif.ID = 99
+			return notif, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{ID: 12}, nil
+		},
+		getMembersFunc: func(context.Context, int64) ([]model.GroupMember, error) {
+			return []model.GroupMember{
+				{UserID: 1, Role: model.GroupRoleOwner},
+				{UserID: 2, Role: model.GroupRolePoster},
+				{UserID: 3, Role: model.GroupRoleViewer},
+			}, nil
+		},
+	}
+	svc := NewNotificationServiceFull(
+		&mockSprintRepository{}, notifRepo, nil, nil, groupRepo, nil, false,
+	)
+
+	_, err := svc.SendNotification(context.Background(), 12, 1, SendNotificationRequest{
+		GameMode:  model.GameModeSpotlight,
+		MemberIDs: []int64{2, 2},
+		Message:   "focus",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created == nil || created.GameMode != model.GameModeSpotlight || created.Message != "focus" {
+		t.Fatalf("unexpected notification: %+v", created)
+	}
+	if len(created.AudienceUserIDs) != 2 || created.AudienceUserIDs[0] != 2 || created.AudienceUserIDs[1] != 1 {
+		t.Fatalf("expected deduplicated audience with issuer, got %v", created.AudienceUserIDs)
+	}
+
+	for name, request := range map[string]SendNotificationRequest{
+		"invalid mode":   {GameMode: "unknown", MemberIDs: []int64{1}},
+		"viewer target":  {GameMode: model.GameModeEveryone, MemberIDs: []int64{3}},
+		"unknown target": {GameMode: model.GameModeEveryone, MemberIDs: []int64{404}},
+	} {
+		if _, err := svc.SendNotification(context.Background(), 12, 1, request); !errors.Is(err, ErrValidation) {
+			t.Errorf("%s: expected ErrValidation, got %v", name, err)
+		}
 	}
 }
 
@@ -631,7 +683,7 @@ func TestNotificationService_SendNotification_FCMFailure_DoesNotFail(t *testing.
 		},
 	}
 	svc := NewNotificationService(sprintRepo, notifRepo, ft, &failingFCMClient{})
-	if _, err := svc.SendNotification(context.Background(), 12, 2); err != nil {
+	if _, err := svc.SendNotification(context.Background(), 12, 2, SendNotificationRequest{}); err != nil {
 		t.Fatalf("SendNotification() should succeed even if FCM fails, got: %v", err)
 	}
 }

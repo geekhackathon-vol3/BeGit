@@ -22,36 +22,72 @@ type FinalResult struct {
 	CompletedAt string              `json:"completed_at"`
 	Members     []FinalMemberPoints `json:"members"`
 	TeamTotal   int                 `json:"team_total"`
+	ModeResults []FinalModeResult   `json:"mode_results"`
+}
+
+type FinalModeResult struct {
+	GameMode    string `json:"game_mode"`
+	Attempts    int    `json:"attempts"`
+	Successes   int    `json:"successes"`
+	Failures    int    `json:"failures"`
+	Cancelled   int    `json:"cancelled"`
+	BonusPoints int    `json:"bonus_points"`
 }
 
 type PointsRepository struct{ db d1.Client }
 
 func NewPointsRepository(db d1.Client) *PointsRepository { return &PointsRepository{db: db} }
 
-// FinalizeBonuses is safe to repeat. Only a finished, unstopped challenge with
-// every captured member's confirmed on-time post can insert the unique award.
+// FinalizeBonuses persists one immutable game result per due notification.
+// The notification_game_result_award trigger atomically creates the unique
+// bonus award for successful results, so retries cannot duplicate points.
 func (r *PointsRepository) FinalizeBonuses(ctx context.Context, groupID int64) error {
-	_, err := r.db.Exec(ctx, `INSERT OR IGNORE INTO point_awards(group_id, notification_id, user_id, kind, points)
- SELECT s.group_id, n.id, n.sent_by, 'all_on_time_bonus', 10
- FROM notifications n JOIN sprints s ON s.id = n.sprint_id
+	_, err := r.db.Exec(ctx, `WITH candidates AS (
+ SELECT n.id AS notification_id, n.game_mode, n.sent_by,
+   CASE
+     WHEN n.stopped_at IS NOT NULL THEN 0
+     WHEN n.game_mode = 'everyone' THEN
+       CASE WHEN EXISTS (
+         SELECT 1 FROM notification_members nm WHERE nm.notification_id = n.id
+       ) AND NOT EXISTS (
+         SELECT 1 FROM notification_members nm
+         WHERE nm.notification_id = n.id AND NOT EXISTS (
+           SELECT 1 FROM posts p
+           WHERE p.notification_id = n.id AND p.user_id = nm.user_id
+             AND p.is_draft = 0 AND p.status = 'on_time'
+             AND datetime(p.created_at) <= datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour')))
+         )
+       ) THEN 1 ELSE 0 END
+     WHEN n.game_mode = 'spotlight' THEN
+       CASE WHEN EXISTS (
+         SELECT 1 FROM posts p
+         WHERE p.notification_id = n.id AND p.user_id = n.sent_by
+           AND p.is_draft = 0 AND p.status = 'on_time'
+           AND datetime(p.created_at) <= datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour')))
+       ) AND NOT EXISTS (
+         SELECT 1 FROM notification_members nm
+         JOIN posts p ON p.notification_id = nm.notification_id AND p.user_id = nm.user_id
+         WHERE nm.notification_id = n.id AND nm.user_id != n.sent_by
+           AND p.is_draft = 0 AND p.status = 'on_time'
+           AND datetime(p.created_at) <= datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour')))
+       ) THEN 1 ELSE 0 END
+     ELSE 0
+   END AS succeeded,
+   CASE WHEN n.stopped_at IS NOT NULL THEN 1 ELSE 0 END AS cancelled
+ FROM notifications n
+ JOIN sprints s ON s.id = n.sprint_id
  JOIN groups g ON g.id = s.group_id
  WHERE (? = 0 OR s.group_id = ?) AND g.completed_at IS NULL
-   AND n.stopped_at IS NULL
-   AND datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour'))) <= datetime('now')
-   AND NOT EXISTS (
-     SELECT 1 FROM point_awards pa
-     WHERE pa.notification_id = n.id AND pa.user_id = n.sent_by
-       AND pa.kind = 'all_on_time_bonus'
-   )
-   AND EXISTS (SELECT 1 FROM notification_members nm WHERE nm.notification_id = n.id)
-   AND NOT EXISTS (
-     SELECT 1 FROM notification_members nm
-     WHERE nm.notification_id = n.id AND NOT EXISTS (
-       SELECT 1 FROM posts p WHERE p.notification_id = n.id AND p.user_id = nm.user_id
-         AND p.is_draft = 0 AND p.status = 'on_time'
-         AND datetime(p.created_at) <= datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour')))
-     )
-   )`, []interface{}{groupID, groupID})
+   AND (n.stopped_at IS NOT NULL OR datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour'))) <= datetime('now'))
+)
+INSERT OR IGNORE INTO notification_game_results(
+ notification_id, game_mode, outcome, bonus_user_id, bonus_points
+)
+SELECT notification_id, game_mode,
+ CASE WHEN cancelled = 1 THEN 'cancelled' WHEN succeeded = 1 THEN 'succeeded' ELSE 'failed' END,
+ CASE WHEN succeeded = 1 AND cancelled = 0 THEN sent_by ELSE NULL END,
+ CASE WHEN succeeded = 1 AND cancelled = 0 THEN 10 ELSE 0 END
+FROM candidates`, []interface{}{groupID, groupID})
 	if err != nil {
 		return fmt.Errorf("points: finalize bonuses: %w", err)
 	}
@@ -97,7 +133,7 @@ func (r *PointsRepository) Result(ctx context.Context, groupID int64) (*FinalRes
 	if !ok || completedAt == "" {
 		return nil, ErrNotFound
 	}
-	result := &FinalResult{GroupID: groupID, CompletedAt: completedAt, Members: []FinalMemberPoints{}}
+	result := &FinalResult{GroupID: groupID, CompletedAt: completedAt, Members: []FinalMemberPoints{}, ModeResults: []FinalModeResult{}}
 	members, err := r.db.Query(ctx, `SELECT user_id, login, avatar_url, report_points, bonus_points
  FROM final_result_members WHERE group_id = ? ORDER BY (report_points + bonus_points) DESC, login COLLATE NOCASE`, []interface{}{groupID})
 	if errors.Is(err, d1.ErrNotFound) {
@@ -111,6 +147,27 @@ func (r *PointsRepository) Result(ctx context.Context, groupID int64) (*FinalRes
 		m.TotalPoints = m.ReportPoints + m.BonusPoints
 		result.TeamTotal += m.TotalPoints
 		result.Members = append(result.Members, m)
+	}
+	modeRows, err := r.db.Query(ctx, `SELECT ngr.game_mode,
+ SUM(CASE WHEN ngr.outcome != 'cancelled' THEN 1 ELSE 0 END) AS attempts,
+ SUM(CASE WHEN ngr.outcome = 'succeeded' THEN 1 ELSE 0 END) AS successes,
+ SUM(CASE WHEN ngr.outcome = 'failed' THEN 1 ELSE 0 END) AS failures,
+ SUM(CASE WHEN ngr.outcome = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+ SUM(ngr.bonus_points) AS bonus_points
+ FROM notification_game_results ngr
+ JOIN notifications n ON n.id = ngr.notification_id
+ JOIN sprints s ON s.id = n.sprint_id
+	 WHERE s.group_id = ?
+ GROUP BY ngr.game_mode ORDER BY ngr.game_mode`, []interface{}{groupID})
+	if err != nil && !errors.Is(err, d1.ErrNotFound) {
+		return nil, err
+	}
+	for _, row := range modeRows {
+		result.ModeResults = append(result.ModeResults, FinalModeResult{
+			GameMode: textValue(row["game_mode"]), BonusPoints: int(number(row["bonus_points"])),
+			Attempts: int(number(row["attempts"])), Successes: int(number(row["successes"])),
+			Failures: int(number(row["failures"])), Cancelled: int(number(row["cancelled"])),
+		})
 	}
 	return result, nil
 }

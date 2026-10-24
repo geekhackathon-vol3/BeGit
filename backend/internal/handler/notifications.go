@@ -18,7 +18,14 @@ type NotificationJSON struct {
 	SprintID int64  `json:"sprint_id"`
 	SentAt   string `json:"sent_at"`
 	// EndedAt は発行者による途中中断時刻。未中断なら省略
-	EndedAt *string `json:"ended_at,omitempty" example:"2026-09-18T01:40:00Z"`
+	EndedAt  *string `json:"ended_at,omitempty" example:"2026-09-18T01:40:00Z"`
+	GameMode string  `json:"game_mode" enums:"everyone,spotlight"`
+}
+
+type SendNotificationRequestJSON struct {
+	GameMode  string  `json:"game_mode" enums:"everyone,spotlight"`
+	MemberIDs []int64 `json:"member_ids"`
+	Message   string  `json:"message"`
 }
 
 // toNotificationJSON は model.Notification をレスポンス型へ変換する
@@ -27,6 +34,7 @@ func toNotificationJSON(notif *model.Notification) NotificationJSON {
 		ID:       notif.ID,
 		SprintID: notif.SprintID,
 		SentAt:   notif.SentAt.UTC().Format(time.RFC3339),
+		GameMode: string(notif.GameMode),
 	}
 	if notif.EndedAt != nil {
 		endedAt := notif.EndedAt.UTC().Format(time.RFC3339)
@@ -38,6 +46,8 @@ func toNotificationJSON(notif *model.Notification) NotificationJSON {
 // NotificationStatusJSON は通知ステータスレスポンス型
 type NotificationStatusJSON struct {
 	NotificationID int64              `json:"notification_id"`
+	GameMode       string             `json:"game_mode" enums:"everyone,spotlight"`
+	GameResult     string             `json:"game_result" enums:"pending,succeeded,failed,cancelled"`
 	Members        []MemberStatusJSON `json:"members"`
 }
 
@@ -47,6 +57,7 @@ type ActiveNotificationJSON struct {
 	SentBy         int64  `json:"sent_by"`
 	SentAt         string `json:"sent_at"`
 	ExpiresAt      string `json:"expires_at"`
+	GameMode       string `json:"game_mode" enums:"everyone,spotlight"`
 }
 
 // MemberStatusJSON はメンバーごとのステータス
@@ -72,12 +83,15 @@ func NewNotificationHandler(notificationService service.NotificationService) *No
 //	@Summary		BeGit Time 通知発行
 //	@Description	アクティブなチャレンジ（発行から 1 時間）中は発行不可。既定では 1 スプリント 1 人 1 回まで（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT=true で解除）
 //	@Tags			notifications
+//	@Accept			json
 //	@Produce		json
 //	@Security		BearerAuth
 //	@Param			id	path		int	true	"グループ ID"
+//	@Param			request	body	SendNotificationRequestJSON	false	"ゲームモード・通知対象メンバー"
 //	@Success		201	{object}	NotificationJSON
 //	@Failure		401	{object}	ErrorResponse
 //	@Failure		409	{object}	ErrorResponse
+//	@Failure		422	{object}	ErrorResponse
 //	@Failure		500	{object}	ErrorResponse
 //	@Router			/groups/{id}/notifications [post]
 func (h *NotificationHandler) Send(c *gin.Context) {
@@ -93,8 +107,21 @@ func (h *NotificationHandler) Send(c *gin.Context) {
 		return
 	}
 
-	notif, err := h.notificationService.SendNotification(c.Request.Context(), groupID, userID)
+	var req SendNotificationRequestJSON
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			respondError(c, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
+	notif, err := h.notificationService.SendNotification(c.Request.Context(), groupID, userID, service.SendNotificationRequest{
+		GameMode: model.GameMode(req.GameMode), MemberIDs: req.MemberIDs, Message: req.Message,
+	})
 	if err != nil {
+		if errors.Is(err, service.ErrValidation) {
+			respondError(c, http.StatusUnprocessableEntity, "invalid game mode or notification members")
+			return
+		}
 		if errors.Is(err, service.ErrConflict) {
 			respondError(c, http.StatusConflict, "conflict: a challenge is in progress or already sent in this sprint")
 			return
@@ -194,6 +221,7 @@ func (h *NotificationHandler) GetActive(c *gin.Context) {
 		SentBy:         active.SentBy,
 		SentAt:         active.SentAt.UTC().Format(time.RFC3339),
 		ExpiresAt:      active.ExpiresAt.UTC().Format(time.RFC3339),
+		GameMode:       string(active.GameMode),
 	})
 }
 
@@ -251,6 +279,8 @@ func (h *NotificationHandler) GetStatus(c *gin.Context) {
 
 	c.JSON(http.StatusOK, NotificationStatusJSON{
 		NotificationID: status.NotificationID,
+		GameMode:       string(status.GameMode),
+		GameResult:     string(status.GameResult),
 		Members:        members,
 	})
 }
