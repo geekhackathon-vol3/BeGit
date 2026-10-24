@@ -212,6 +212,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// RemoveExtraSlash は有効にしないこと。有効にすると gin がその場でパスを整形してからルーティングし、
+	// /x/..%2Finternal/cron のようなパスで Worker の /internal/* 遮断（src/index.ts の isInternalPath）を
+	// 迂回して内部エンドポイントに到達できるようになる。
 	// パスは一致するがメソッドが異なる場合は 404 ではなく 405 を返す（従来挙動を維持）
 	r.HandleMethodNotAllowed = true
 	r.NoMethod(func(c *gin.Context) {

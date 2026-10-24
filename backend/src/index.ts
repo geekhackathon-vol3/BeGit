@@ -81,6 +81,42 @@ function internalHeaders(env: Env): Record<string, string> {
   };
 }
 
+// isInternalPath は Go コンテナの内部専用エンドポイント（/internal/*）かを判定する。
+// Go(net/http) はパーセントエンコードを復号してからルーティングするため、
+// 復号・連続スラッシュの正規化後のパスで判定し、/%69nternal/cron のような迂回を防ぐ。
+function isInternalPath(pathname: string): boolean {
+  let decoded = pathname;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    // 不正なエンコードは安全側に倒して内部扱いにする
+    return true;
+  }
+  const normalized = decoded.replace(/\/{2,}/g, "/").toLowerCase();
+  return normalized === "/internal" || normalized.startsWith("/internal/");
+}
+
+// containerRequestHeaders は外部リクエストのヘッダーから、Worker だけが付与すべき
+// 内部ヘッダー（X-Internal-* と内部エンドポイント用シークレット）を取り除き、
+// Worker の値で上書きしたヘッダーを返す。クライアントが同名ヘッダーを送っても
+// Go 側に届くのは Worker の値だけになる。
+function containerRequestHeaders(request: Request, env: Env): Headers {
+  const headers = new Headers(request.headers);
+  for (const name of [...headers.keys()]) {
+    if (
+      name.startsWith("x-internal-") ||
+      name === "x-cron-secret" ||
+      name === "x-notification-queue-secret"
+    ) {
+      headers.delete(name);
+    }
+  }
+  for (const [name, value] of Object.entries(internalHeaders(env))) {
+    headers.set(name, value);
+  }
+  return headers;
+}
+
 export class BeGitAPI extends Container {
   defaultPort = 8080;
   sleepAfter = "10m";
@@ -111,12 +147,14 @@ export default {
       return new Response(null, { status: 202 });
     }
 
+    // /internal/* は scheduled() / queue() から Worker 内部でのみ呼ぶ。外部からは存在しない扱いにする。
+    if (isInternalPath(requestURL.pathname)) {
+      return Response.json({ error: "not found" }, { status: 404 });
+    }
+
     // Workers Secrets と [vars] を X-Internal-* ヘッダーとして Container に転送する
     const modifiedRequest = new Request(request, {
-      headers: {
-        ...Object.fromEntries(request.headers.entries()),
-        ...internalHeaders(env),
-      }
+      headers: containerRequestHeaders(request, env),
     });
     return getContainer(env.BEGIT_API, "begit-api-singleton").fetch(modifiedRequest);
   },

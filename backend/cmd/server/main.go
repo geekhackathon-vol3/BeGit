@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -136,10 +137,6 @@ func configFromHeaders(r *http.Request, cfg *Config) {
 		} else {
 			cfg.FirebaseServiceAccountJSON = string(decoded)
 		}
-	} else if v := r.Header.Get("X-Internal-Firebase-Service-Account"); v != "" {
-		// Backward compatibility for an older Worker deployment. New deployments
-		// use the Base64 header above because JSON private keys may contain newlines.
-		cfg.FirebaseServiceAccountJSON = v
 	}
 	if v := r.Header.Get("X-Internal-CF-Account-Id"); v != "" {
 		cfg.CFAccountID = v
@@ -190,7 +187,6 @@ var internalConfigHeaders = []string{
 	"X-Internal-Github-App-Id",
 	"X-Internal-Github-App-Private-Key-B64",
 	"X-Internal-Firebase-Service-Account-B64",
-	"X-Internal-Firebase-Service-Account",
 	"X-Internal-CF-Account-Id",
 	"X-Internal-D1-Database-Id",
 	"X-Internal-CF-Api-Token",
@@ -224,6 +220,25 @@ func configFingerprint(r *http.Request) string {
 		return ""
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// hasDuplicateInternalHeader は、Worker だけが付与する内部ヘッダー（X-Internal-* と
+// 内部エンドポイント用シークレット）に複数の値が付いているかを返す。
+// Header.Get は先頭の値を採用するため、外部から同名ヘッダーを差し込まれると
+// Worker の値より優先されてしまう。Worker は各ヘッダーを1つずつしか付けないので、
+// 複数あるリクエストは改ざんとみなして拒否する。
+func hasDuplicateInternalHeader(r *http.Request) bool {
+	for name, values := range r.Header {
+		if len(values) < 2 {
+			continue
+		}
+		if strings.HasPrefix(name, "X-Internal-") ||
+			name == "X-Cron-Secret" ||
+			name == "X-Notification-Queue-Secret" {
+			return true
+		}
+	}
+	return false
 }
 
 // server はすべての依存関係を保持するサーバー構造体
@@ -284,6 +299,13 @@ func main() {
 // （Workers Secrets / vars）が変わったときだけ再構築する。コンテナは Cron で常時起動し続けるため、
 // 再構築しないと `wrangler secret put` した値が再起動まで反映されない（FCM が送られない等）。
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 設定を読む前に拒否し、改ざんされた値でのハンドラー再構築も起こさない
+	if hasDuplicateInternalHeader(r) {
+		log.Printf("Warning: rejected request with duplicated internal headers: %s %q", r.Method, r.URL.Path)
+		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+		return
+	}
+
 	fp := configFingerprint(r)
 
 	s.mu.RLock()

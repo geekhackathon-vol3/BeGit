@@ -350,7 +350,7 @@ struct AddRepositoryView: View {
 
         return Button {
             Task {
-                await viewModel.selectRepository(repository)
+                await viewModel.toggleRepositorySelection(repository)
             }
         } label: {
             HStack(spacing: 12) {
@@ -416,7 +416,19 @@ struct AddRepositoryView: View {
             .opacity(isAlreadyAdded ? 0.78 : 1)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isAlreadyAdded ? "\(repository.fullName)は追加済み" : "\(repository.fullName)を選択")
+        .accessibilityLabel(repositoryAccessibilityLabel(repository, isSelected: isSelected, isAlreadyAdded: isAlreadyAdded))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    //  Repository候補行の読み上げラベル
+    private func repositoryAccessibilityLabel(_ repository: GitHubRepository, isSelected: Bool, isAlreadyAdded: Bool) -> String {
+        if isAlreadyAdded {
+            return "\(repository.fullName)は追加済み"
+        }
+        if isSelected {
+            return "\(repository.fullName)の選択を解除"
+        }
+        return "\(repository.fullName)を選択"
     }
 
     private var alreadyAddedBadge: some View {

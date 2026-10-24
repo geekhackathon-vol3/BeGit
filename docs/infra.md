@@ -49,16 +49,29 @@ iOSアプリ
 
 ---
 
+## 環境（PoC 期間）
+
+| 環境 | Worker / D1 | 用途 | デプロイ |
+|------|-------------|------|---------|
+| dev | `begit-dev` / `begit-db-dev` | 運用環境。TestFlight と GitHub App の接続先。alice / bob のシードも同居 | main へのマージで自動（`deploy-dev.yml`） |
+| 本番 | `begit` / `begit-db` | 利用者なし。App Store 公開時に切り替える | 手動（`deploy.yml`） |
+
+- 手元から `wrangler deploy` / `make deploy` / `make deploy-dev` はしない（make のターゲットは実行すると止まる）。dev に出ている内容を main と一致させるため。
+- ブランチを dev で試すときは Actions の "Deploy (dev)" を ref 指定で実行し、確認後すぐにマージする。
+- dev への自動デプロイは `backend/` または `.github/workflows/deploy-dev.yml` の変更時。デプロイ前に `go test ./...` を実行し、失敗したら出さない。
+- 戻すときは revert PR をマージする。マイグレーションは旧コードでも動く形にしているので DB は戻さない。
+
 ## デプロイフロー
 
 ```
-1. Dockerfileをビルド
+1. wrangler d1 migrations apply  ← 先にスキーマを更新（旧コードでも動くマイグレーション）
 2. wrangler deploy
-   └─ Cloudflareレジストリにイメージをpush
+   └─ Dockerfileをビルドし、Cloudflareレジストリにイメージをpush
    └─ Workersをデプロイ
    └─ Containerをプロビジョニング（初回数分かかる）
-3. wrangler d1 migrations apply  ← DBマイグレーション
 ```
+
+マイグレーションは新コードのデプロイ前に適用されるため、旧コードが使う既存のテーブル・列・制約・データ形式を壊さない形に限る。新しいテーブルの追加と、nullable または default 付きの列追加を基本とする。既存の列・制約の変更（テーブルの作り直しを含む）、既存データの更新、列やテーブルの削除・名前変更は、旧コードの読み書きへの影響を確認したうえで「追加 → 移行 → 削除」に分けて出す。
 
 ### ローカル開発
 
