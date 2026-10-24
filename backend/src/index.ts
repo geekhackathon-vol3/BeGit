@@ -1,4 +1,5 @@
 import { Container, getContainer } from "@cloudflare/containers";
+import { handleWorkerRoute } from "./api/router";
 import { isInternalPath, stripInternalHeaders } from "./guards";
 
 interface Env {
@@ -32,6 +33,10 @@ interface Env {
   DEV_MODE: string;
   // "true" で BeGit Time! の「1スプリント1人1回」を解除する（[vars] / [env.dev.vars]）。未設定は制限あり。
   BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT: string;
+  // Worker が D1 バインディングで直接処理する API の名前（カンマ区切り。src/api/router.ts の ROUTES）。未設定なら全てコンテナへ転送する（#132）。
+  WORKER_ROUTES?: string;
+  // "true" で Worker が処理した API の D1 呼び出しを X-D1-* ヘッダーで返す（計測用の環境だけ）。
+  D1_METRICS?: string;
   // 内部 Cron 起動シークレット。dev は [env.dev.vars] の var、本番は secret 運用。
   // scheduled() が X-Cron-Secret ヘッダーで Go コンテナへ転送し、cron_handler が定数時間比較する。
   CRON_SECRET: string;
@@ -127,6 +132,10 @@ export default {
     if (isInternalPath(requestURL.pathname)) {
       return Response.json({ error: "not found" }, { status: 404 });
     }
+
+    // WORKER_ROUTES で有効にした API は Worker が処理する（#132）。/internal/* の遮断より後に置くこと
+    const workerResponse = await handleWorkerRoute(request, env);
+    if (workerResponse) return workerResponse;
 
     // Workers Secrets と [vars] を X-Internal-* ヘッダーとして Container に転送する
     const modifiedRequest = new Request(request, {
