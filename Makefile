@@ -73,6 +73,8 @@ dev-db-create:
 	@echo "👉 次に: npx wrangler secret put CF_API_TOKEN --env dev （cd backend で実行）"
 
 # dev Worker(begit-dev) をデプロイ（DEV_MODE=true）。Docker build → deploy → dev D1 migration
+# PoC 期間の begit-dev は運用環境で、main へのマージで CI から自動デプロイする。
+# 手元からは使わない（dev の中身が main とずれるため）。ブランチは Actions の "Deploy (dev)" で試す。
 deploy-dev:
 	docker build --platform linux/amd64 -t begit-api ./backend && \
 	cd backend && npx wrangler deploy --env dev && \

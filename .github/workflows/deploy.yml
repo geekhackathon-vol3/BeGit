@@ -1,8 +1,12 @@
 name: Deploy
 
+# PoC 期間は利用者が begit-dev のみのため、本番（begit）は手動デプロイにする。
+# App Store 公開で本番へ切り替えるときに自動デプロイを戻す。
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
@@ -23,7 +27,8 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - name: Deploy Workers
-        run: npx wrangler deploy
+      # 新しいコードより先にスキーマを更新する。マイグレーションは旧コードでも動く追加のみにすること。
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply begit-db --remote
+      - name: Deploy Workers
+        run: npx wrangler deploy
