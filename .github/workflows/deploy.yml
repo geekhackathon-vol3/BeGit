@@ -5,6 +5,11 @@ name: Deploy
 on:
   workflow_dispatch:
 
+# 手動実行を続けて起動しても、マイグレーションとデプロイを一組ずつ順に実行する。
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
