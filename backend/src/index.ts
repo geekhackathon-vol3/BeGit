@@ -1,4 +1,5 @@
 import { Container, getContainer } from "@cloudflare/containers";
+import { isInternalPath, stripInternalHeaders } from "./guards";
 
 interface Env {
   BEGIT_API: DurableObjectNamespace<BeGitAPI>;
@@ -81,36 +82,11 @@ function internalHeaders(env: Env): Record<string, string> {
   };
 }
 
-// isInternalPath は Go コンテナの内部専用エンドポイント（/internal/*）かを判定する。
-// Go(net/http) はパーセントエンコードを復号してからルーティングするため、
-// 復号・連続スラッシュの正規化後のパスで判定し、/%69nternal/cron のような迂回を防ぐ。
-function isInternalPath(pathname: string): boolean {
-  let decoded = pathname;
-  try {
-    decoded = decodeURIComponent(pathname);
-  } catch {
-    // 不正なエンコードは安全側に倒して内部扱いにする
-    return true;
-  }
-  const normalized = decoded.replace(/\/{2,}/g, "/").toLowerCase();
-  return normalized === "/internal" || normalized.startsWith("/internal/");
-}
-
-// containerRequestHeaders は外部リクエストのヘッダーから、Worker だけが付与すべき
-// 内部ヘッダー（X-Internal-* と内部エンドポイント用シークレット）を取り除き、
+// containerRequestHeaders は外部リクエストのヘッダーから内部ヘッダーを取り除き（stripInternalHeaders）、
 // Worker の値で上書きしたヘッダーを返す。クライアントが同名ヘッダーを送っても
 // Go 側に届くのは Worker の値だけになる。
 function containerRequestHeaders(request: Request, env: Env): Headers {
-  const headers = new Headers(request.headers);
-  for (const name of [...headers.keys()]) {
-    if (
-      name.startsWith("x-internal-") ||
-      name === "x-cron-secret" ||
-      name === "x-notification-queue-secret"
-    ) {
-      headers.delete(name);
-    }
-  }
+  const headers = stripInternalHeaders(request.headers);
   for (const [name, value] of Object.entries(internalHeaders(env))) {
     headers.set(name, value);
   }
