@@ -29,6 +29,8 @@ struct NotificationPayload: Equatable {
     let status: String?         // ②: "on_time" | "late"
     let actorLogin: String?     // ⑦: 反応した相手の login
     let remainingMinutes: Int?  // 残り時間リマインド: 30 | 10
+    let gameMode: BeGitGameMode?
+    let gameResult: BeGitGameResult?
 
     //  FCM の userInfo（didReceive 等で渡る辞書）からパースする。
     //  type が未知、または共通必須（type / group_id）が欠落・非数値なら nil。
@@ -49,6 +51,8 @@ struct NotificationPayload: Equatable {
         self.status = Self.string(userInfo["status"])
         self.actorLogin = Self.string(userInfo["actor_login"])
         self.remainingMinutes = Self.int(userInfo["remaining_minutes"])
+        self.gameMode = Self.string(userInfo["game_mode"]).flatMap(BeGitGameMode.init(rawValue:))
+        self.gameResult = Self.string(userInfo["game_result"]).flatMap(BeGitGameResult.init(rawValue:))
     }
 
     //  FCM data は文字列値だが、NSString 等で届く場合も吸収する。

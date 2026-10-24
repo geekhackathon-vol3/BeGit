@@ -213,7 +213,8 @@ struct RepositoryDashboardView: View {
                             notificationID: challenge.notificationID,
                             sentBy: challenge.issuer.userID,
                             sentAt: challenge.sentAt,
-                            expiresAt: challenge.endsAt
+                            expiresAt: challenge.endsAt,
+                            gameMode: challenge.gameMode
                         ),
                         now: context.date,
                         canStop: challenge.canEnd,
@@ -291,7 +292,7 @@ struct RepositoryDashboardView: View {
             } else if let active = viewModel.activeChallenge {
                 NavigationLink(value: cameraRoute(for: ActiveBeGitTime(
                     notificationID: active.notificationID, sentBy: active.issuer.userID,
-                    sentAt: active.sentAt, expiresAt: active.endsAt
+                    sentAt: active.sentAt, expiresAt: active.endsAt, gameMode: active.gameMode
                 ))) {
                     PrimaryCapsuleButtonLabel(title: "写真で報告する", systemImage: "camera.fill", isEnabled: true)
                 }
@@ -369,6 +370,14 @@ struct RepositoryDashboardView: View {
                     .foregroundStyle(AppTheme.softPink)
                     .monospacedDigit()
             }
+
+            Label(activeBeGitTime.gameMode.title, systemImage: activeBeGitTime.gameMode.systemImage)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AppTheme.accent.opacity(0.12))
+                .clipShape(Capsule())
 
             HStack(spacing: 10) {
                 if let issuer {
@@ -464,7 +473,8 @@ struct RepositoryDashboardView: View {
             repository: viewModel.repository,
             selectedMembers: viewModel.repository.members,
             comment: "",
-            createdAt: activeBeGitTime.sentAt
+            createdAt: activeBeGitTime.sentAt,
+            gameMode: activeBeGitTime.gameMode
         )
 
         return .camera(notification: notification)
@@ -541,7 +551,8 @@ struct RepositoryDashboardView: View {
                 notificationID: $0.notificationID,
                 sentBy: $0.issuer.userID,
                 sentAt: $0.sentAt,
-                expiresAt: $0.endsAt
+                expiresAt: $0.endsAt,
+                gameMode: $0.gameMode
             )
         }
         guard let challenge = activeWindow ?? viewModel.activeBeGitTime ?? viewModel.endedBeGitTime else {

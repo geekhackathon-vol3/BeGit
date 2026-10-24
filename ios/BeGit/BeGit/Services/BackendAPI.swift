@@ -39,12 +39,20 @@ struct ActiveBeGitTime: Sendable {
     let sentBy: Int64
     let sentAt: Date
     let expiresAt: Date
+    let gameMode: BeGitGameMode
 }
 
 struct NotificationMemberStatus: Sendable, Identifiable {
     let id: Int64
     let login: String
+    let avatarURL: URL?
     let status: String
+}
+
+struct NotificationStatusSummary: Sendable {
+    let gameMode: BeGitGameMode
+    let gameResult: BeGitGameResult
+    let members: [NotificationMemberStatus]
 }
 
 // 新しいactive通知APIが未反映の環境でも、送信直後の表示を維持するための互換キャッシュ。
@@ -56,7 +64,8 @@ enum ActiveBeGitTimeStore {
         notificationID: Int64 = 0,
         sentBy: Int64 = 0,
         sentAt: Date = Date(),
-        expiresAt: Date
+        expiresAt: Date,
+        gameMode: BeGitGameMode = .everyone
     ) {
         UserDefaults.standard.set(
             [
@@ -67,6 +76,7 @@ enum ActiveBeGitTimeStore {
             ],
             forKey: key(for: repositoryID)
         )
+        UserDefaults.standard.set(gameMode.rawValue, forKey: modeKey(for: repositoryID))
     }
 
     static func load(repositoryID: Int64, now: Date = Date()) -> ActiveBeGitTime? {
@@ -104,17 +114,21 @@ enum ActiveBeGitTimeStore {
             notificationID: notificationID,
             sentBy: sentBy,
             sentAt: sentAt,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            gameMode: BeGitGameMode(rawValue: UserDefaults.standard.string(forKey: modeKey(for: repositoryID)) ?? "") ?? .everyone
         )
     }
 
     static func remove(repositoryID: Int64) {
         UserDefaults.standard.removeObject(forKey: key(for: repositoryID))
+        UserDefaults.standard.removeObject(forKey: modeKey(for: repositoryID))
     }
 
     private static func key(for repositoryID: Int64) -> String {
         "\(keyPrefix).\(repositoryID)"
     }
+
+    private static func modeKey(for repositoryID: Int64) -> String { "\(keyPrefix).mode.\(repositoryID)" }
 }
 
 // OpenAPI Runtime は Middleware から投げられたエラーを ClientError などで
@@ -204,10 +218,10 @@ protocol RepositoryAPI: Sendable {
         currentUserID: Int64?,
         accessToken: String
     ) async throws -> [ActivityReaction]
-    func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64
+    func sendNotification(repositoryID: Int64, gameMode: BeGitGameMode, memberIDs: [Int64], message: String, accessToken: String) async throws -> Int64
     func stopNotification(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
     func getActiveBeGitTime(repositoryID: Int64, accessToken: String) async throws -> ActiveBeGitTime?
-    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus]
+    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> NotificationStatusSummary
     func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws
     func uploadPhotos(
         repositoryID: Int64,

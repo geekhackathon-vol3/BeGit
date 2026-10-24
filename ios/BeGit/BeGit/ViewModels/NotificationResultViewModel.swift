@@ -11,6 +11,8 @@ final class NotificationResultViewModel: ObservableObject {
     @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var endedBeGitTime: ActiveBeGitTime?
     @Published private(set) var notificationMemberStatuses: [NotificationMemberStatus] = []
+    @Published private(set) var gameResult: BeGitGameResult = .pending
+    @Published private(set) var gameMode: BeGitGameMode
     @Published private(set) var isLoading = false                   //  フィード取得中
 
     private let repositoryAPI: any RepositoryAPI
@@ -23,6 +25,7 @@ final class NotificationResultViewModel: ObservableObject {
         self.notification = notification
         self.repositoryAPI = repositoryAPI
         self.activities = justPostedActivity.map { [$0] } ?? []
+        self.gameMode = notification.gameMode
     }
     //  バックエンドのフィード（実写真付き）を取得して Timeline を差し替える
     func loadActivities(accessToken: String?, currentUserID: Int64? = nil) async {
@@ -111,11 +114,14 @@ final class NotificationResultViewModel: ObservableObject {
         }
 
         do {
-            notificationMemberStatuses = try await repositoryAPI.getNotificationStatus(
+            let summary = try await repositoryAPI.getNotificationStatus(
                 repositoryID: repositoryID,
                 notificationID: notificationID,
                 accessToken: accessToken
             )
+            notificationMemberStatuses = summary.members
+            gameResult = summary.gameResult
+            gameMode = summary.gameMode
         } catch {
             notificationMemberStatuses = []
         }
@@ -191,9 +197,21 @@ final class NotificationResultViewModel: ObservableObject {
     //  Resultには実際に通知対象として選択されたmemberを表示する。
     //  avatar URLが欠けた旧データはGitHubのユーザー画像URLで補完する。
     var members: [RepositoryMember] {
-        let selectedMembers = notification.selectedMembers.isEmpty
-            ? notification.repository.members
-            : notification.selectedMembers
+        let selectedMembers: [RepositoryMember]
+        if notificationMemberStatuses.isEmpty == false {
+            selectedMembers = notificationMemberStatuses.map {
+                RepositoryMember(
+                    backendUserID: $0.id,
+                    login: $0.login,
+                    avatarURL: $0.avatarURL,
+                    role: .poster
+                )
+            }
+        } else {
+            selectedMembers = notification.selectedMembers.isEmpty
+                ? notification.repository.members
+                : notification.selectedMembers
+        }
 
         return selectedMembers.map { member in
             guard member.avatarURL == nil, member.login.isEmpty == false else {

@@ -391,12 +391,21 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
     }
     
     // 通知発行成功は 201(.created)
-    func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64 {
-        let output = try await makeClient(accessToken: accessToken).postGroupsIdNotifications(
-            .init(path: .init(id: Int(repositoryID)))
-        )
-        guard case let .created(created) = output,
-              let notificationID = try created.body.json.id else {
+    func sendNotification(repositoryID: Int64, gameMode: BeGitGameMode, memberIDs: [Int64], message: String, accessToken: String) async throws -> Int64 {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/notifications")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(SendNotificationRequestDTO(
+            gameMode: gameMode.rawValue,
+            memberIDs: memberIDs,
+            message: message
+        ))
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        guard let notificationID = try JSONDecoder().decode(SendNotificationResponseDTO.self, from: data).id else {
             throw BeGitAPIError.invalidResponse
         }
         return Int64(notificationID)
@@ -437,11 +446,12 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
             notificationID: Int64(payload.notificationID),
             sentBy: Int64(payload.sentBy),
             sentAt: sentAt,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            gameMode: BeGitGameMode(rawValue: payload.gameMode) ?? .everyone
         )
     }
 
-    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus] {
+    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> NotificationStatusSummary {
         let url = baseURL.appending(path: "groups/\(repositoryID)/notifications/\(notificationID)")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -451,9 +461,18 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
         let (data, response) = try await session.data(for: request)
         try validateHTTPResponse(response, data: data)
         let payload = try JSONDecoder().decode(NotificationStatusDTO.self, from: data)
-        return payload.members.map {
-            NotificationMemberStatus(id: Int64($0.userID), login: $0.login, status: $0.status)
-        }
+        return NotificationStatusSummary(
+            gameMode: BeGitGameMode(rawValue: payload.gameMode) ?? .everyone,
+            gameResult: BeGitGameResult(rawValue: payload.gameResult) ?? .pending,
+            members: payload.members.map {
+                NotificationMemberStatus(
+                    id: Int64($0.userID),
+                    login: $0.login,
+                    avatarURL: URL(string: $0.avatarURL),
+                    status: $0.status
+                )
+            }
+        )
     }
 
     func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws {
@@ -977,27 +996,55 @@ private nonisolated struct ActiveBeGitTimeDTO: Decodable {
     let sentBy: Int
     let sentAt: String
     let expiresAt: String
+    let gameMode: String
 
     enum CodingKeys: String, CodingKey {
         case notificationID = "notification_id"
         case sentBy = "sent_by"
         case sentAt = "sent_at"
         case expiresAt = "expires_at"
+        case gameMode = "game_mode"
     }
 }
 
 private nonisolated struct NotificationStatusDTO: Decodable {
     let members: [NotificationStatusMemberDTO]
+    let gameMode: String
+    let gameResult: String
+
+    enum CodingKeys: String, CodingKey {
+        case members
+        case gameMode = "game_mode"
+        case gameResult = "game_result"
+    }
+}
+
+private nonisolated struct SendNotificationRequestDTO: Encodable {
+    let gameMode: String
+    let memberIDs: [Int64]
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case gameMode = "game_mode"
+        case memberIDs = "member_ids"
+        case message
+    }
+}
+
+private nonisolated struct SendNotificationResponseDTO: Decodable {
+    let id: Int?
 }
 
 private nonisolated struct NotificationStatusMemberDTO: Decodable {
     let userID: Int
     let login: String
+    let avatarURL: String
     let status: String
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
         case login, status
+        case avatarURL = "avatar_url"
     }
 }
 

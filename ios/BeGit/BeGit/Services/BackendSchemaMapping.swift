@@ -93,7 +93,8 @@ extension Components.Schemas.Handler_ActiveChallengeJSON {
                         status: post.status
                     )
                 }
-            }
+            },
+            gameMode: BeGitGameMode(rawValue: gameMode?.rawValue ?? "") ?? .everyone
         )
     }
 }

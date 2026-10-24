@@ -11,6 +11,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
     @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var endedBeGitTime: ActiveBeGitTime?
     @Published private(set) var notificationMemberStatuses: [NotificationMemberStatus] = []
+    @Published private(set) var gameResult: BeGitGameResult = .pending
     @Published private(set) var isLoading = false                   //  Timeline取得中
     @Published var errorMessage: String?                            //  APIエラー表示
     //  進行中のBeGit Time（GET /groups/:id の active_challenge）。nil = 進行中なし
@@ -145,7 +146,8 @@ final class RepositoryDashboardViewModel: ObservableObject {
                     notificationID: active.notificationID,
                     accessToken: accessToken
                 ) {
-                    notificationMemberStatuses = statuses
+                    notificationMemberStatuses = statuses.members
+                    gameResult = statuses.gameResult
                 }
             } else if NotificationDeliveryMode.current.usesLocalNotificationMock,
                       let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
@@ -194,7 +196,8 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 notificationID: challenge.notificationID,
                 sentBy: challenge.issuer.userID,
                 sentAt: challenge.sentAt,
-                expiresAt: challenge.endsAt
+                expiresAt: challenge.endsAt,
+                gameMode: challenge.gameMode
             )
         } else {
             throw BeGitAPIError.invalidResponse
@@ -243,7 +246,8 @@ final class RepositoryDashboardViewModel: ObservableObject {
             notificationID: serverActive.notificationID,
             accessToken: accessToken
         ) {
-            notificationMemberStatuses = statuses
+            notificationMemberStatuses = statuses.members
+            gameResult = statuses.gameResult
         }
     }
 

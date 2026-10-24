@@ -268,7 +268,8 @@ struct GitHubUserSearchSheetView: View {
 
     private var visibleSearchResults: [RepositoryMember] {
         viewModel.results.filter { member in
-            containsExistingMember(member) == false
+            member.backendUserID != nil
+                && containsExistingMember(member) == false
                 && visibleRepositoryMembers.contains {
                     $0.login.caseInsensitiveCompare(member.login) == .orderedSame
                 } == false

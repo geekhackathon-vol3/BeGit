@@ -271,6 +271,10 @@ struct NotificationResultView: View {
                     .monospacedDigit()
             }
 
+            Label(active.gameMode.title, systemImage: active.gameMode.systemImage)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.accent)
+
             HStack(spacing: 10) {
                 if let issuer = issuer {
                     AvatarView(member: issuer, size: 38)
@@ -356,7 +360,8 @@ struct NotificationResultView: View {
             repository: viewModel.notification.repository,
             selectedMembers: viewModel.notification.selectedMembers,
             comment: viewModel.notification.comment,
-            createdAt: active.sentAt
+            createdAt: active.sentAt,
+            gameMode: active.gameMode
         )
         return .camera(notification: notification)
     }
@@ -369,6 +374,7 @@ struct NotificationResultView: View {
     //  通知結果サマリー
     private var resultSummary: some View {
         VStack(alignment: .leading, spacing: 14) {
+            modeResultCard
             BeGitTimeProgressSummaryView(
                 members: viewModel.members,
                 achievedMemberLogins: achievedMemberLogins,
@@ -377,6 +383,43 @@ struct NotificationResultView: View {
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var modeResultCard: some View {
+        let resultText: String
+        let resultColor: Color
+        switch viewModel.gameResult {
+        case .pending:
+            resultText = "挑戦中"
+            resultColor = AppTheme.accent
+        case .succeeded:
+            resultText = "達成 +10 pt"
+            resultColor = AppTheme.checkmarkGreen
+        case .failed:
+            resultText = "未達成"
+            resultColor = AppTheme.softPink
+        case .cancelled:
+            resultText = "キャンセル"
+            resultColor = AppTheme.Text.muted
+        }
+        return HStack(spacing: 12) {
+            Image(systemName: viewModel.gameMode.systemImage)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(resultColor)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(viewModel.gameMode.title)
+                    .appFont(.subheadline)
+                    .foregroundStyle(AppTheme.Text.primary)
+                Text(resultText)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(resultColor)
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(resultColor.opacity(0.8), lineWidth: 2))
     }
 
     private var achievedMemberLogins: Set<String> {
