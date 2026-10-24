@@ -56,6 +56,7 @@ terraform-apply:
 	echo "✅ backend/wrangler.toml の database_id を更新しました: $$D1_ID"
 
 # Task 4.2: Docker build → wrangler deploy → D1 migration
+# PoC 期間の本番（begit）は Actions の "Deploy" から手動デプロイする。手元からは使わない。
 deploy:
 	docker build --platform linux/amd64 -t begit-api ./backend && \
 	cd backend && npx wrangler deploy && \
