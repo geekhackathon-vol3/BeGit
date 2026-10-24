@@ -22,10 +22,10 @@ iOS が通知を受け取ったら `type` で分岐し、所定の画面へ遷�
 
 | # | 通知 | `type` | 受信するか | タップ後にやること |
 |---|---|---|---|---|
-| ① | BeGit Time! | `begit_time` | 自分がメンバーのグループで誰かが発行 | チャレンジ中 → 投稿作成 UI（後述§3） |
+| ① | BeGit Time! | `begit_time` | 通知発行時に対象メンバーとして選択された | チャレンジ中 → 投稿作成 UI（後述§3） |
 | ①a | 残り時間リマインド | `challenge_reminder` | 残り30分/10分時点の未投稿者のみ | 投稿作成 UI（後述§3） |
 | ② | Nice Work! | `nice_work` | **自分が**コミット/issue/review した時 | 報告は確定済み。写真は後から添付できる（§4） |
-| ③ | チャレンジ終了 | `challenge_end` | グループ全員 | チャレンジ結果画面へ |
+| ③ | チャレンジ終了 | `challenge_end` | 通知発行時に固定した対象メンバー | チャレンジ結果画面へ |
 | ④ | スプリント終了3日前 | `sprint_reminder` | グループ全員 | スプリント概要画面へ |
 | ⑤ | スプリント終了 | `sprint_end` | グループ全員 | スプリント結果画面へ |
 | ⑥ | 新スプリント開始 | `sprint_start` | グループ全員 | スプリント概要画面へ |
@@ -60,7 +60,7 @@ iOS が通知を受け取ったら `type` で分岐し、所定の画面へ遷�
 
 ```jsonc
 // ① begit_time（チャレンジ開始）
-{ "type": "begit_time", "group_id": "12", "notification_id": "345", "sprint_id": "7" }
+{ "type": "begit_time", "group_id": "12", "notification_id": "345", "sprint_id": "7", "game_mode": "everyone" }
 
 // ①a challenge_reminder（未投稿者のみ）
 { "type": "challenge_reminder", "group_id": "12", "notification_id": "345", "remaining_minutes": "30" }
@@ -74,7 +74,7 @@ iOS が通知を受け取ったら `type` で分岐し、所定の画面へ遷�
 }
 
 // ③ challenge_end（発行+1h、結果サマリ）
-{ "type": "challenge_end", "group_id": "12", "notification_id": "345" }
+{ "type": "challenge_end", "group_id": "12", "notification_id": "345", "game_mode": "everyone", "game_result": "succeeded" }
 
 // ④⑤⑥ sprint 系
 { "type": "sprint_reminder", "group_id": "12", "sprint_id": "7" }  // 終了3日前
