@@ -45,6 +45,13 @@ type cronService struct {
 	fcmClient         fcm.Client
 	externalPublisher ExternalNotificationPublisher
 	scheduleRepo      repository.BeGitTimeScheduleRepository
+	pointsRepo        *repository.PointsRepository
+}
+
+func AttachPointsToCron(cron CronService, points *repository.PointsRepository) {
+	if s, ok := cron.(*cronService); ok {
+		s.pointsRepo = points
+	}
 }
 
 // NewCronService は CronService を作成する
@@ -106,6 +113,11 @@ func (s *cronService) RunCron(ctx context.Context, kind string) error {
 // runMinutely は自動開催、残り時間リマインド、③ challenge_end を発火する。
 func (s *cronService) runMinutely(ctx context.Context) error {
 	now := time.Now().UTC()
+	if s.pointsRepo != nil {
+		if err := s.pointsRepo.FinalizeBonuses(ctx, 0); err != nil {
+			log.Printf("cron_service: FinalizeBonuses failed: %v", err)
+		}
+	}
 	s.runScheduledBeGitTimes(ctx, now)
 	s.runChallengeReminders(ctx, 30)
 	s.runChallengeReminders(ctx, 10)
@@ -166,6 +178,10 @@ func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time)
 		group, err := s.groupRepo.GetByID(ctx, schedule.GroupID)
 		if err != nil {
 			log.Printf("cron_service: GetByID group %d failed: %v", schedule.GroupID, err)
+			continue
+		}
+		if group.CompletedAt != nil {
+			s.advanceSchedule(ctx, schedule, now)
 			continue
 		}
 		durationDays := group.SprintDurationDays

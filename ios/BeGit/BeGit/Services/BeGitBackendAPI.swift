@@ -88,6 +88,26 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
             middlewares: middlewares
         )
     }
+
+    func getFinalResult(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult? {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/final-result")
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(ProjectFinalResult.self, from: data)
+    }
+
+    func completeRepository(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/complete")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(ProjectFinalResult.self, from: data)
+    }
     
     func exchangeCode(code: String) async throws -> AuthResponse {
         let output = try await makeClient().postAuthGithub(

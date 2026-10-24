@@ -23,6 +23,7 @@ type Group struct {
 	OwnerUserID        int64
 	OwnerVerified      bool
 	OwnerClaimedAt     *time.Time
+	CompletedAt        *time.Time
 	MemberCount        int
 	SprintDurationDays int
 	CreatedAt          time.Time

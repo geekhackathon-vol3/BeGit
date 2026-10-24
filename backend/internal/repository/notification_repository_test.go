@@ -53,8 +53,8 @@ func TestNotificationRepository_CreateIfNoActive_OncePerSprintCondition(t *testi
 		wantSenderSQL bool
 		wantParams    int
 	}{
-		{name: "既定は1人1回を判定する", allowMultiple: false, wantSenderSQL: true, wantParams: 7},
-		{name: "許可時は1人1回を判定しない", allowMultiple: true, wantSenderSQL: false, wantParams: 5},
+		{name: "既定は1人1回を判定する", allowMultiple: false, wantSenderSQL: true, wantParams: 8},
+		{name: "許可時は1人1回を判定しない", allowMultiple: true, wantSenderSQL: false, wantParams: 6},
 	}
 
 	for _, tc := range cases {
@@ -77,6 +77,9 @@ func TestNotificationRepository_CreateIfNoActive_OncePerSprintCondition(t *testi
 			}
 			if !strings.Contains(gotSQL, "+1 hour") {
 				t.Errorf("active-challenge condition must always be present, sql=%s", gotSQL)
+			}
+			if !strings.Contains(gotSQL, "g.completed_at IS NULL") {
+				t.Errorf("completed groups must not accept new notifications, sql=%s", gotSQL)
 			}
 			if got := strings.Contains(gotSQL, "sent_by = ?"); got != tc.wantSenderSQL {
 				t.Errorf("sender condition present=%v, want %v", got, tc.wantSenderSQL)
