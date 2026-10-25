@@ -65,6 +65,22 @@ function upload(parts: { name: string; data: Uint8Array }[]) {
   return handleWorkerRoute(request, env);
 }
 
+// 2つのアップロードが、どちらも「保存済みの写真はない」と読んでから先へ進むようにする（同時に送られた場合）
+function bothReadBeforeWriting() {
+  const batch = d1.batch.bind(d1);
+  let arrived = 0;
+  let release!: () => void;
+  const bothArrived = new Promise<void>((resolve) => (release = resolve));
+  d1.batch = async (statements) => {
+    const results = await batch(statements);
+    if (statements.some((statement) => statement.sql.startsWith("SELECT sent_at"))) {
+      if (++arrived === 2) release();
+      await bothArrived;
+    }
+    return results;
+  };
+}
+
 function postRow() {
   return d1.sqlite.prepare("SELECT is_draft, status FROM posts WHERE id = 10").get();
 }
@@ -125,7 +141,7 @@ describe("写真アップロード（実際の R2）", () => {
     expect([...bucket.objects.keys()]).toEqual(["posts/10/main.jpg"]);
   });
 
-  it("書き込めたかを確かめる SELECT も失敗したら、行が指しているかもしれない写真は消さない", async () => {
+  it("行を確かめる SELECT も失敗したら、行が指しているかもしれない写真は消さない", async () => {
     const batch = d1.batch.bind(d1);
     d1.batch = async (statements) => {
       if (statements.some((statement) => statement.sql.startsWith("INSERT INTO photos"))) throw new Error("D1 is down");
@@ -134,10 +150,10 @@ describe("写真アップロード（実際の R2）", () => {
     const prepare = d1.prepare.bind(d1);
     d1.prepare = (sql) => {
       const statement = prepare(sql);
-      if (sql.startsWith("SELECT 1 AS saved")) {
-        // bind() は新しい statement を返すので、bind した後の first() を失敗させる
+      if (sql.startsWith("SELECT r2_key FROM photos")) {
+        // bind() は新しい statement を返すので、bind した後の all() を失敗させる
         const bind = statement.bind.bind(statement);
-        statement.bind = (...values) => Object.assign(bind(...values), { first: async () => { throw new Error("D1 is down"); } });
+        statement.bind = (...values) => Object.assign(bind(...values), { all: async () => { throw new Error("D1 is down"); } });
       }
       return statement;
     };
@@ -153,6 +169,31 @@ describe("写真アップロード（実際の R2）", () => {
     expect(response!.status).toBe(502);
     expect(bucket.objects.size).toBe(0);
     expect(photoRows()).toEqual([]);
+  });
+
+  it("同じ投稿に同時に送られても、写真の行は種類ごとに1つで、どちらにも同じ写真を返す（冪等）", async () => {
+    bothReadBeforeWriting();
+    const [first, second] = await Promise.all([
+      upload([{ name: "main", data: JPEG }, { name: "front", data: PNG }]),
+      upload([{ name: "main", data: JPEG }, { name: "front", data: PNG }]),
+    ]);
+    expect([first!.status, second!.status]).toEqual([201, 201]);
+    expect(await first!.json()).toEqual(await second!.json());
+    expect(photoRows()).toEqual([
+      { r2_key: "posts/10/main.jpg", photo_type: "main" },
+      { r2_key: "posts/10/front.png", photo_type: "front" },
+    ]);
+    expect(postRow()).toEqual({ is_draft: 0, status: "on_time" });
+    expect(d1.sqlite.prepare("SELECT COUNT(*) AS n FROM point_awards").get()).toEqual({ n: 1 });
+  });
+
+  it("同時に送られて拡張子が違ったら、行が指していない方の写真は消す", async () => {
+    bothReadBeforeWriting();
+    const [first, second] = await Promise.all([upload([{ name: "main", data: JPEG }]), upload([{ name: "main", data: PNG }])]);
+    expect([first!.status, second!.status]).toEqual([201, 201]);
+    const rows = photoRows() as { r2_key: string }[];
+    expect(rows).toHaveLength(1);
+    expect([...bucket.objects.keys()]).toEqual([rows[0].r2_key]);
   });
 
   it("認証情報があるのにバインディングがなければ（設定ミス）、保存できないので 502", async () => {

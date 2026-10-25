@@ -70,12 +70,22 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
     validated.push({ photoType, contentType, key: `posts/${postID.value}/${photoType}.${extension}`, file: file.file });
   }
 
-  // R2 に保存してから行を作る。途中で失敗したら、保存した写真を消す（行は batch() なので残らない）
+  // R2 に保存してから行を作る。途中で失敗したら、どの行も指していない写真だけを消す（行は batch() なので残らない）。
+  // 同じ投稿に同時に送られても、キーは同じ（posts/<id>/<種類>.<拡張子>）なので、別のリクエストの写真を消さないよう行で確かめる
   const uploadedKeys: string[] = [];
-  const removeUploaded = () =>
-    Promise.all(uploadedKeys.map((key) =>
+  // known がなければ行を読んで確かめる。確かめられないときは、行が指しているかもしれないので消さない
+  const removeUnreferenced = async (known?: { r2_key: string }[]) => {
+    const rows = known ?? await db.all<{ r2_key: string }>(db.prepare("SELECT r2_key FROM photos WHERE post_id = ?").bind(postID.value))
+      .catch(() => null);
+    if (!rows) {
+      console.error(`[photos.upload] could not check photos of post ${postID.value}; kept uploaded photos`, uploadedKeys);
+      return;
+    }
+    const referenced = new Set(rows.map((row) => row.r2_key));
+    await Promise.all(uploadedKeys.filter((key) => !referenced.has(key)).map((key) =>
       storage.delete(key).catch((error) => console.error(`[photos.upload] failed to remove ${key}`, error))
     ));
+  };
   for (const item of validated) {
     // 書けたのに失敗が返ることもあるので、put の前に片付けの対象にする（delete は何度呼んでもよい）
     uploadedKeys.push(item.key);
@@ -83,30 +93,34 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
       await storage.put(item.key, item.contentType, item.file);
     } catch (error) {
       console.error("[photos.upload] R2 put failed", error);
-      await removeUploaded();
+      await removeUnreferenced();
       return errorResponse(502, "photo storage error");
     }
   }
 
-  let created: PhotoRow[];
+  // 同じ種類の写真がまだないときだけ行を作り、最後にこの投稿の写真をすべて読んで返す。
+  // D1 の batch() は1つのトランザクションで、書き込みは1つずつ順に実行されるので、同時に送られても行は種類ごとに1つになり、
+  // どのリクエストも同じ写真を返す（冪等）。Go は同時に送られると行が2組できる
+  let photos: PhotoRow[];
   try {
     const statements = validated.map((item) =>
-      db.prepare("INSERT INTO photos (post_id, r2_key, photo_type) VALUES (?, ?, ?) RETURNING id, post_id, r2_key, photo_type")
-        .bind(postID.value, item.key, item.photoType)
+      db.prepare(
+        `INSERT INTO photos (post_id, r2_key, photo_type)
+         SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM photos WHERE post_id = ? AND photo_type = ?)`,
+      ).bind(postID.value, item.key, item.photoType, postID.value, item.photoType)
     );
     if (confirmation) statements.push(confirmation);
+    statements.push(db.prepare("SELECT id, post_id, r2_key, photo_type FROM photos WHERE post_id = ? ORDER BY id ASC").bind(postID.value));
     const results = await db.batch(statements);
-    created = results.slice(0, validated.length).map((result) => result.results[0] as unknown as PhotoRow);
+    photos = results[results.length - 1].results as unknown as PhotoRow[];
   } catch (error) {
-    // D1 は書き込めたのに応答が届かず失敗になることがある。保存前はこの投稿に写真がなかったので、
-    // 行ができていれば写真は消さない（確かめられないときも、行が指す写真を消さないよう残す）
-    const saved = await db.first(db.prepare("SELECT 1 AS saved FROM photos WHERE post_id = ? LIMIT 1").bind(postID.value))
-      .catch(() => ({ saved: 1 }));
-    if (!saved) await removeUploaded();
-    else console.error(`[photos.upload] batch failed for post ${postID.value}; kept uploaded photos`, uploadedKeys);
+    // D1 は書き込めたのに応答が届かず失敗になることがある。行が指している写真は消さない
+    await removeUnreferenced();
     throw error;
   }
-  return photosResponse(storage, created);
+  // 先に別のリクエストが行を作っていて拡張子が違ったときなど、どの行も指していない写真は消す
+  await removeUnreferenced(photos);
+  return photosResponse(storage, photos);
 }
 
 interface NotificationRow {
