@@ -1,7 +1,7 @@
 import { errorResponse } from "../errors";
 import { decodeGoObject } from "../gojson";
 import type { RouteContext } from "../types";
-import { formatRFC3339, parseGoTimestamp, POST_COLUMNS, type PostRow, toPostJSON } from "./post";
+import { acceptsPhotoReports, formatRFC3339, groupCompleted, NOT_ACCEPTING_POSTS, parseGoTimestamp, POST_COLUMNS, type PostRow, toPostJSON } from "./post";
 
 // 投稿作成 POST /groups/:id/posts のうち、Worker が処理するのは写真の下書き（content_source = photo）だけ。
 // GitHub / 手入力の投稿は GitHub API を呼ぶため、これまでどおりコンテナ（Go）が処理する（#132）。
@@ -53,19 +53,19 @@ export async function claimPhotoDraft(request: Request): Promise<PhotoDraftInput
 
 interface NotificationRow {
   sent_at: unknown;
-  stopped_at: unknown;
   ended_at: unknown;
   sprint_id: number | null;
   sprint_group_id: number | null;
-  ends_at: unknown;
+  accepting: number;
 }
 
 const PHOTO_REPORT_REQUIRED = "validation error: photo report requires a BeGit Time and memo post type";
 
-// createPhotoDraft は Go の postService.CreatePost の写真の経路（content_source = photo）と同じルールで下書きを作る。
+// createPhotoDraft は Go の postService.CreatePost の写真の経路（content_source = photo）を元に下書きを作る。
 //   完了したプロジェクト → 409 / 通知がない・別グループ → 400 / 止めた・スプリントが終わった → 409
 //   同じ BeGit Time! の自分の投稿があればそれを返し、missed なら 409
 // Go は確認ごとに D1 へ往復するが、読む3つを batch() で1回にまとめ、作るときは INSERT と読み直しで1回にする。
+// 完了・受け付けの判定は SQL（post.ts）で行い、INSERT でも同じ条件を確かめる
 export async function createPhotoDraft({ db, caller, input }: RouteContext): Promise<Response> {
   const { body, notificationID, postType } = input as PhotoDraftInput;
   if (notificationID === null) return errorResponse(400, PHOTO_REPORT_REQUIRED);
@@ -73,18 +73,18 @@ export async function createPhotoDraft({ db, caller, input }: RouteContext): Pro
   const selectOwnPost = db.prepare(`SELECT ${POST_COLUMNS} FROM posts WHERE user_id = ? AND notification_id = ? LIMIT 1`)
     .bind(caller.userID, notificationID);
   const [groups, notifications, ownPosts] = await db.batch<unknown>([
-    db.prepare("SELECT completed_at FROM groups WHERE id = ? LIMIT 1").bind(caller.groupID),
+    db.prepare(`SELECT ${groupCompleted("g")} AS completed FROM groups g WHERE g.id = ? LIMIT 1`).bind(caller.groupID),
     db.prepare(
-      `SELECT n.sent_at, n.stopped_at, n.ended_at, s.id AS sprint_id, s.group_id AS sprint_group_id, s.ends_at
+      `SELECT n.sent_at, n.ended_at, s.id AS sprint_id, s.group_id AS sprint_group_id, ${acceptsPhotoReports("n.id")} AS accepting
        FROM notifications n LEFT JOIN sprints s ON s.id = n.sprint_id WHERE n.id = ? LIMIT 1`,
     ).bind(notificationID),
     selectOwnPost,
   ]);
 
-  const group = groups.results[0] as { completed_at: unknown } | undefined;
+  const group = groups.results[0] as { completed: number } | undefined;
   // router でメンバーと確かめたグループなので、ないのは Go と同じく 500
   if (!group) throw new Error(`group ${caller.groupID} not found`);
-  if (isSet(group.completed_at) && parseGoTimestamp(group.completed_at)) return errorResponse(409, "conflict");
+  if (group.completed) return errorResponse(409, "conflict");
 
   const notification = notifications.results[0] as NotificationRow | undefined;
   if (!notification) return errorResponse(400, "validation error: notification not found");
@@ -99,12 +99,8 @@ export async function createPhotoDraft({ db, caller, input }: RouteContext): Pro
   if (notification.sprint_group_id !== caller.groupID) {
     return errorResponse(400, "validation error: notification does not belong to group");
   }
-  // 写真の報告はスプリントの終わりまで受け付ける。Go は読めない ends_at をゼロ時刻（締め切り済み）として扱う
-  const deadline = parseGoTimestamp(notification.ends_at)?.getTime() ?? -Infinity;
-  const stopped = isSet(notification.stopped_at) && parseGoTimestamp(notification.stopped_at) !== null;
-  if (stopped || !(Date.now() < deadline)) {
-    return errorResponse(409, "conflict: notification is no longer accepting posts");
-  }
+  // 写真の報告は、止めるかスプリントが終わるまで受け付ける
+  if (!notification.accepting) return errorResponse(409, NOT_ACCEPTING_POSTS);
   if (postType !== "memo") return errorResponse(400, PHOTO_REPORT_REQUIRED);
 
   // GitHub の報告がすでにあれば、写真はそこに付ける（Go と同じくそれを返す）
@@ -114,17 +110,20 @@ export async function createPhotoDraft({ db, caller, input }: RouteContext): Pro
     return Response.json(toPostJSON(existing), { status: 201 });
   }
 
-  // 同時に作られたら、UNIQUE(notification_id, user_id) に当たった方は先にできた行を返す（Go と同じ）
+  // 確かめた後に止められた・締め切られた・完了したときは作らない（受け付けの条件を INSERT でも確かめる）。
+  // 同時に作られたら、UNIQUE(notification_id, user_id) に当たった方は先にできた行を返す
   const [, created] = await db.batch<PostRow>([
     db.prepare(
       `INSERT INTO posts (notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at)
-       VALUES (?, ?, ?, 'memo', ?, NULL, NULL, 0, 0, 0, NULL, NULL, 1, ?)
+       SELECT ?, ?, ?, 'memo', ?, NULL, NULL, 0, 0, 0, NULL, NULL, 1, ? WHERE ${acceptsPhotoReports("?")}
        ON CONFLICT (notification_id, user_id) DO NOTHING`,
-    ).bind(notificationID, caller.userID, caller.groupID, body, formatRFC3339(new Date())),
+    ).bind(notificationID, caller.userID, caller.groupID, body, formatRFC3339(new Date()), notificationID),
     selectOwnPost,
   ]);
   const post = created.results[0];
-  if (!post) throw new Error(`draft for notification ${notificationID} disappeared while creating`);
+  if (!post) return errorResponse(409, NOT_ACCEPTING_POSTS);
+  // 確かめた後に cron が missed を作っていた
+  if (post.status === "missed") return errorResponse(409, "conflict");
   return Response.json(toPostJSON(post), { status: 201 });
 }
 

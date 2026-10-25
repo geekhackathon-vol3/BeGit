@@ -1,7 +1,7 @@
 import { limitBytes } from "../body";
 import { errorResponse } from "../errors";
 import { parseID } from "../params";
-import { formatRFC3339, parseGoTimestamp, POST_COLUMNS, type PostRow } from "../posts/post";
+import { acceptsPhotoReports, formatRFC3339, NOT_ACCEPTING_POSTS, parseGoTimestamp, POST_COLUMNS, type PostRow } from "../posts/post";
 import { photoStorage, type PhotoStorage } from "../r2";
 import type { RouteContext } from "../types";
 import { type PhotoRow, toPhotoJSONs } from "./photo";
@@ -20,7 +20,8 @@ const EXTENSIONS: Record<string, string> = { "image/jpeg": "jpg", "image/png": "
 //   別グループ・missed の投稿 → 404 / 本人以外 → 403 / 通知のない下書き → 422
 //   写真が保存済み（前回の応答が届かなかった再送）→ 保存済みの写真を返す。下書きなら確定する
 //   1枚 10MB まで、形式はバイト列から判定する（jpeg / png。heic はパートの Content-Type と ftyp で判定）→ 違えば 422
-//   下書きは確定し、締め切りまでなら on_time、過ぎていれば late にする
+//   下書きは確定し、締め切りまでなら on_time、過ぎていれば late にする。
+//   通知を止めた・スプリントが終わった・プロジェクトが完了した後は、下書きを確定しない → 409（投稿作成と同じ条件）
 //   router の認証（owner / poster）を通った後に呼ばれる
 export async function uploadPhotos({ request, env, db, params, caller }: RouteContext): Promise<Response> {
   const postID = parseID(params[1]);
@@ -37,7 +38,8 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
     db.prepare(`SELECT ${POST_COLUMNS} FROM posts WHERE id = ? LIMIT 1`).bind(postID.value),
     db.prepare("SELECT id, post_id, r2_key, photo_type FROM photos WHERE post_id = ? ORDER BY id ASC").bind(postID.value),
     db.prepare(
-      "SELECT sent_at, ended_at FROM notifications WHERE id = (SELECT notification_id FROM posts WHERE id = ?)",
+      `SELECT n.sent_at, n.ended_at, ${acceptsPhotoReports("n.id")} AS accepting
+       FROM notifications n WHERE n.id = (SELECT notification_id FROM posts WHERE id = ?)`,
     ).bind(postID.value),
   ]);
   const post = postResult.results[0] as unknown as PostRow | undefined;
@@ -48,6 +50,8 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
 
   const storage = photoStorage(env);
   const notification = notificationResult.results[0] as unknown as NotificationRow | undefined;
+  // R2 に保存する前に断る（確定の UPDATE でも同じ条件をもう一度確かめる）
+  if (post.is_draft && notification && !notification.accepting) return errorResponse(409, NOT_ACCEPTING_POSTS);
   // 確定の SQL は R2 に保存する前に組み立てる（通知が読めないときに、保存してから消す手間を省く）。
   // Go は保存の後に時刻を取るので、on_time / late の境目が保存にかかる時間だけずれる
   const confirmation = post.is_draft ? confirmStatement(db, post, notification) : null;
@@ -55,7 +59,10 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
   // 前回のアップロードが成功していて、応答だけが届かなかった場合の再送
   const existing = photosResult.results as unknown as PhotoRow[];
   if (existing.length > 0) {
-    if (confirmation) await db.batch([confirmation]);
+    if (confirmation) {
+      const [, confirmed] = await db.batch([confirmation, selectIsDraft(db, post.id)]);
+      if (isStillDraft(confirmed)) return errorResponse(409, NOT_ACCEPTING_POSTS);
+    }
     return photosResponse(storage, existing);
   }
 
@@ -98,21 +105,28 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
     }
   }
 
-  // 同じ種類の写真がまだないときだけ行を作り、最後にこの投稿の写真をすべて読んで返す。
+  // 下書きを確定してから、確定済みの投稿で同じ種類の写真がまだないときだけ行を作り、最後にこの投稿の写真をすべて読んで返す。
   // D1 の batch() は1つのトランザクションで、書き込みは1つずつ順に実行されるので、同時に送られても行は種類ごとに1つになり、
-  // どのリクエストも同じ写真を返す（冪等）。Go は同時に送られると行が2組できる
+  // どのリクエストも同じ写真を返す（冪等）。Go は同時に送られると行が2組できる。
+  // 保存している間に受け付けが終わったら、確定も行の作成もされず、下書きのまま残る → 409
   let photos: PhotoRow[];
+  let stillDraft: boolean;
   try {
-    const statements = validated.map((item) =>
+    const statements = confirmation ? [confirmation] : [];
+    statements.push(...validated.map((item) =>
       db.prepare(
         `INSERT INTO photos (post_id, r2_key, photo_type)
-         SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM photos WHERE post_id = ? AND photo_type = ?)`,
-      ).bind(postID.value, item.key, item.photoType, postID.value, item.photoType)
-    );
-    if (confirmation) statements.push(confirmation);
-    statements.push(db.prepare("SELECT id, post_id, r2_key, photo_type FROM photos WHERE post_id = ? ORDER BY id ASC").bind(postID.value));
+         SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM photos WHERE post_id = ? AND photo_type = ?)
+           AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND is_draft = 0)`,
+      ).bind(postID.value, item.key, item.photoType, postID.value, item.photoType, postID.value)
+    ));
+    const photosAt = statements.push(
+      db.prepare("SELECT id, post_id, r2_key, photo_type FROM photos WHERE post_id = ? ORDER BY id ASC").bind(postID.value),
+    ) - 1;
+    const draftAt = statements.push(selectIsDraft(db, post.id)) - 1;
     const results = await db.batch(statements);
-    photos = results[results.length - 1].results as unknown as PhotoRow[];
+    photos = results[photosAt].results as unknown as PhotoRow[];
+    stillDraft = isStillDraft(results[draftAt]);
   } catch (error) {
     // D1 は書き込めたのに応答が届かず失敗になることがある。行が指している写真は消さない
     await removeUnreferenced();
@@ -120,12 +134,22 @@ export async function uploadPhotos({ request, env, db, params, caller }: RouteCo
   }
   // 先に別のリクエストが行を作っていて拡張子が違ったときなど、どの行も指していない写真は消す
   await removeUnreferenced(photos);
+  if (stillDraft) return errorResponse(409, NOT_ACCEPTING_POSTS);
   return photosResponse(storage, photos);
 }
 
 interface NotificationRow {
   sent_at: string | null;
   ended_at: string | null;
+  accepting: number;
+}
+
+function selectIsDraft(db: RouteContext["db"], postID: number) {
+  return db.prepare("SELECT is_draft FROM posts WHERE id = ?").bind(postID);
+}
+
+function isStillDraft(result: { results: unknown[] }): boolean {
+  return (result.results[0] as { is_draft: number } | undefined)?.is_draft === 1;
 }
 
 interface FormFile {
@@ -138,8 +162,9 @@ async function photosResponse(storage: PhotoStorage, photos: PhotoRow[]): Promis
   return Response.json({ photos: await toPhotoJSONs(storage, photos) }, { status: 201 });
 }
 
-// confirmStatement は Go の confirmPhotoReport → ConfirmPhotoReport と同じく下書きを確定する。
+// confirmStatement は Go の confirmPhotoReport → ConfirmPhotoReport と同じく下書きを確定する（受け付けが終わっていれば確定しない）。
 // 締め切りは通知から1時間後。通知が先に終わっていれば（ended_at）その時刻。
+// on_time / late はリクエストを受けた時点の値で決める。保存している間に通知が終わっても on_time のまま（終わる前に送った報告なので、害はない）。
 // 通知が読めなければ 500（Go は写真を保存して行を作ってから 500。外部キーがあるので起きないはず）
 function confirmStatement(db: RouteContext["db"], post: PostRow, notification: NotificationRow | undefined) {
   if (!notification) throw new Error(`notification ${post.notification_id} of post ${post.id} not found`);
@@ -153,8 +178,9 @@ function confirmStatement(db: RouteContext["db"], post: PostRow, notification: N
   }
   const now = new Date();
   const status = now.getTime() > deadline ? "late" : "on_time";
-  return db.prepare("UPDATE posts SET is_draft = 0, status = ?, created_at = ? WHERE id = ? AND is_draft = 1")
-    .bind(status, formatRFC3339(now), post.id);
+  return db.prepare(
+    `UPDATE posts SET is_draft = 0, status = ?, created_at = ? WHERE id = ? AND is_draft = 1 AND ${acceptsPhotoReports("?")}`,
+  ).bind(status, formatRFC3339(now), post.id, post.notification_id);
 }
 
 // readMultipartForm は Go の ParseMultipartForm と同じく、multipart/form-data（boundary つき）だけを読む。

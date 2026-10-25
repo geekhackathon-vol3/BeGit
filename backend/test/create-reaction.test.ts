@@ -82,6 +82,47 @@ describe("投稿作成（写真の下書き）", () => {
     expect(d1.sqlite.prepare("SELECT COUNT(*) AS n FROM posts WHERE notification_id = 9201").get()).toEqual({ n: 1 });
   });
 
+  it("確認の後に止められた・スプリントが終わった・プロジェクトが完了したら、作らず 409", async () => {
+    for (const close of [
+      "UPDATE notifications SET stopped_at = datetime('now') WHERE id = 9201",
+      "UPDATE sprints SET ends_at = datetime('now', '-1 minutes') WHERE id = 9201",
+      "UPDATE groups SET completed_at = datetime('now') WHERE id = 9201",
+    ]) {
+      const batch = d1.batch.bind(d1);
+      let calls = 0;
+      const spy = vi.spyOn(d1, "batch").mockImplementation(async (statements) => {
+        const results = await batch(statements);
+        if (++calls === 1) d1.sqlite.exec(close);
+        return results;
+      });
+      const response = await post("/groups/9201/posts", photo(9201));
+      spy.mockRestore();
+      expect({ status: response!.status, body: await response!.json() }, close)
+        .toEqual({ status: 409, body: { error: "conflict: notification is no longer accepting posts" } });
+      expect(d1.sqlite.prepare("SELECT COUNT(*) AS n FROM posts WHERE notification_id = 9201").get(), close).toEqual({ n: 0 });
+      d1.sqlite.exec("UPDATE notifications SET stopped_at = NULL WHERE id = 9201; UPDATE sprints SET ends_at = '2099-01-01 00:00:00' WHERE id = 9201; UPDATE groups SET completed_at = NULL WHERE id = 9201");
+    }
+  });
+
+  it("確認の後に cron が missed を作っていたら、それを返さず 409", async () => {
+    const batch = d1.batch.bind(d1);
+    let calls = 0;
+    vi.spyOn(d1, "batch").mockImplementation(async (statements) => {
+      const results = await batch(statements);
+      if (++calls === 1) {
+        d1.sqlite.exec("INSERT INTO posts (notification_id, user_id, group_id, post_type, status, is_draft) VALUES (9201, 9202, 9201, 'missed', 'missed', 0)");
+      }
+      return results;
+    });
+    const response = await post("/groups/9201/posts", photo(9201));
+    expect({ status: response!.status, body: await response!.json() }).toEqual({ status: 409, body: { error: "conflict" } });
+  });
+
+  it("ends_at が RFC3339 で書かれていても締め切りを比べられる", async () => {
+    d1.sqlite.exec("UPDATE sprints SET ends_at = '2099-01-01T00:00:00Z' WHERE id = 9201");
+    expect((await post("/groups/9201/posts", photo(9201)))!.status).toBe(201);
+  });
+
   it("D1 の失敗は JSON の 500", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(d1, "batch").mockRejectedValue(new Error("D1_ERROR"));

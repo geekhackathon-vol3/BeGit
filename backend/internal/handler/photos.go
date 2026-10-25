@@ -63,6 +63,7 @@ func NewPhotoHandler(photoService service.PhotoService, r2Client photoURLSigner)
 //	@Failure		401		{object}	ErrorResponse
 //	@Failure		403		{object}	ErrorResponse
 //	@Failure		404		{object}	ErrorResponse
+//	@Failure		409		{object}	ErrorResponse
 //	@Failure		413		{object}	ErrorResponse
 //	@Failure		422		{object}	ErrorResponse
 //	@Failure		502		{object}	ErrorResponse
