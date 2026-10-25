@@ -1,7 +1,9 @@
 import { authorizeGroup, GROUP_ROLE_OWNER, GROUP_ROLE_POSTER, type GroupAccess } from "./auth";
 import { MeteredDB } from "./db";
 import { errorResponse } from "./errors";
+import { uploadPhotos } from "./photos/upload";
 import { confirmPost } from "./posts/confirm";
+import { listPosts } from "./posts/list";
 import type { ApiEnv, RouteContext } from "./types";
 
 interface Route {
@@ -24,6 +26,20 @@ const ROUTES: Route[] = [
     pattern: /^\/groups\/([^/]+)\/posts\/([^/]+)\/confirm$/,
     access: { kind: "roles", roles: [GROUP_ROLE_OWNER, GROUP_ROLE_POSTER] },
     handler: confirmPost,
+  },
+  {
+    name: "posts.list",
+    method: "GET",
+    pattern: /^\/groups\/([^/]+)\/posts$/,
+    access: { kind: "member" },
+    handler: listPosts,
+  },
+  {
+    name: "photos.upload",
+    method: "POST",
+    pattern: /^\/groups\/([^/]+)\/posts\/([^/]+)\/photos$/,
+    access: { kind: "roles", roles: [GROUP_ROLE_OWNER, GROUP_ROLE_POSTER] },
+    handler: uploadPhotos,
   },
 ];
 

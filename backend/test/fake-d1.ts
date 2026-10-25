@@ -8,10 +8,14 @@ const MIGRATIONS_DIR = join(import.meta.dirname, "..", "migrations");
 
 type Value = string | number | null;
 
+const MAX_BOUND_VALUES = 100;
+
 class FakeStatement {
   constructor(private owner: FakeD1, readonly sql: string, readonly values: Value[] = []) {}
 
   bind(...values: Value[]): FakeStatement {
+    // D1 と同じく、1つの SQL に渡せる値は100個まで
+    if (values.length > MAX_BOUND_VALUES) throw new Error(`D1_ERROR: too many SQL variables (${values.length} > ${MAX_BOUND_VALUES})`);
     return new FakeStatement(this.owner, this.sql, values);
   }
 
