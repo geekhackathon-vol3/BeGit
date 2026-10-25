@@ -14,6 +14,7 @@ type PointsHandler struct{ points *service.PointsService }
 
 // ProjectFinalResultJSON is the immutable project completion snapshot.
 type ProjectFinalResultJSON = repository.FinalResult
+type ProjectPointsSummaryJSON = repository.PointsSummary
 
 func NewPointsHandler(points *service.PointsService) *PointsHandler {
 	return &PointsHandler{points: points}
@@ -89,6 +90,36 @@ func (h *PointsHandler) Result(c *gin.Context) {
 	}
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "failed to load final result")
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// Summary returns the current scoreboard and the immutable final scoreboard
+// through the same endpoint.
+//
+//	@Summary		現在のポイント集計を取得する
+//	@Tags			points
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id	path		int	true	"グループ ID"
+//	@Success		200	{object}	ProjectPointsSummaryJSON
+//	@Failure		404	{object}	ErrorResponse
+//	@Failure		500	{object}	ErrorResponse
+//	@Router			/groups/{id}/points [get]
+func (h *PointsHandler) Summary(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, "invalid group id")
+		return
+	}
+	result, err := h.points.Summary(c.Request.Context(), groupID)
+	if errors.Is(err, service.ErrNotFound) {
+		respondError(c, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to load points")
 		return
 	}
 	c.JSON(http.StatusOK, result)

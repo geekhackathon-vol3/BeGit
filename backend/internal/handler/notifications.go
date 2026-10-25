@@ -48,6 +48,7 @@ type NotificationStatusJSON struct {
 	NotificationID int64              `json:"notification_id"`
 	GameMode       string             `json:"game_mode" enums:"everyone,spotlight"`
 	GameResult     string             `json:"game_result" enums:"pending,succeeded,failed,cancelled"`
+	Message        string             `json:"message"`
 	Members        []MemberStatusJSON `json:"members"`
 }
 
@@ -281,6 +282,7 @@ func (h *NotificationHandler) GetStatus(c *gin.Context) {
 		NotificationID: status.NotificationID,
 		GameMode:       string(status.GameMode),
 		GameResult:     string(status.GameResult),
+		Message:        status.Message,
 		Members:        members,
 	})
 }

@@ -263,6 +263,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
+	r.GET("/groups/:id/points", bearerAuth, groupMember, pointsHandler.Summary)
 	r.GET("/groups/:id/final-result", bearerAuth, groupMember, pointsHandler.Result)
 	r.POST("/groups/:id/complete", bearerAuth, groupOwner, pointsHandler.Complete)
 	r.POST("/groups/:id/sync-members", bearerAuth, groupOwner, groupHandler.SyncMembers)

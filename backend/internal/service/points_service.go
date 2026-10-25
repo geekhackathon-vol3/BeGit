@@ -49,3 +49,16 @@ func (s *PointsService) Result(ctx context.Context, groupID int64) (*repository.
 	}
 	return result, err
 }
+
+func (s *PointsService) Summary(ctx context.Context, groupID int64) (*repository.PointsSummary, error) {
+	// Cron also materializes due bonuses, but doing it here makes a manual
+	// refresh strongly consistent. INSERT OR IGNORE keeps this idempotent.
+	if err := s.points.FinalizeBonuses(ctx, groupID); err != nil {
+		return nil, err
+	}
+	result, err := s.points.Summary(ctx, groupID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	return result, err
+}

@@ -566,6 +566,9 @@
                         "type": "array",
                         "uniqueItems": false
                     },
+                    "message": {
+                        "type": "string"
+                    },
                     "notification_id": {
                         "type": "integer"
                     }
@@ -700,6 +703,37 @@
                     },
                     "group_id": {
                         "type": "integer"
+                    },
+                    "members": {
+                        "items": {
+                            "$ref": "#/components/schemas/repository.FinalMemberPoints"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "mode_results": {
+                        "items": {
+                            "$ref": "#/components/schemas/repository.FinalModeResult"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "team_total": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "handler.ProjectPointsSummaryJSON": {
+                "properties": {
+                    "completed_at": {
+                        "type": "string"
+                    },
+                    "group_id": {
+                        "type": "integer"
+                    },
+                    "is_final": {
+                        "type": "boolean"
                     },
                     "members": {
                         "items": {
@@ -991,6 +1025,9 @@
                     },
                     "game_mode": {
                         "type": "string"
+                    },
+                    "pending": {
+                        "type": "integer"
                     },
                     "successes": {
                         "type": "integer"
@@ -2831,6 +2868,62 @@
                 "summary": "BeGit Time停止",
                 "tags": [
                     "notifications"
+                ]
+            }
+        },
+        "/groups/{id}/points": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "グループ ID",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ProjectPointsSummaryJSON"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/handler.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "現在のポイント集計を取得する",
+                "tags": [
+                    "points"
                 ]
             }
         },

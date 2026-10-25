@@ -31,7 +31,20 @@ type FinalModeResult struct {
 	Successes   int    `json:"successes"`
 	Failures    int    `json:"failures"`
 	Cancelled   int    `json:"cancelled"`
+	Pending     int    `json:"pending"`
 	BonusPoints int    `json:"bonus_points"`
+}
+
+// PointsSummary is the current project scoreboard. CompletedAt is nil while
+// the project is active; after completion its member values come from the
+// immutable final-result snapshot.
+type PointsSummary struct {
+	GroupID     int64               `json:"group_id"`
+	IsFinal     bool                `json:"is_final"`
+	CompletedAt *string             `json:"completed_at"`
+	Members     []FinalMemberPoints `json:"members"`
+	TeamTotal   int                 `json:"team_total"`
+	ModeResults []FinalModeResult   `json:"mode_results"`
 }
 
 type PointsRepository struct{ db d1.Client }
@@ -170,6 +183,85 @@ func (r *PointsRepository) Result(ctx context.Context, groupID int64) (*FinalRes
 		})
 	}
 	return result, nil
+}
+
+// Summary returns both the in-progress scoreboard and the immutable completed
+// result through one contract. The current member list is unioned with past
+// point recipients so a member removal never hides points already earned.
+func (r *PointsRepository) Summary(ctx context.Context, groupID int64) (*PointsSummary, error) {
+	rows, err := r.db.Query(ctx, `SELECT completed_at FROM groups WHERE id = ?`, []interface{}{groupID})
+	if errors.Is(err, d1.ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if completedAt, ok := rows[0]["completed_at"].(string); ok && completedAt != "" {
+		final, err := r.Result(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		return &PointsSummary{
+			GroupID: groupID, IsFinal: true, CompletedAt: &completedAt,
+			Members: final.Members, TeamTotal: final.TeamTotal, ModeResults: final.ModeResults,
+		}, nil
+	}
+
+	summary := &PointsSummary{
+		GroupID: groupID, Members: []FinalMemberPoints{}, ModeResults: []FinalModeResult{},
+	}
+	members, err := r.db.Query(ctx, `SELECT participants.user_id, u.github_login AS login,
+ COALESCE(u.avatar_url, '') AS avatar_url,
+ COALESCE(SUM(CASE WHEN pa.kind = 'report' THEN pa.points ELSE 0 END), 0) AS report_points,
+ COALESCE(SUM(CASE WHEN pa.kind = 'all_on_time_bonus' THEN pa.points ELSE 0 END), 0) AS bonus_points
+ FROM (
+   SELECT user_id FROM group_members WHERE group_id = ?
+   UNION
+   SELECT user_id FROM point_awards WHERE group_id = ?
+ ) participants
+ JOIN users u ON u.id = participants.user_id
+ LEFT JOIN point_awards pa ON pa.group_id = ? AND pa.user_id = participants.user_id
+ GROUP BY participants.user_id, u.github_login, u.avatar_url
+ ORDER BY (report_points + bonus_points) DESC, login COLLATE NOCASE`, []interface{}{groupID, groupID, groupID})
+	if err != nil && !errors.Is(err, d1.ErrNotFound) {
+		return nil, err
+	}
+	for _, row := range members {
+		member := FinalMemberPoints{
+			UserID: int64(number(row["user_id"])), Login: stringValue(row["login"]),
+			AvatarURL: stringValue(row["avatar_url"]), ReportPoints: int(number(row["report_points"])),
+			BonusPoints: int(number(row["bonus_points"])),
+		}
+		member.TotalPoints = member.ReportPoints + member.BonusPoints
+		summary.TeamTotal += member.TotalPoints
+		summary.Members = append(summary.Members, member)
+	}
+
+	modeRows, err := r.db.Query(ctx, `SELECT n.game_mode,
+ SUM(CASE WHEN ngr.outcome != 'cancelled' THEN 1 ELSE 0 END) AS attempts,
+ SUM(CASE WHEN ngr.outcome = 'succeeded' THEN 1 ELSE 0 END) AS successes,
+ SUM(CASE WHEN ngr.outcome = 'failed' THEN 1 ELSE 0 END) AS failures,
+ SUM(CASE WHEN ngr.outcome = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+ SUM(CASE WHEN ngr.notification_id IS NULL THEN 1 ELSE 0 END) AS pending,
+ COALESCE(SUM(ngr.bonus_points), 0) AS bonus_points
+ FROM notifications n
+ JOIN sprints s ON s.id = n.sprint_id
+ LEFT JOIN notification_game_results ngr ON ngr.notification_id = n.id
+ WHERE s.group_id = ?
+ GROUP BY n.game_mode ORDER BY n.game_mode`, []interface{}{groupID})
+	if err != nil && !errors.Is(err, d1.ErrNotFound) {
+		return nil, err
+	}
+	for _, row := range modeRows {
+		summary.ModeResults = append(summary.ModeResults, FinalModeResult{
+			GameMode: textValue(row["game_mode"]), Attempts: int(number(row["attempts"])),
+			Successes: int(number(row["successes"])), Failures: int(number(row["failures"])),
+			Cancelled: int(number(row["cancelled"])), Pending: int(number(row["pending"])),
+			BonusPoints: int(number(row["bonus_points"])),
+		})
+	}
+	return summary, nil
 }
 
 func number(v interface{}) float64     { n, _ := v.(float64); return n }

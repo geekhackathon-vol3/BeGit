@@ -17,6 +17,7 @@ type NotificationStatus struct {
 	NotificationID int64
 	GameMode       model.GameMode
 	GameResult     model.GameOutcome
+	Message        string
 	Members        []MemberStatus
 }
 
@@ -385,6 +386,7 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 		NotificationID: notifID,
 		GameMode:       notif.GameMode,
 		GameResult:     s.gameResult(ctx, notifID),
+		Message:        notif.Message,
 		Members:        memberStatuses,
 	}, nil
 }
