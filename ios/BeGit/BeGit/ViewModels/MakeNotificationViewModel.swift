@@ -25,6 +25,8 @@ final class MakeNotificationViewModel: ObservableObject {
     @Published var errorMessage: String?            //  APIエラー表示
     //  進行中のBeGit Time（サーバー同期時に取得）。あれば送信不可
     @Published private(set) var activeChallenge: ActiveChallenge?
+    //  作品完成済み（サーバー同期時に更新）。完成後は発行できない
+    @Published private(set) var isCompleted: Bool
 
     private let repositoryAPI: any RepositoryAPI    // Repository関連API
 
@@ -34,6 +36,7 @@ final class MakeNotificationViewModel: ObservableObject {
         self.repositoryMemberCandidates = repository.members         //  初期Repository member候補一覧
         self.selectedMemberIDs = Set(repository.members.map(\.id))  //  初期状態では全memberを選択
         self.activeChallenge = repository.activeChallenge
+        self.isCompleted = repository.isCompleted
         self.repositoryAPI = repositoryAPI
     }
 
@@ -47,9 +50,9 @@ final class MakeNotificationViewModel: ObservableObject {
         members.filter { selectedMemberIDs.contains($0.id) }
     }
 
-    //  通知送信可能か（BeGit Time 進行中は 409 になるので送らせない）
+    //  通知送信可能か（BeGit Time 進行中・作品完成済みは 409 になるので送らせない）
     var canSend: Bool {
-        selectedMembers.isEmpty == false && isSending == false && activeChallenge == nil
+        selectedMembers.isEmpty == false && isSending == false && activeChallenge == nil && isCompleted == false
     }
 
     // Dashboardの開催中カードと同じBeGit Time終了日時を表示に使う。
@@ -64,6 +67,9 @@ final class MakeNotificationViewModel: ObservableObject {
 
     //  進行中のBeGit Timeの説明文（送信不可の理由）
     var activeChallengeMessage: String? {
+        if isCompleted {
+            return "この作品は完成済みのため、BeGit Timeは発行できません。"
+        }
         guard let activeChallenge else { return nil }
         let issuer = activeChallenge.issuer.login.isEmpty ? "メンバー" : activeChallenge.issuer.login
         let endsAt = Self.formatEndTime(activeChallenge.endsAt)
@@ -138,6 +144,7 @@ final class MakeNotificationViewModel: ObservableObject {
             repositoryMemberCandidates = syncedRepository.members
             selectedMemberIDs = Set(syncedRepository.members.map(\.id))
             activeChallenge = syncedRepository.activeChallenge
+            isCompleted = syncedRepository.isCompleted
         } catch {
             members = repository.members
             repositoryMemberCandidates = repository.members
@@ -200,13 +207,19 @@ final class MakeNotificationViewModel: ObservableObject {
                 )
                 await loadActiveBeGitTime(accessToken: accessToken)
                 return makeNotification(backendID: notificationID)
-            } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
-                // チャレンジ進行中（発行から1時間以内）、または設定によりこのスプリントは送信済み。
-                // 送信できていないので結果画面へは進めない
-                errorMessage = "今は送信できません。チャレンジが進行中か、このスプリントは送信済みです。"
-                return nil
             } catch {
-                errorMessage = "通知の送信に失敗しました。"
+                // 生成クライアント経由のエラーは ClientError に包まれて届くので取り出して判定する。
+                // 送信できていないので結果画面へは進めない
+                let apiError = beGitAPIError(from: error)
+                if apiError?.isProjectCompleted == true {
+                    // 理由は activeChallengeMessage が表示するので、エラー欄には重ねない
+                    isCompleted = true
+                } else if case .requestFailed(statusCode: 409, message: _)? = apiError {
+                    // チャレンジ進行中（発行から1時間以内）、または設定によりこのスプリントは送信済み。
+                    errorMessage = "今は送信できません。チャレンジが進行中か、このスプリントは送信済みです。"
+                } else {
+                    errorMessage = "通知の送信に失敗しました。"
+                }
                 return nil
             }
         }

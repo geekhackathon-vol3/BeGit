@@ -607,7 +607,8 @@ final class AddRepositoryViewModel: ObservableObject {
             members: repository.members,
             isReadOnly: repository.isReadOnly,
             myRole: repository.myRole,
-            ownerVerified: repository.ownerVerified
+            ownerVerified: repository.ownerVerified,
+            completedAt: repository.completedAt
         )
     }
 
