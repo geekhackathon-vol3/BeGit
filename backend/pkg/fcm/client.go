@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -18,6 +19,10 @@ type Notification struct {
 	Title string
 	Body  string
 }
+
+// ErrPermanent は送り直しても届かない失敗（FCM が 400 / 403 / 404 を返した。失効・不正なトークンなど）。
+// 呼び出し側（Queue の受け口）は、これを再送しない失敗として扱う。
+var ErrPermanent = errors.New("fcm: permanent failure")
 
 // Client は FCM HTTP v1 API インターフェース
 type Client interface {
@@ -104,19 +109,25 @@ func (c *fcmClient) SendToTokensWithData(ctx context.Context, tokens []string, n
 	}
 
 	// ベストエフォートで全トークンに送信を試みる
-	var lastErr error
+	var lastErr, lastTransientErr error
 	successCount := 0
 	for _, token := range tokens {
 		if err := c.sendToToken(ctx, token, notification, data); err != nil {
 			// 個別トークンの失敗はログに記録するが続行する
 			lastErr = err
+			if !errors.Is(err, ErrPermanent) {
+				lastTransientErr = err
+			}
 			continue
 		}
 		successCount++
 	}
 
-	// 全て失敗した場合のみエラーを返す
+	// 全て失敗した場合のみエラーを返す。一時的な失敗が1つでもあれば、そちらを返す（送り直せば届く見込みがある）
 	if successCount == 0 && lastErr != nil {
+		if lastTransientErr != nil {
+			lastErr = lastTransientErr
+		}
 		return fmt.Errorf("fcm: all tokens failed, last error: %w", lastErr)
 	}
 
@@ -162,6 +173,11 @@ func (c *fcmClient) sendToToken(ctx context.Context, token string, notification 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// 400（INVALID_ARGUMENT）・403（SENDER_ID_MISMATCH）・404（UNREGISTERED）はトークンかメッセージの問題で、送り直しても変わらない
+		switch resp.StatusCode {
+		case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
+			return fmt.Errorf("%w: unexpected status %d", ErrPermanent, resp.StatusCode)
+		}
 		return fmt.Errorf("fcm: unexpected status %d", resp.StatusCode)
 	}
 
