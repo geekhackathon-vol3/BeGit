@@ -1,12 +1,13 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { handleWorkerRoute } from "./api/router";
+import type { NotificationQueueMessage } from "./api/types";
 import { isInternalPath, stripInternalHeaders } from "./guards";
 
 interface Env {
   BEGIT_API: DurableObjectNamespace<BeGitAPI>;
   DB: D1Database;
   PHOTOS: R2Bucket;
-  NOTIFICATION_QUEUE: Queue<{ job_id: number }>;
+  NOTIFICATION_QUEUE: Queue<NotificationQueueMessage>;
   // Workers Secrets
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
@@ -144,10 +145,16 @@ export default {
     return getContainer(env.BEGIT_API, "begit-api-singleton").fetch(modifiedRequest);
   },
 
-  async queue(batch: MessageBatch<{ job_id: number }>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<NotificationQueueMessage>, env: Env): Promise<void> {
     // API trafficと配信処理を別のContainerに分離し、APIの起動枠競合を避ける。
     const container = getContainer(env.BEGIT_API, "begit-background-singleton");
     for (const message of batch.messages) {
+      if (!("job_id" in message.body)) {
+        // Worker が積んだリアクションの通知。受けて FCM で送る処理は #134 で足す。それまでは送らずに捨てる
+        console.warn(`[notification-queue] unsupported message type=${message.body.type} (handled by #134)`);
+        message.ack();
+        continue;
+      }
       try {
         const response = await container.fetch(new Request(
           `${env.APP_BASE_URL}/internal/notification-deliveries/${message.body.job_id}`,

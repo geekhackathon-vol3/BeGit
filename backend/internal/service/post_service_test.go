@@ -190,6 +190,24 @@ func TestPostService_CreatePost_PullRequest(t *testing.T) {
 	}
 }
 
+// 同じ BeGit Time! への2回目の報告（UNIQUE(notification_id, user_id) 違反）は 409 にする（今までは 500）
+func TestPostService_CreatePost_ConstraintViolationIsConflict(t *testing.T) {
+	body := "2回目"
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		return nil, repository.ErrConstraintViolation
+	}}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		Body:          &body,
+		PostType:      "memo",
+		ContentSource: "manual",
+	}, 1, 1)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("CreatePost() error = %v, want ErrConflict", err)
+	}
+}
+
 func TestPostService_CreatePost_MemoSkipsGitHub(t *testing.T) {
 	body := "今日は設計を整理します"
 	var created *model.Post

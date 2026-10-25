@@ -76,6 +76,7 @@ func NewPostHandler(postService service.PostService) *PostHandler {
 //	@Failure		400		{object}	ErrorResponse
 //	@Failure		401		{object}	ErrorResponse
 //	@Failure		403		{object}	ErrorResponse
+//	@Failure		409		{object}	ErrorResponse
 //	@Failure		502		{object}	ErrorResponse
 //	@Failure		500		{object}	ErrorResponse
 //	@Router			/groups/{id}/posts [post]
