@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/irj0927/begit/pkg/d1"
 )
@@ -30,12 +31,15 @@ func NewPointsRepository(db d1.Client) *PointsRepository { return &PointsReposit
 
 // FinalizeBonuses is safe to repeat. Only a finished, unstopped challenge with
 // every captured member's confirmed on-time post can insert the unique award.
+// The every-minute cron (groupID 0) only checks challenges sent within 25 hours
+// (ended within 24 hours); completion of a group checks all of its challenges.
 func (r *PointsRepository) FinalizeBonuses(ctx context.Context, groupID int64) error {
 	_, err := r.db.Exec(ctx, `INSERT OR IGNORE INTO point_awards(group_id, notification_id, user_id, kind, points)
  SELECT s.group_id, n.id, n.sent_by, 'all_on_time_bonus', 10
  FROM notifications n JOIN sprints s ON s.id = n.sprint_id
  JOIN groups g ON g.id = s.group_id
  WHERE (? = 0 OR s.group_id = ?) AND g.completed_at IS NULL
+   AND n.sent_at >= CASE WHEN ? = 0 THEN datetime('now', '-25 hours') ELSE '' END
    AND n.stopped_at IS NULL
    AND datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour'))) <= datetime('now')
    AND NOT EXISTS (
@@ -51,7 +55,7 @@ func (r *PointsRepository) FinalizeBonuses(ctx context.Context, groupID int64) e
          AND p.is_draft = 0 AND p.status = 'on_time'
          AND datetime(p.created_at) <= datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour')))
      )
-   )`, []interface{}{groupID, groupID})
+   )`, []interface{}{groupID, groupID, groupID})
 	if err != nil {
 		return fmt.Errorf("points: finalize bonuses: %w", err)
 	}
@@ -96,6 +100,9 @@ func (r *PointsRepository) Result(ctx context.Context, groupID int64) (*FinalRes
 	completedAt, ok := rows[0]["completed_at"].(string)
 	if !ok || completedAt == "" {
 		return nil, ErrNotFound
+	}
+	if parsed := parseScheduleTime(completedAt); parsed != nil {
+		completedAt = parsed.Format(time.RFC3339)
 	}
 	result := &FinalResult{GroupID: groupID, CompletedAt: completedAt, Members: []FinalMemberPoints{}}
 	members, err := r.db.Query(ctx, `SELECT user_id, login, avatar_url, report_points, bonus_points
