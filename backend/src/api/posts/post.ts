@@ -64,13 +64,25 @@ const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?(Z|
 const SQLITE_DATETIME = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?$/;
 
 // formatTimestamp は Go の scanPost → CreatedAt.UTC().Format(time.RFC3339) と同じ文字列にする。
-// RFC3339 か SQLite の datetime('now') の形式を読み、読めなければゼロ時刻にする（Go と同じ）。
+// 読めなければゼロ時刻にする（Go と同じ）。
 export function formatTimestamp(value: unknown): string {
-  if (typeof value !== "string") return ZERO_TIME;
+  const date = parseGoTimestamp(value);
+  return date ? formatRFC3339(date) : ZERO_TIME;
+}
+
+// formatRFC3339 は Go の t.UTC().Format(time.RFC3339) と同じく、秒までの UTC にする
+export function formatRFC3339(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+// parseGoTimestamp は Go の time.Parse(time.RFC3339, v)、だめなら time.Parse("2006-01-02 15:04:05", v) と同じ規則で読む。
+// SQLite の datetime('now') の形式は UTC として読む。読めなければ null
+export function parseGoTimestamp(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
   const rfc = RFC3339.exec(value);
   const sqlite = rfc ? null : SQLITE_DATETIME.exec(value);
   const m = rfc ?? sqlite;
-  if (!m) return ZERO_TIME;
+  if (!m) return null;
 
   const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number);
   // Date.UTC は 0〜99 年を 1900 年代にし、範囲外の値を繰り上げるので、setUTCFullYear で組み立てて確かめる
@@ -79,7 +91,7 @@ export function formatTimestamp(value: unknown): string {
   date.setUTCHours(hour, minute, second, 0);
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day ||
       date.getUTCHours() !== hour || date.getUTCMinutes() !== minute || date.getUTCSeconds() !== second) {
-    return ZERO_TIME;
+    return null;
   }
 
   const zone = rfc ? m[7] : "Z";
@@ -87,9 +99,9 @@ export function formatTimestamp(value: unknown): string {
     const zoneHours = +zone.slice(1, 3);
     const zoneMinutes = +zone.slice(4, 6);
     // Go はタイムゾーンを「時 24 以下、分 60 以下」なら受け付ける
-    if (zoneHours > 24 || zoneMinutes > 60) return ZERO_TIME;
+    if (zoneHours > 24 || zoneMinutes > 60) return null;
     const sign = zone[0] === "-" ? -1 : 1;
     date.setTime(date.getTime() - sign * (zoneHours * 60 + zoneMinutes) * 60_000);
   }
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+  return date;
 }

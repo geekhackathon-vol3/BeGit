@@ -1,3 +1,4 @@
+import { readBodyUpTo } from "../body";
 import { errorResponse } from "../errors";
 import { parseID } from "../params";
 import type { RouteContext } from "../types";
@@ -74,30 +75,4 @@ async function readConfirmBody(request: Request): Promise<string | undefined | R
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "string") return invalid();
   return value;
-}
-
-// readBodyUpTo はボディを max バイトまで読む。超えたら残りを読まずに null を返す（Content-Length がない場合に備える）
-async function readBodyUpTo(request: Request, max: number): Promise<Uint8Array | null> {
-  if (!request.body) return new Uint8Array();
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      // 読むのをやめるだけなので、取り消しの失敗は無視する（413 を 500 にしない）
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
 }
