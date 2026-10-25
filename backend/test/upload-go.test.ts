@@ -23,7 +23,8 @@ const INTENDED_DIFFERENCES: Record<string, { status: number; body: unknown; row:
   },
 };
 
-// 検証環境の Worker（workerd）だけで Go と違うケース。Node の FormData は Go と同じ応答になるので、このテストでは Go の記録と比べる
+// 検証環境の Worker（workerd）だけで Go と違うケース。Node の FormData は Node のバージョンでも答えが変わる
+// （26 は Go と同じ 201、22 は 413）ので、このテストでは比べない。workerd での値は検証環境で確かめた（#157 でテストにする）
 const WORKERD_ONLY_DIFFERENCES: Record<string, string> = {
   "filename*（RFC 2231）": "workerd は filename* だけのパートをファイルとして扱わず 400。RFC 7578 で使わないことになっていて、iOS は filename で送る",
 };
@@ -64,7 +65,9 @@ describe("写真アップロードが Go と同じ応答を返す（fixtures/upl
   });
 
   // 記録と同じく、上から順に送る（書き込むケースはそれぞれ別の投稿を使う）
-  it.each(fixture.cases.map((c) => [c.name, c] as const))("%s", async (_, c) => {
+  for (const name of Object.keys(WORKERD_ONLY_DIFFERENCES)) it.skip(`${name}（Node では比べない）`, () => {});
+
+  it.each(fixture.cases.filter((c) => !(c.name in WORKERD_ONLY_DIFFERENCES)).map((c) => [c.name, c] as const))("%s", async (_, c) => {
     const started = new Date();
     const response = await handleWorkerRoute(toRequest(c), env);
     expect(response).not.toBeNull();
