@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,5 +159,18 @@ func TestNotificationHandler_Send_NoEndedAt(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &raw)
 	if _, ok := raw["ended_at"]; ok {
 		t.Errorf("ended_at must be omitted when not ended: %s", w.Body.String())
+	}
+}
+
+// TestNotificationHandler_Send_CompletedProject は完成済みの 409 が進行中の 409 と別のメッセージになることを確認する
+func TestNotificationHandler_Send_CompletedProject(t *testing.T) {
+	svc := &mockNotificationService{sendFunc: func(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
+		return nil, service.ErrProjectCompleted
+	}}
+	r := newNotificationRouter(svc, 23)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/notifications", nil))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "project is completed") {
+		t.Errorf("expected 409 with project is completed, got %d %s", w.Code, w.Body.String())
 	}
 }
