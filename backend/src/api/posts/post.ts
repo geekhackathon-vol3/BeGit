@@ -59,8 +59,9 @@ function toInt(value: number | null): number {
 }
 
 const ZERO_TIME = "0001-01-01T00:00:00Z";
-const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
-const SQLITE_DATETIME = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/;
+// Go の time.Parse は、レイアウトになくても秒の後ろの小数（区切りは . か ,）を読む
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?(Z|[+-]\d{2}:\d{2})$/;
+const SQLITE_DATETIME = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?$/;
 
 // formatTimestamp は Go の scanPost → CreatedAt.UTC().Format(time.RFC3339) と同じ文字列にする。
 // RFC3339 か SQLite の datetime('now') の形式を読み、読めなければゼロ時刻にする（Go と同じ）。
@@ -85,7 +86,8 @@ export function formatTimestamp(value: unknown): string {
   if (zone !== "Z") {
     const zoneHours = +zone.slice(1, 3);
     const zoneMinutes = +zone.slice(4, 6);
-    if (zoneHours > 23 || zoneMinutes > 59) return ZERO_TIME;
+    // Go はタイムゾーンを「時 24 以下、分 60 以下」なら受け付ける
+    if (zoneHours > 24 || zoneMinutes > 60) return ZERO_TIME;
     const sign = zone[0] === "-" ? -1 : 1;
     date.setTime(date.getTime() - sign * (zoneHours * 60 + zoneMinutes) * 60_000);
   }

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { encryptToken } from "../src/api/crypto";
 import { formatTimestamp } from "../src/api/posts/post";
 import { handleWorkerRoute } from "../src/api/router";
@@ -71,6 +71,16 @@ describe("振り分け", () => {
     expect(await confirm("/internal/cron")).toBeNull();
   });
 
+  it("ROUTES にない名前が WORKER_ROUTES にあれば、1回だけ警告する", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    env.WORKER_ROUTES = "posts.confirm,posts.typo";
+    await confirm("/groups/1/posts/10/confirm");
+    await confirm("/groups/1/posts/10/confirm");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0])).toContain("posts.typo");
+    warn.mockRestore();
+  });
+
   it("パーセントエンコードを含むパスはコンテナへ回す", async () => {
     expect(await confirm("/groups/%31/posts/10/confirm")).toBeNull();
     expect(await confirm("/groups/1/posts/1%30/confirm")).toBeNull();
@@ -101,11 +111,17 @@ describe("認証と権限チェック（Go の BearerAuth / GroupRole と同じ�
 
   it.each([
     ["グループ外", "dev_outsider", "1"],
-    ["viewer", "dev_viewer", "1"],
     ["存在しないグループ", "dev_poster", "999"],
     ["JavaScript の数値で表せない ID", "dev_poster", "9007199254740993"],
   ])("403：%s", async (_, token, groupID) => {
     expect(await json(await confirm(`/groups/${groupID}/posts/10/confirm`, { token }))).toEqual({ status: 403, body: { error: "forbidden" } });
+  });
+
+  it("403：viewer は自分の下書きも確定できない（本文も変えない）", async () => {
+    d1.sqlite.exec("INSERT INTO posts (id, user_id, group_id, post_type, body, is_draft) VALUES (15, 2, 1, 'commit', 'viewer draft', 1)");
+    const res = await confirm("/groups/1/posts/15/confirm", { token: "dev_viewer", body: '{"body":"v"}' });
+    expect(await json(res)).toEqual({ status: 403, body: { error: "forbidden" } });
+    expect(d1.sqlite.prepare("SELECT body, is_draft FROM posts WHERE id = 15").get()).toEqual({ body: "viewer draft", is_draft: 1 });
   });
 
   it("旧 role の member は poster として通る", async () => {
@@ -177,6 +193,29 @@ describe("投稿確定（Go の postService.ConfirmPost と同じ）", () => {
     expect(res.body.body).toBe(expected);
   });
 
+  it("400：先頭に BOM が付いた JSON（Go と同じ）", async () => {
+    expect(await json(await confirm("/groups/1/posts/10/confirm", { body: '\uFEFF{"body":"x"}' }))).toEqual({ status: 400, body: { error: "invalid request body" } });
+  });
+
+  it("413：Content-Length なしで 64KB を超えたら、残りを読まずに返す", async () => {
+    const chunk = new Uint8Array(16 * 1024).fill(0x20);
+    let sent = 0;
+    const request = new Request(`${BASE}/groups/1/posts/10/confirm`, {
+      method: "POST",
+      headers: { Authorization: "Bearer dev_poster" },
+      // 64KB を超えたあとは終わらないストリーム。全部読もうとするとテストが終わらない
+      body: new ReadableStream({
+        pull(controller) {
+          if (sent > 64 * 1024) return new Promise(() => {});
+          sent += chunk.length;
+          controller.enqueue(chunk);
+        },
+      }),
+      duplex: "half",
+    } as RequestInit);
+    expect(await json(await handleWorkerRoute(request, env))).toEqual({ status: 413, body: { error: "request body too large" } });
+  }, 2000);
+
   it("413：ボディが 64KB を超える", async () => {
     const body = JSON.stringify({ body: "a".repeat(64 * 1024) });
     expect(await json(await confirm("/groups/1/posts/10/confirm", { body }))).toEqual({ status: 413, body: { error: "request body too large" } });
@@ -203,16 +242,41 @@ describe("投稿確定（Go の postService.ConfirmPost と同じ）", () => {
   });
 });
 
-describe("予期しない失敗", () => {
-  it("D1 が失敗したら JSON の 500 を返し、書き込みは残さない", async () => {
-    env.D1_METRICS = "true";
-    d1.batch = async () => {
-      throw new Error("D1 is down");
+describe("確定とポイント", () => {
+  it("BeGit Time! の報告（commit）を確定すると、同じトランザクションでポイントが付く", async () => {
+    d1.sqlite.exec(`
+      INSERT INTO notifications (id, sprint_id, sent_by) VALUES (2, 1, 1);
+      INSERT INTO posts (id, user_id, group_id, post_type, is_draft, notification_id) VALUES (14, 1, 1, 'commit', 1, 2);
+    `);
+    expect(d1.sqlite.prepare("SELECT COUNT(*) AS n FROM point_awards WHERE notification_id = 2").get()).toEqual({ n: 0 });
+    expect((await json(await confirm("/groups/1/posts/14/confirm"))).status).toBe(200);
+    expect(d1.sqlite.prepare("SELECT user_id, kind, points FROM point_awards WHERE notification_id = 2").all()).toEqual([
+      { user_id: 1, kind: "report", points: 10 },
+    ]);
+  });
+
+  it("読んだあとに別のリクエストが確定していたら、本文を上書きしない", async () => {
+    const batch = d1.batch.bind(d1);
+    d1.batch = async (statements) => {
+      d1.sqlite.exec("UPDATE posts SET body = 'confirmed elsewhere', is_draft = 0 WHERE id = 10");
+      return batch(statements);
     };
-    const res = (await confirm("/groups/1/posts/10/confirm"))!;
+    const res = await json(await confirm("/groups/1/posts/10/confirm", { body: '{"body":"late"}' }));
+    expect(res.status).toBe(200);
+    expect(res.body.body).toBe("confirmed elsewhere");
+  });
+});
+
+describe("予期しない失敗", () => {
+  it("batch() の途中で失敗したら JSON の 500 を返し、本文の上書きも確定も残さない", async () => {
+    env.D1_METRICS = "true";
+    // 本物の batch() に、最後に失敗する文を足す。先に実行された UPDATE がロールバックされるかを見る
+    const batch = d1.batch.bind(d1);
+    d1.batch = (statements) => batch([...statements, d1.prepare("SELECT * FROM no_such_table")]);
+    const res = (await confirm("/groups/1/posts/10/confirm", { body: '{"body":"new"}' }))!;
     expect(res.headers.get("X-D1-Status")).toBe("200,200,500");
     expect(await json(res)).toEqual({ status: 500, body: { error: "internal server error" } });
-    expect(d1.sqlite.prepare("SELECT is_draft FROM posts WHERE id = 10").get()).toEqual({ is_draft: 1 });
+    expect(d1.sqlite.prepare("SELECT body, is_draft FROM posts WHERE id = 10").get()).toEqual({ body: "draft body", is_draft: 1 });
   });
 
   it("ボディを読めなければ JSON の 500 を返す", async () => {
@@ -232,11 +296,30 @@ describe("formatTimestamp（Go の time.Parse と同じ）", () => {
     ["2026-10-20T00:30:00+09:00", "2026-10-19T15:30:00Z"],
     ["2026-10-20T23:30:00-01:00", "2026-10-21T00:30:00Z"],
     ["2026-10-20T17:15:11.123Z", "2026-10-20T17:15:11Z"],
+    ["2026-10-20T17:15:11,123Z", "2026-10-20T17:15:11Z"],
+    ["2026-10-20 17:15:11.123", "2026-10-20T17:15:11Z"],
+    ["2026-10-20 17:15:11,5", "2026-10-20T17:15:11Z"],
+    ["2024-02-29 00:00:00", "2024-02-29T00:00:00Z"],
+    // Go はタイムゾーンを「時 24 以下、分 60 以下」なら受け付ける
+    ["2026-10-20T17:15:11+09:60", "2026-10-20T07:15:11Z"],
+    ["2026-10-20T17:15:11+24:60", "2026-10-19T16:15:11Z"],
   ])("%s → %s", (value, expected) => {
     expect(formatTimestamp(value)).toBe(expected);
   });
 
-  it.each(["2026-02-30 00:00:00", "2026-13-01 00:00:00", "2026-10-20 24:00:00", "2026-10-20 00:60:00", "2026-10-20T00:00:00+24:00", "2026-10-20", null])(
+  it.each([
+    "2026-02-29 00:00:00",
+    "2026-02-30 00:00:00",
+    "2026-13-01 00:00:00",
+    "2026-10-20 24:00:00",
+    "2026-10-20 00:60:00",
+    "2026-10-20 00:00:60",
+    "2026-10-20T00:00:00+25:00",
+    "2026-10-20T00:00:00+09:61",
+    "2026-10-20 17:15:11.",
+    "2026-10-20",
+    null,
+  ])(
     "範囲外や読めない値はゼロ時刻（%s）",
     (value) => {
       expect(formatTimestamp(value)).toBe("0001-01-01T00:00:00Z");

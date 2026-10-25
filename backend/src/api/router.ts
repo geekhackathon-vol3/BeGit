@@ -1,3 +1,4 @@
+import { authorizeGroup, GROUP_ROLE_OWNER, GROUP_ROLE_POSTER, type GroupAccess } from "./auth";
 import { MeteredDB } from "./db";
 import { errorResponse } from "./errors";
 import { confirmPost } from "./posts/confirm";
@@ -7,7 +8,10 @@ interface Route {
   // WORKER_ROUTES に書く名前
   name: string;
   method: string;
+  // 最初のキャプチャがグループ ID
   pattern: RegExp;
+  // 認証と権限チェック。handler の前に router が行い、通った場合だけ handler を呼ぶ（書き忘れを型で防ぐため必須）
+  access: GroupAccess;
   handler: (ctx: RouteContext) => Promise<Response>;
 }
 
@@ -18,6 +22,7 @@ const ROUTES: Route[] = [
     name: "posts.confirm",
     method: "POST",
     pattern: /^\/groups\/([^/]+)\/posts\/([^/]+)\/confirm$/,
+    access: { kind: "roles", roles: [GROUP_ROLE_OWNER, GROUP_ROLE_POSTER] },
     handler: confirmPost,
   },
 ];
@@ -38,9 +43,11 @@ export async function handleWorkerRoute(request: Request, env: ApiEnv): Promise<
     if (!match) continue;
 
     const db = new MeteredDB(env.DB);
+    const params = match.slice(1);
     let response: Response;
     try {
-      response = await route.handler({ request, env, db, params: match.slice(1) });
+      const caller = await authorizeGroup(request, env, db, params[0], route.access);
+      response = caller instanceof Response ? caller : await route.handler({ request, env, db, params, caller });
     } catch (error) {
       // 予期しない失敗も、Go と同じ JSON の 500 で返す
       console.error(`[${route.name}] failed`, error);
@@ -51,6 +58,16 @@ export async function handleWorkerRoute(request: Request, env: ApiEnv): Promise<
   return null;
 }
 
+const ROUTE_NAMES = new Set(ROUTES.map((route) => route.name));
+// 警告済みの WORKER_ROUTES の値（isolate ごとに1回だけ警告する）
+const warnedRouteValues = new Set<string>();
+
 export function enabledRouteNames(value: string | undefined): Set<string> {
-  return new Set((value ?? "").split(",").map((name) => name.trim()).filter(Boolean));
+  const names = new Set((value ?? "").split(",").map((name) => name.trim()).filter(Boolean));
+  const unknown = [...names].filter((name) => !ROUTE_NAMES.has(name));
+  if (unknown.length > 0 && !warnedRouteValues.has(value!)) {
+    warnedRouteValues.add(value!);
+    console.warn(`[router] WORKER_ROUTES has unknown names (ignored): ${unknown.join(", ")}`);
+  }
+  return names;
 }

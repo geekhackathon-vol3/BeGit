@@ -1,3 +1,4 @@
+import type { Caller } from "./auth";
 import type { MeteredDB } from "./db";
 
 // ApiEnv は Worker で処理する API が使う環境（index.ts の Env の一部）。
@@ -13,6 +14,8 @@ export interface RouteContext {
   request: Request;
   env: ApiEnv;
   db: MeteredDB;
-  // URL のパスパラメータ（デコード前の文字列）
+  // URL のパスパラメータ（デコード前の文字列）。params[0] はグループ ID
   params: string[];
+  // router の認証と権限チェックを通った呼び出し元
+  caller: Caller;
 }

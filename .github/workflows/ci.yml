@@ -59,6 +59,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test
 
   terraform-plan:
     name: Terraform plan
