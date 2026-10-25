@@ -353,3 +353,26 @@ func TestPostService_PhotoReportAcceptedLateWithinSprint(t *testing.T) {
 		t.Fatalf("late photo report must be uploadable: %+v %v", post, err)
 	}
 }
+
+// TestPostService_CreatePost_CompletedProject は完成済みのグループには報告できず、メッセージで区別できることを確認する
+func TestPostService_CreatePost_CompletedProject(t *testing.T) {
+	id := int64(9)
+	completedAt := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	groups := &mockGroupRepository{getByIDFunc: func(_ context.Context, groupID int64) (*model.Group, error) {
+		return &model.Group{ID: groupID, CompletedAt: &completedAt}, nil
+	}}
+	repo := &mockPostRepository{createDraftFunc: func(context.Context, *model.Post) (*model.Post, error) {
+		t.Fatal("completed project must not create a report")
+		return nil, nil
+	}}
+	_, err := NewPostService(nil, nil, repo, groups, nil, nil).CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &id, PostType: "memo", ContentSource: "photo",
+	}, 3, 1)
+	if !errors.Is(err, ErrProjectCompleted) || !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrProjectCompleted wrapping ErrConflict, got %v", err)
+	}
+	// posts ハンドラは ErrConflict の本文に err.Error() を返す
+	if err.Error() != "conflict: project is completed" {
+		t.Errorf("unexpected message: %q", err.Error())
+	}
+}

@@ -86,6 +86,14 @@ struct PhotoPreviewView: View {
         .sheet(isPresented: $isGitHubActivityPickerPresented) {
             GitHubActivityPickerView(viewModel: viewModel)
         }
+        .alert("投稿できませんでした", isPresented: Binding(
+            get: { viewModel.postError != nil },
+            set: { if !$0 { viewModel.postError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(viewModel.postError.map { beGitAPIError(from: $0)?.errorDescription ?? $0.localizedDescription } ?? "")
+        }
     }
 
     private var header: some View {

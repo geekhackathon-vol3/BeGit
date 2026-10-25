@@ -95,6 +95,10 @@ func (h *NotificationHandler) Send(c *gin.Context) {
 
 	notif, err := h.notificationService.SendNotification(c.Request.Context(), groupID, userID)
 	if err != nil {
+		if errors.Is(err, service.ErrProjectCompleted) {
+			respondError(c, http.StatusConflict, err.Error())
+			return
+		}
 		if errors.Is(err, service.ErrConflict) {
 			respondError(c, http.StatusConflict, "conflict: a challenge is in progress or already sent in this sprint")
 			return

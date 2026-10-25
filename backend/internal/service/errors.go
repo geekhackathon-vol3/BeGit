@@ -1,7 +1,10 @@
 // Package service はサービス層のドメインエラー型を定義する
 package service
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Service 層で使用するエラー型（ハンドラーがHTTPステータスコードにマップする）
 var (
@@ -13,6 +16,8 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	// ErrConflict は重複・競合の場合に返す → 409
 	ErrConflict = errors.New("conflict")
+	// ErrProjectCompleted は完成済みのグループへの発行・報告で返す → 409（ErrConflict を包む）
+	ErrProjectCompleted = fmt.Errorf("%w: project is completed", ErrConflict)
 	// ErrValidation はバリデーションエラーの場合に返す → 422
 	ErrValidation = errors.New("validation error")
 	// ErrExternalAPI は外部 API エラーの場合に返す → 502

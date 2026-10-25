@@ -91,7 +91,7 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 			return nil, err
 		}
 		if group.CompletedAt != nil {
-			return nil, ErrConflict
+			return nil, ErrProjectCompleted
 		}
 	}
 	postType := req.PostType

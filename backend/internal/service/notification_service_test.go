@@ -862,3 +862,17 @@ func TestComputeMemberStatuses_DraftIsNotReported(t *testing.T) {
 		t.Fatalf("draft must not count: %+v", statuses)
 	}
 }
+
+// TestNotificationService_SendNotification_CompletedProject は完成済みのグループでは発行できず、進行中の競合と区別できることを確認する
+func TestNotificationService_SendNotification_CompletedProject(t *testing.T) {
+	completedAt := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	groupRepo := &mockGroupRepository{getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
+		return &model.Group{ID: groupID, CompletedAt: &completedAt}, nil
+	}}
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, &mockNotificationRepository{}, groupRepo, nil)
+
+	_, err := svc.SendNotification(context.Background(), 1, 2)
+	if !errors.Is(err, ErrProjectCompleted) || !errors.Is(err, ErrConflict) {
+		t.Errorf("expected ErrProjectCompleted wrapping ErrConflict, got %v", err)
+	}
+}

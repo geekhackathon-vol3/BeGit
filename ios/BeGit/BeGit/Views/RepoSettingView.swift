@@ -18,6 +18,7 @@ struct RepoSettingView: View {
     @State private var memberRoleError: String?
     @State private var canManage: Bool
     @State private var finalResult: ProjectFinalResult?
+    @State private var finalResultLoadFailed = false
     @State private var showingFinalResult = false
     @State private var showingCompletionConfirmation = false
     @State private var completionError: String?
@@ -182,12 +183,20 @@ struct RepoSettingView: View {
             if finalResult != nil {
                 Button("完成リザルトを見る") { showingFinalResult = true }
                     .foregroundStyle(AppTheme.accent)
-            } else if repository.canManage, repository.backendID != nil {
+            } else if finalResultLoadFailed, repository.isCompleted || repository.canManage {
+                //  読み込めないまま「完成」を出すと、完成済みの作品にも押せてしまう
+                Button("完成リザルトを再読み込み") { Task { await loadFinalResult() } }
+                    .foregroundStyle(AppTheme.accent)
+            } else if repository.isCompleted {
+                Text("完成リザルトを読み込み中...")
+                    .foregroundStyle(AppTheme.Text.medium)
+            } else if repository.canManage, repository.ownerVerified, repository.backendID != nil {
+                //  サーバーは確認済みの管理者本人だけに完成を許可する
                 Button(isCompleting ? "集計中..." : "完成") { showingCompletionConfirmation = true }
                     .foregroundStyle(AppTheme.accent)
                     .disabled(isCompleting)
             } else {
-                Text("管理者が作品を完成できます")
+                Text("確認済みの管理者が作品を完成できます")
                     .foregroundStyle(AppTheme.Text.medium)
             }
         }
@@ -211,8 +220,10 @@ struct RepoSettingView: View {
               let accessToken = authState.accessToken else { return }
         do {
             finalResult = try await BeGitBackendAPI().getFinalResult(repositoryID: repositoryID, accessToken: accessToken)
+            finalResultLoadFailed = false
         } catch {
             finalResult = nil
+            finalResultLoadFailed = true
         }
     }
 
