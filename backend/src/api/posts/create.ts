@@ -59,6 +59,8 @@ interface NotificationRow {
   accepting: number;
 }
 
+// iOS はこの本文で「完成済み」を見分ける（Go の service.ErrProjectCompleted と同じ）
+const PROJECT_COMPLETED = "conflict: project is completed";
 const PHOTO_REPORT_REQUIRED = "validation error: photo report requires a BeGit Time and memo post type";
 
 // createPhotoDraft は Go の postService.CreatePost の写真の経路（content_source = photo）を元に下書きを作る。
@@ -84,7 +86,7 @@ export async function createPhotoDraft({ db, caller, input }: RouteContext): Pro
   const group = groups.results[0] as { completed: number } | undefined;
   // router でメンバーと確かめたグループなので、ないのは Go と同じく 500
   if (!group) throw new Error(`group ${caller.groupID} not found`);
-  if (group.completed) return errorResponse(409, "conflict");
+  if (group.completed) return errorResponse(409, PROJECT_COMPLETED);
 
   const notification = notifications.results[0] as NotificationRow | undefined;
   if (!notification) return errorResponse(400, "validation error: notification not found");

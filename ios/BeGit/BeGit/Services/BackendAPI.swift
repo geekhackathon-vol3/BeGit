@@ -32,6 +32,9 @@ enum BeGitAPIError: LocalizedError {
             if statusCode == 409, message?.contains("no longer accepting posts") == true {
                 return "このBeGit Timeへの報告は締め切られました。"
             }
+            if statusCode == 409, message?.contains("already reported") == true {
+                return "このBeGit Timeにはもう報告しています。"
+            }
             if statusCode == 502 {
                 return "GitHub App経由のリポジトリ登録に失敗しました。Appのインストール先とリポジトリ権限を確認してください。"
             }
