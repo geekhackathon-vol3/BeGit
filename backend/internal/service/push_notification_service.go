@@ -19,7 +19,7 @@ var ErrPushUndeliverable = errors.New("push undeliverable")
 //
 // 戻り値のエラーで Queue の扱いが決まる（handler の PushNotificationHandler）:
 //   - ErrNotFound: 送り先が決まらない（actor がいない）。再送しても変わらないので捨てる
-//   - ErrPushUndeliverable: 全トークンが失効・不正（FCM の 400 / 403 / 404）。再送しても変わらないので捨てる
+//   - ErrPushUndeliverable: 全トークンが失効・不正（FCM の 400 / 404）。再送しても変わらないので捨てる
 //   - それ以外: 一時的な失敗として再送する
 //
 // FCM の送信は、全トークンで失敗したときだけエラーにする（fcm.Client と同じ）。一部が届いていれば再送しない。

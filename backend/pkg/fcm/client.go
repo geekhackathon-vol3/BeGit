@@ -20,7 +20,7 @@ type Notification struct {
 	Body  string
 }
 
-// ErrPermanent は送り直しても届かない失敗（FCM が 400 / 403 / 404 を返した。失効・不正なトークンなど）。
+// ErrPermanent は送り直しても届かない失敗（FCM が 400 / 404 を返した。失効・不正なトークンなど）。
 // 呼び出し側（Queue の受け口）は、これを再送しない失敗として扱う。
 var ErrPermanent = errors.New("fcm: permanent failure")
 
@@ -173,9 +173,10 @@ func (c *fcmClient) sendToToken(ctx context.Context, token string, notification 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// 400（INVALID_ARGUMENT）・403（SENDER_ID_MISMATCH）・404（UNREGISTERED）はトークンかメッセージの問題で、送り直しても変わらない
+		// 400（INVALID_ARGUMENT）・404（UNREGISTERED）はトークンかメッセージの問題で、送り直しても変わらない。
+		// 403 は SENDER_ID_MISMATCH のほか送信側の権限不足（PERMISSION_DENIED）でも返り、本文を見ないと区別できないので再送に回す（errorCode を読むまでの暫定）
 		switch resp.StatusCode {
-		case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
+		case http.StatusBadRequest, http.StatusNotFound:
 			return fmt.Errorf("%w: unexpected status %d", ErrPermanent, resp.StatusCode)
 		}
 		return fmt.Errorf("fcm: unexpected status %d", resp.StatusCode)

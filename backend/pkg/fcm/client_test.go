@@ -135,8 +135,8 @@ func TestSendToTokens_Success(t *testing.T) {
 	}
 }
 
-// TestSendToTokens_PermanentFailure は FCM の 400 / 403 / 404 が ErrPermanent になり、
-// 一時的な失敗が1つでも混ざれば ErrPermanent にならないことを確認する（Queue の再送の判定に使う）
+// TestSendToTokens_PermanentFailure は FCM の 400 / 404 が ErrPermanent になり、403（権限不足でも返る）や、
+// 一時的な失敗が1つでも混ざった場合は ErrPermanent にならないことを確認する（Queue の再送の判定に使う）
 func TestSendToTokens_PermanentFailure(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -145,7 +145,9 @@ func TestSendToTokens_PermanentFailure(t *testing.T) {
 	}{
 		{"404 unregistered", map[string]int{"a": http.StatusNotFound}, true},
 		{"400 invalid", map[string]int{"a": http.StatusBadRequest, "b": http.StatusNotFound}, true},
-		{"403 sender mismatch", map[string]int{"a": http.StatusForbidden}, true},
+		{"403", map[string]int{"a": http.StatusForbidden}, false},
+		{"403 and 404", map[string]int{"a": http.StatusForbidden, "b": http.StatusNotFound}, false},
+		{"401", map[string]int{"a": http.StatusUnauthorized}, false},
 		{"500", map[string]int{"a": http.StatusInternalServerError}, false},
 		{"429", map[string]int{"a": http.StatusTooManyRequests}, false},
 		{"404 and 503", map[string]int{"a": http.StatusNotFound, "b": http.StatusServiceUnavailable}, false},
