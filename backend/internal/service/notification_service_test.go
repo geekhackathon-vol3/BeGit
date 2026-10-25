@@ -379,6 +379,66 @@ func TestNotificationService_GetActiveNotification(t *testing.T) {
 	}
 }
 
+func TestNotificationService_StopNotification_AllowsIssuer(t *testing.T) {
+	sentAt := time.Now().UTC().Add(-10 * time.Minute)
+	var stoppedBy int64
+	notifRepo := &mockNotificationRepository{
+		getByIDFunc: func(_ context.Context, notifID int64) (*model.Notification, error) {
+			return &model.Notification{ID: notifID, SprintID: 3, SentBy: 23, SentAt: sentAt}, nil
+		},
+		stopFunc: func(_ context.Context, notifID, userID int64) error {
+			if notifID != 8 {
+				t.Fatalf("expected notification 8, got %d", notifID)
+			}
+			stoppedBy = userID
+			return nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(_ context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: sprintID, GroupID: 12}, nil
+		},
+	}
+	svc := NewNotificationService(sprintRepo, notifRepo, nil, nil)
+
+	if err := svc.StopNotification(context.Background(), 12, 8, 23); err != nil {
+		t.Fatalf("StopNotification() failed for issuer: %v", err)
+	}
+	if stoppedBy != 23 {
+		t.Fatalf("expected issuer 23 to stop notification, got %d", stoppedBy)
+	}
+}
+
+func TestNotificationService_StopNotification_RejectsNonIssuer(t *testing.T) {
+	stopCalled := false
+	notifRepo := &mockNotificationRepository{
+		getByIDFunc: func(_ context.Context, notifID int64) (*model.Notification, error) {
+			return &model.Notification{
+				ID: notifID, SprintID: 3, SentBy: 23,
+				SentAt: time.Now().UTC().Add(-10 * time.Minute),
+			}, nil
+		},
+		stopFunc: func(context.Context, int64, int64) error {
+			stopCalled = true
+			return nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(_ context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: sprintID, GroupID: 12}, nil
+		},
+	}
+	svc := NewNotificationService(sprintRepo, notifRepo, nil, nil)
+
+	err := svc.StopNotification(context.Background(), 12, 8, 24)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden for non-issuer, got %v", err)
+	}
+	if stopCalled {
+		t.Fatal("repository Stop must not be called for a non-issuer")
+	}
+}
+
 // TestNotificationService_SendNotification_OncePerSprintByDefault は既定（設定なし）で
 // 1スプリント1人1回の判定を有効にしてリポジトリへ渡すことを確認する
 func TestNotificationService_SendNotification_OncePerSprintByDefault(t *testing.T) {

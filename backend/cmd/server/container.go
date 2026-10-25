@@ -270,7 +270,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.POST("/groups/:id/notifications", bearerAuth, groupPoster, notifHandler.Send)
 	r.GET("/groups/:id/notifications/active", bearerAuth, groupMember, notifHandler.GetActive)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
-	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupOwner, notifHandler.Stop)
+	// 停止可否はNotificationServiceで通知発行者本人かどうかを判定する。
+	// 管理者に限定するとposter権限で発行した本人が停止できないため、ここではメンバー確認のみ行う。
+	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupMember, notifHandler.Stop)
 	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupOwner, notifHandler.End)
 	r.POST("/groups/:id/posts", bearerAuth, groupPoster, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
