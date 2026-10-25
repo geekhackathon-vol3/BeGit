@@ -30,9 +30,11 @@ export interface RouteContext {
   input?: unknown;
 }
 
-// NotificationQueueMessage は NOTIFICATION_QUEUE に積むメッセージ。
-//   { job_id }         : 外部通知の配信の仕事（Go が積む。今までの形）
-//   { type: "reaction" }: リアクションの作者への FCM 通知（Worker が積む。受けて送るのは #134）
+// NotificationQueueMessage は NOTIFICATION_QUEUE に積むメッセージ。受けて送るのは Go の裏方のコンテナ（src/queue.ts）
+//   { job_id }             : 外部通知の配信の仕事（Go が積む。今までの形）→ POST /internal/notification-deliveries/:jobId
+//   { type: "reaction" }   : リアクションの作者への FCM 通知（Worker が積む）→ POST /internal/push-notifications（#134）
+//   { type: "begit_time" } : BeGit Time! のグループ全員への FCM 通知（トリガーを移したときに Worker が積む）→ 同上
 export type NotificationQueueMessage =
   | { job_id: number }
-  | { type: "reaction"; group_id: number; post_id: number; actor_user_id: number; author_user_id: number };
+  | { type: "reaction"; group_id: number; post_id: number; actor_user_id: number; author_user_id: number }
+  | { type: "begit_time"; group_id: number; notification_id: number; sprint_id: number };

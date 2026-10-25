@@ -2,6 +2,7 @@ import { Container, getContainer } from "@cloudflare/containers";
 import { handleWorkerRoute } from "./api/router";
 import type { NotificationQueueMessage } from "./api/types";
 import { isInternalPath, stripInternalHeaders } from "./guards";
+import { deliverNotifications } from "./queue";
 
 interface Env {
   BEGIT_API: DurableObjectNamespace<BeGitAPI>;
@@ -147,43 +148,10 @@ export default {
 
   async queue(batch: MessageBatch<NotificationQueueMessage>, env: Env): Promise<void> {
     // API trafficと配信処理を別のContainerに分離し、APIの起動枠競合を避ける。
-    const container = getContainer(env.BEGIT_API, "begit-background-singleton");
-    for (const message of batch.messages) {
-      if (!("job_id" in message.body)) {
-        // Worker が積んだリアクションの通知。受けて FCM で送る処理は #134 で足す。それまでは送らずに捨てる
-        console.warn(`[notification-queue] unsupported message type=${message.body.type} (handled by #134)`);
-        message.ack();
-        continue;
-      }
-      try {
-        const response = await container.fetch(new Request(
-          `${env.APP_BASE_URL}/internal/notification-deliveries/${message.body.job_id}`,
-          {
-            method: "POST",
-            headers: {
-              ...internalHeaders(env),
-              "X-Notification-Queue-Secret": env.NOTIFICATION_QUEUE_SECRET ?? "",
-            },
-          },
-        ));
-        if (response.ok) {
-          message.ack();
-        } else {
-          const responseBody = (await response.text().catch(() => "")).slice(0, 500);
-          console.error(
-            `[notification-queue] delivery failed job_id=${message.body.job_id} status=${response.status} body=${responseBody}`,
-          );
-          if (response.status >= 400 && response.status < 500) {
-            message.ack();
-          } else {
-            message.retry();
-          }
-        }
-      } catch (error) {
-        console.error(`[notification-queue] delivery request failed job_id=${message.body.job_id}`, error);
-        message.retry();
-      }
-    }
+    await deliverNotifications(batch, getContainer(env.BEGIT_API, "begit-background-singleton"), env.APP_BASE_URL, {
+      ...internalHeaders(env),
+      "X-Notification-Queue-Secret": env.NOTIFICATION_QUEUE_SECRET ?? "",
+    });
   },
 
   // scheduled は [triggers] crons から起動される。

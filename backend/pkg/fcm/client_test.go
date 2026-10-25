@@ -3,6 +3,7 @@ package fcm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -131,5 +132,47 @@ func TestSendToTokens_Success(t *testing.T) {
 	}
 	if callCount != len(tokens) {
 		t.Errorf("expected %d API calls, got %d", len(tokens), callCount)
+	}
+}
+
+// TestSendToTokens_PermanentFailure は FCM の 400 / 404 が ErrPermanent になり、403（権限不足でも返る）や、
+// 一時的な失敗が1つでも混ざった場合は ErrPermanent にならないことを確認する（Queue の再送の判定に使う）
+func TestSendToTokens_PermanentFailure(t *testing.T) {
+	cases := []struct {
+		name      string
+		statuses  map[string]int
+		permanent bool
+	}{
+		{"404 unregistered", map[string]int{"a": http.StatusNotFound}, true},
+		{"400 invalid", map[string]int{"a": http.StatusBadRequest, "b": http.StatusNotFound}, true},
+		{"403", map[string]int{"a": http.StatusForbidden}, false},
+		{"403 and 404", map[string]int{"a": http.StatusForbidden, "b": http.StatusNotFound}, false},
+		{"401", map[string]int{"a": http.StatusUnauthorized}, false},
+		{"500", map[string]int{"a": http.StatusInternalServerError}, false},
+		{"429", map[string]int{"a": http.StatusTooManyRequests}, false},
+		{"404 and 503", map[string]int{"a": http.StatusNotFound, "b": http.StatusServiceUnavailable}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var req fcmMessageRequest
+				_ = json.NewDecoder(r.Body).Decode(&req)
+				w.WriteHeader(tc.statuses[req.Message.Token])
+			}))
+			defer server.Close()
+			client := &fcmClient{httpClient: server.Client(), fcmEndpoint: server.URL, projectID: "p", accessToken: "t"}
+
+			tokens := make([]string, 0, len(tc.statuses))
+			for token := range tc.statuses {
+				tokens = append(tokens, token)
+			}
+			err := client.SendToTokens(context.Background(), tokens, Notification{Title: "x"})
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if got := errors.Is(err, ErrPermanent); got != tc.permanent {
+				t.Errorf("errors.Is(err, ErrPermanent) = %v, want %v (err=%v)", got, tc.permanent, err)
+			}
+		})
 	}
 }
