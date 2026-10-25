@@ -79,6 +79,7 @@ class PointsMigrationTest(unittest.TestCase):
         db.execute(bonus_sql, (1, 1, 1))
         self.assertIn((1, 'all_on_time_bonus', 10), self.awards())
 
+    # 手元の SQLite の実行計画での目安。D1 の実行計画を保証するものではない。
     def test_cron_bonus_check_uses_sent_at_index(self):
         plan = self.db.execute("EXPLAIN QUERY PLAN " + finalize_bonuses_sql(), (0, 0, 0)).fetchall()
         self.assertTrue(any("idx_notifications_sent_at" in row[-1] for row in plan), plan)

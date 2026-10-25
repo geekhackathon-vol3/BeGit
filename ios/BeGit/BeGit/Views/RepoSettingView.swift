@@ -183,7 +183,7 @@ struct RepoSettingView: View {
             if finalResult != nil {
                 Button("完成リザルトを見る") { showingFinalResult = true }
                     .foregroundStyle(AppTheme.accent)
-            } else if finalResultLoadFailed {
+            } else if finalResultLoadFailed, repository.isCompleted || repository.canManage {
                 //  読み込めないまま「完成」を出すと、完成済みの作品にも押せてしまう
                 Button("完成リザルトを再読み込み") { Task { await loadFinalResult() } }
                     .foregroundStyle(AppTheme.accent)
