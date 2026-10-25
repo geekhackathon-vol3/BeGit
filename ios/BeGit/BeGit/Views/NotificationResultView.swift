@@ -17,18 +17,14 @@ struct NotificationResultView: View {
     @State private var isShowingStopConfirmation = false
     @State private var stopErrorMessage = ""
     @State private var isShowingStopError = false
-    let onReturnToTimeline: () -> Void
-
     //  通知モデルからViewModelを生成
-    init(notification: RepositoryNotification, justPostedActivity: RepositoryActivity? = nil, onReturnToTimeline: @escaping () -> Void) {
+    init(notification: RepositoryNotification, justPostedActivity: RepositoryActivity? = nil) {
         _viewModel = StateObject(wrappedValue: NotificationResultViewModel(notification: notification, justPostedActivity: justPostedActivity))
-        self.onReturnToTimeline = onReturnToTimeline
     }
 
     //  外部ViewModel注入用
-    init(viewModel: NotificationResultViewModel, onReturnToTimeline: @escaping () -> Void) {
+    init(viewModel: NotificationResultViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
-        self.onReturnToTimeline = onReturnToTimeline
     }
 
     var body: some View {
@@ -44,7 +40,7 @@ struct NotificationResultView: View {
                 )
                 .transition(.opacity)
             } else {
-                VStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 18) {
                             if let active = viewModel.activeBeGitTime {
@@ -93,28 +89,22 @@ struct NotificationResultView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 20)
-                        .padding(.bottom, 170)  //  撮影・Timelineボタン分の余白
+                        .padding(.bottom, 100)  //  撮影ボタンと重ならないための余白
                     }
 
-                    VStack(spacing: 10) {
-                        if viewModel.notification.repository.canPost,
-                           let active = viewModel.activeBeGitTime {
-                            NavigationLink(value: cameraRoute(for: active)) {
-                                PrimaryCapsuleButtonLabel(
-                                    title: "写真で報告する",
-                                    systemImage: "camera.fill",
-                                    isEnabled: true
-                                )
-                            }
-                            .buttonStyle(.plain)
+                    if viewModel.notification.repository.canPost,
+                       let active = viewModel.activeBeGitTime {
+                        NavigationLink(value: cameraRoute(for: active)) {
+                            PrimaryCapsuleButtonLabel(
+                                title: "写真で報告する",
+                                systemImage: "camera.fill",
+                                isEnabled: true
+                            )
                         }
-
-                        PrimaryButton("Timelineに戻る", systemImage: "list.bullet", action: onReturnToTimeline)
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 18)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 14)
-                    .padding(.bottom, 18)
-                    .background(bottomBarBackground)
                 }
                 .transition(.opacity)
             }
@@ -456,15 +446,6 @@ struct NotificationResultView: View {
         viewModel.notificationMemberStatuses.isEmpty == false
     }
 
-    //  下部固定エリア背景
-    private var bottomBarBackground: some View {
-        LinearGradient(
-            colors: [AppTheme.background.opacity(0.70), AppTheme.background],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .ignoresSafeArea(edges: .bottom)
-    }
 }
 
 //  NotificationResultView Preview
@@ -476,8 +457,7 @@ struct NotificationResultView_Previews: PreviewProvider {
                     repository: Repository.mockRepositories[0],
                     selectedMembers: Repository.mockRepositories[0].members,
                     comment: "Mock notification comment"
-                ),
-                onReturnToTimeline: {}
+                )
             )
             .environmentObject(AuthState.shared)
         }
