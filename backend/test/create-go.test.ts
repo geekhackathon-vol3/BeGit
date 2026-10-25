@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { handleWorkerRoute } from "../src/api/router";
 import type { ApiEnv } from "../src/api/types";
 import type { FakeD1 } from "./fake-d1";
-import { KEY, loadFixture, Normalizer, setupFixture, toRequest } from "./go-fixture";
+import { KEY, loadFixture, Normalizer, setupFixture, toRequest } from "./sql-fixture";
 
 const fixture = loadFixture("create-go.json");
 

@@ -23,3 +23,15 @@ export async function readBodyUpTo(request: Request, max: number): Promise<Uint8
   }
   return bytes;
 }
+
+// limitBytes は、流れたバイト数が max を超えたら失敗するストリーム（ボディを溜めずに上限をかける）
+export function limitBytes(max: number): TransformStream<Uint8Array, Uint8Array> {
+  let total = 0;
+  return new TransformStream({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
+      if (total > max) controller.error(new Error(`body exceeds ${max} bytes`));
+      else controller.enqueue(chunk);
+    },
+  });
+}

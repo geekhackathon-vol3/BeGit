@@ -5,7 +5,7 @@ import { decodeGoObject } from "../src/api/gojson";
 import { handleWorkerRoute } from "../src/api/router";
 import type { ApiEnv } from "../src/api/types";
 import type { FakeD1 } from "./fake-d1";
-import { FakeQueue, KEY, loadFixture, setupFixture } from "./go-fixture";
+import { FakeQueue, KEY, loadFixture, setupFixture } from "./sql-fixture";
 
 const BASE = "https://begit.example";
 let d1: FakeD1;

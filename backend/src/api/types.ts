@@ -10,6 +10,12 @@ export interface ApiEnv {
   // Worker で処理する API の名前をカンマ区切りで並べる（例 "posts.confirm"）。空なら全てコンテナへ転送する。
   WORKER_ROUTES?: string;
   D1_METRICS?: string;
+  // 写真（r2.ts）。R2 の認証情報がなければスタブで動く（Go と同じ）
+  PHOTOS?: R2Bucket;
+  R2_ACCESS_KEY_ID?: string;
+  R2_SECRET_ACCESS_KEY?: string;
+  CF_ACCOUNT_ID?: string;
+  R2_BUCKET?: string;
 }
 
 export interface RouteContext {

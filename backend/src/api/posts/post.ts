@@ -1,7 +1,16 @@
 // posts テーブルの行と、Go の handler.PostJSON と同じ形の応答。
 
-export const POST_COLUMNS =
-  "id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at";
+const POST_COLUMN_NAMES = [
+  "id", "notification_id", "user_id", "group_id", "post_type", "body", "repo_full_name", "branch_name",
+  "commit_count", "additions", "deletions", "latest_commit_message", "status", "is_draft", "created_at",
+];
+
+export const POST_COLUMNS = POST_COLUMN_NAMES.join(", ");
+
+// postColumns は JOIN するときの列（例 postColumns("p") → "p.id, p.notification_id, …"）
+export function postColumns(alias: string): string {
+  return POST_COLUMN_NAMES.map((column) => `${alias}.${column}`).join(", ");
+}
 
 export interface PostRow {
   id: number;
