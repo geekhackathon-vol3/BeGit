@@ -54,7 +54,7 @@ private struct ErrorThrowingMiddleware: ClientMiddleware {
     }
 }
 
-struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserAPI, NotificationChannelAPI, BeGitTimeScheduleAPI {
+struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserAPI, NotificationChannelAPI, BeGitTimeScheduleAPI, ProjectPointsAPI {
     private let baseURL: URL
     private let session: URLSession
     
@@ -97,6 +97,15 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
         if (response as? HTTPURLResponse)?.statusCode == 404 { return nil }
         try validateHTTPResponse(response, data: data)
         return try JSONDecoder().decode(ProjectFinalResult.self, from: data)
+    }
+
+    func getPointsSummary(repositoryID: Int64, accessToken: String) async throws -> ProjectPointsSummary {
+        let url = baseURL.appending(path: "groups/\(repositoryID)/points")
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(ProjectPointsSummary.self, from: data)
     }
 
     func completeRepository(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult {
@@ -464,6 +473,7 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
         return NotificationStatusSummary(
             gameMode: BeGitGameMode(rawValue: payload.gameMode) ?? .everyone,
             gameResult: BeGitGameResult(rawValue: payload.gameResult) ?? .pending,
+            message: payload.message ?? "",
             members: payload.members.map {
                 NotificationMemberStatus(
                     id: Int64($0.userID),
@@ -1011,11 +1021,13 @@ private nonisolated struct NotificationStatusDTO: Decodable {
     let members: [NotificationStatusMemberDTO]
     let gameMode: String
     let gameResult: String
+    let message: String?
 
     enum CodingKeys: String, CodingKey {
         case members
         case gameMode = "game_mode"
         case gameResult = "game_result"
+        case message
     }
 }
 

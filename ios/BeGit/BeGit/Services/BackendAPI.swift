@@ -52,6 +52,7 @@ struct NotificationMemberStatus: Sendable, Identifiable {
 struct NotificationStatusSummary: Sendable {
     let gameMode: BeGitGameMode
     let gameResult: BeGitGameResult
+    let message: String
     let members: [NotificationMemberStatus]
 }
 
@@ -239,6 +240,12 @@ protocol GroupMemberRoleAPI: Sendable {
         role: RepositoryRole,
         accessToken: String
     ) async throws
+}
+
+protocol ProjectPointsAPI: Sendable {
+    func getPointsSummary(repositoryID: Int64, accessToken: String) async throws -> ProjectPointsSummary
+    func getFinalResult(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult?
+    func completeRepository(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult
 }
 
 //  開発・テスト用。ネットワークを使わず固定値を返す。
