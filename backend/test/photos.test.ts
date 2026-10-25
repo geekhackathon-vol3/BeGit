@@ -73,7 +73,7 @@ function bothReadBeforeWriting() {
   const bothArrived = new Promise<void>((resolve) => (release = resolve));
   d1.batch = async (statements) => {
     const results = await batch(statements);
-    if (statements.some((statement) => statement.sql.startsWith("SELECT sent_at"))) {
+    if (statements.some((statement) => statement.sql.includes("SELECT n.sent_at"))) {
       if (++arrived === 2) release();
       await bothArrived;
     }
@@ -210,6 +210,49 @@ describe("写真アップロード（実際の R2）", () => {
     const response = await upload([{ name: "main", data: big }, { name: "front", data: big }]);
     expect(response!.status).toBe(413);
     expect(bucket.objects.size).toBe(0);
+  });
+
+  it("通知を止めた後の下書きは確定せず 409。R2 にも保存しない", async () => {
+    d1.sqlite.exec("UPDATE notifications SET stopped_at = datetime('now') WHERE id = 1");
+    const response = await upload([{ name: "main", data: JPEG }]);
+    expect({ status: response!.status, body: await response!.json() })
+      .toEqual({ status: 409, body: { error: "conflict: notification is no longer accepting posts" } });
+    expect(bucket.objects.size).toBe(0);
+    expect(postRow()).toEqual({ is_draft: 1, status: null });
+  });
+
+  it("保存している間に受け付けが終わったら（スプリントの終わり・プロジェクトの完了）、確定も行の作成もせず 409。保存した写真は消す", async () => {
+    for (const close of ["UPDATE sprints SET ends_at = datetime('now', '-1 minutes') WHERE id = 1", "UPDATE groups SET completed_at = datetime('now') WHERE id = 1"]) {
+      d1.sqlite.exec("UPDATE sprints SET ends_at = '2099-01-01 00:00:00'; UPDATE groups SET completed_at = NULL");
+      const put = bucket.put.bind(bucket);
+      bucket.put = async (...args) => {
+        await put(...args);
+        d1.sqlite.exec(close);
+      };
+      const response = await upload([{ name: "main", data: JPEG }, { name: "front", data: PNG }]);
+      bucket.put = put;
+      expect(response!.status, close).toBe(409);
+      expect(bucket.objects.size, close).toBe(0);
+      expect(photoRows(), close).toEqual([]);
+      expect(postRow(), close).toEqual({ is_draft: 1, status: null });
+    }
+  });
+
+  it("確定済みの投稿（GitHub の報告）に付ける写真は、止めた後でも受け付ける", async () => {
+    d1.sqlite.exec("UPDATE posts SET is_draft = 0, status = 'on_time' WHERE id = 10; UPDATE notifications SET stopped_at = datetime('now') WHERE id = 1");
+    const response = await upload([{ name: "main", data: JPEG }]);
+    expect(response!.status).toBe(201);
+    expect(photoRows()).toEqual([{ r2_key: "posts/10/main.jpg", photo_type: "main" }]);
+  });
+
+  it("写真は保存済みで下書きのまま（確定だけ失敗した）なら再送で確定する。受け付けが終わっていれば 409", async () => {
+    d1.sqlite.exec("INSERT INTO photos (post_id, r2_key, photo_type) VALUES (10, 'posts/10/main.jpg', 'main')");
+    d1.sqlite.exec("UPDATE notifications SET stopped_at = datetime('now') WHERE id = 1");
+    expect((await upload([{ name: "main", data: JPEG }]))!.status).toBe(409);
+    expect(postRow()).toEqual({ is_draft: 1, status: null });
+    d1.sqlite.exec("UPDATE notifications SET stopped_at = NULL WHERE id = 1");
+    expect((await upload([{ name: "main", data: JPEG }]))!.status).toBe(201);
+    expect(postRow()).toEqual({ is_draft: 0, status: "on_time" });
   });
 
   it("往復は、認証・投稿と写真と通知の取得・作成と確定の3回（Go は7回）", async () => {

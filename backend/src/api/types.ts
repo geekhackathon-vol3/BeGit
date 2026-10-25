@@ -5,6 +5,8 @@ import type { MeteredDB } from "./db";
 export interface ApiEnv {
   DB: D1Database;
   DB_ENCRYPTION_KEY: string;
+  // 通知の Queue。Worker は積むだけで、送るのは Go の裏方のコンテナ（index.ts の queue()）
+  NOTIFICATION_QUEUE?: Queue<NotificationQueueMessage>;
   // Worker で処理する API の名前をカンマ区切りで並べる（例 "posts.confirm"）。空なら全てコンテナへ転送する。
   WORKER_ROUTES?: string;
   D1_METRICS?: string;
@@ -24,6 +26,8 @@ export interface RouteContext {
   params: string[];
   // router の認証と権限チェックを通った呼び出し元
   caller: Caller;
+  // Route.claim が返した値（claim のない API では undefined）
+  input?: unknown;
 }
 
 // NotificationQueueMessage は NOTIFICATION_QUEUE に積むメッセージ。受けて送るのは Go の裏方のコンテナ（src/queue.ts）

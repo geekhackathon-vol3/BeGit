@@ -91,7 +91,7 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 			return nil, err
 		}
 		if group.CompletedAt != nil {
-			return nil, ErrConflict
+			return nil, ErrProjectCompleted
 		}
 	}
 	postType := req.PostType
@@ -218,6 +218,10 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 
 	created, err := s.postRepo.Create(ctx, post)
 	if err != nil {
+		// UNIQUE(notification_id, user_id): 同じ BeGit Time! に2回目の報告
+		if errors.Is(err, repository.ErrConstraintViolation) {
+			return nil, fmt.Errorf("%w: already reported for this notification", ErrConflict)
+		}
 		return nil, fmt.Errorf("post_service: CreatePost failed: %w", err)
 	}
 	return created, nil

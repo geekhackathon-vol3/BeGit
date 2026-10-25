@@ -203,6 +203,8 @@ func respondReactionError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrNotFound):
 		respondError(c, http.StatusNotFound, "post not found")
+	case errors.Is(err, service.ErrInvalidReactionType):
+		respondError(c, http.StatusBadRequest, "invalid reaction type")
 	default:
 		respondError(c, http.StatusInternalServerError, "internal server error")
 	}

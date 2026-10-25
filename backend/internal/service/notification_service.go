@@ -147,7 +147,7 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 			return nil, err
 		}
 		if group.CompletedAt != nil {
-			return nil, ErrConflict
+			return nil, ErrProjectCompleted
 		}
 	}
 	// Step 1: 現在のスプリントを取得または作成
