@@ -282,6 +282,13 @@ struct RepositoryDashboardView: View {
                     systemImage: "eye.fill",
                     isEnabled: false
                 )
+            } else if viewModel.repository.isCompleted {
+                //  完成後は発行・報告できない。リザルトは設定画面から見られる
+                PrimaryCapsuleButtonLabel(
+                    title: "作品完成済み",
+                    systemImage: "checkmark.seal.fill",
+                    isEnabled: false
+                )
             } else if let challenge = viewModel.activeChallenge,
                let backendID = viewModel.repository.backendID,
                let draftPost = challenge.myPost {

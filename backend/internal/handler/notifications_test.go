@@ -237,5 +237,20 @@ func TestNotificationHandler_Send_ForwardsModeMembersAndMessage(t *testing.T) {
 	}
 	if captured.GameMode != model.GameModeSpotlight || captured.Message != "ship it" || len(captured.MemberIDs) != 2 || captured.MemberIDs[1] != 45 {
 		t.Fatalf("unexpected request: %+v", captured)
-	}
+}
+}
+
+// TestNotificationHandler_Send_CompletedProject は完成済みの 409 が進行中の 409 と別のメッセージになることを確認する
+func TestNotificationHandler_Send_CompletedProject(t *testing.T) {
+svc := &mockNotificationService{
+	sendFunc: func(_ context.Context, _, _ int64, _ service.SendNotificationRequest) (*model.Notification, error) {
+		return nil, service.ErrProjectCompleted
+	},
+}
+r := newNotificationRouter(svc, 23)
+w := httptest.NewRecorder()
+r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/notifications", nil))
+if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "project is completed") {
+	t.Errorf("expected 409 with project is completed, got %d %s", w.Code, w.Body.String())
+}
 }

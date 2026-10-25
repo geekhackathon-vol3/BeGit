@@ -170,7 +170,7 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 			return nil, err
 		}
 		if group.CompletedAt != nil {
-			return nil, ErrConflict
+			return nil, ErrProjectCompleted
 		}
 		members, err := s.groupRepo.GetMembers(ctx, groupID)
 		if err != nil {

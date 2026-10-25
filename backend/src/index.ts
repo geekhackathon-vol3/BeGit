@@ -1,10 +1,14 @@
 import { Container, getContainer } from "@cloudflare/containers";
+import { handleWorkerRoute } from "./api/router";
+import type { NotificationQueueMessage } from "./api/types";
+import { isInternalPath, stripInternalHeaders } from "./guards";
+import { deliverNotifications } from "./queue";
 
 interface Env {
   BEGIT_API: DurableObjectNamespace<BeGitAPI>;
   DB: D1Database;
   PHOTOS: R2Bucket;
-  NOTIFICATION_QUEUE: Queue<{ job_id: number }>;
+  NOTIFICATION_QUEUE: Queue<NotificationQueueMessage>;
   // Workers Secrets
   GITHUB_CLIENT_ID: string;
   GITHUB_CLIENT_SECRET: string;
@@ -31,6 +35,10 @@ interface Env {
   DEV_MODE: string;
   // "true" で BeGit Time! の「1スプリント1人1回」を解除する（[vars] / [env.dev.vars]）。未設定は制限あり。
   BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT: string;
+  // Worker が D1 バインディングで直接処理する API の名前（カンマ区切り。src/api/router.ts の ROUTES）。未設定なら全てコンテナへ転送する（#132）。
+  WORKER_ROUTES?: string;
+  // "true" で Worker が処理した API の D1 呼び出しを X-D1-* ヘッダーで返す（計測用の環境だけ）。
+  D1_METRICS?: string;
   // 内部 Cron 起動シークレット。dev は [env.dev.vars] の var、本番は secret 運用。
   // scheduled() が X-Cron-Secret ヘッダーで Go コンテナへ転送し、cron_handler が定数時間比較する。
   CRON_SECRET: string;
@@ -81,6 +89,17 @@ function internalHeaders(env: Env): Record<string, string> {
   };
 }
 
+// containerRequestHeaders は外部リクエストのヘッダーから内部ヘッダーを取り除き（stripInternalHeaders）、
+// Worker の値で上書きしたヘッダーを返す。クライアントが同名ヘッダーを送っても
+// Go 側に届くのは Worker の値だけになる。
+function containerRequestHeaders(request: Request, env: Env): Headers {
+  const headers = stripInternalHeaders(request.headers);
+  for (const [name, value] of Object.entries(internalHeaders(env))) {
+    headers.set(name, value);
+  }
+  return headers;
+}
+
 export class BeGitAPI extends Container {
   defaultPort = 8080;
   sleepAfter = "10m";
@@ -111,49 +130,28 @@ export default {
       return new Response(null, { status: 202 });
     }
 
+    // /internal/* は scheduled() / queue() から Worker 内部でのみ呼ぶ。外部からは存在しない扱いにする。
+    if (isInternalPath(requestURL.pathname)) {
+      return Response.json({ error: "not found" }, { status: 404 });
+    }
+
+    // WORKER_ROUTES で有効にした API は Worker が処理する（#132）。/internal/* の遮断より後に置くこと
+    const workerResponse = await handleWorkerRoute(request, env);
+    if (workerResponse) return workerResponse;
+
     // Workers Secrets と [vars] を X-Internal-* ヘッダーとして Container に転送する
     const modifiedRequest = new Request(request, {
-      headers: {
-        ...Object.fromEntries(request.headers.entries()),
-        ...internalHeaders(env),
-      }
+      headers: containerRequestHeaders(request, env),
     });
     return getContainer(env.BEGIT_API, "begit-api-singleton").fetch(modifiedRequest);
   },
 
-  async queue(batch: MessageBatch<{ job_id: number }>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<NotificationQueueMessage>, env: Env): Promise<void> {
     // API trafficと配信処理を別のContainerに分離し、APIの起動枠競合を避ける。
-    const container = getContainer(env.BEGIT_API, "begit-background-singleton");
-    for (const message of batch.messages) {
-      try {
-        const response = await container.fetch(new Request(
-          `${env.APP_BASE_URL}/internal/notification-deliveries/${message.body.job_id}`,
-          {
-            method: "POST",
-            headers: {
-              ...internalHeaders(env),
-              "X-Notification-Queue-Secret": env.NOTIFICATION_QUEUE_SECRET ?? "",
-            },
-          },
-        ));
-        if (response.ok) {
-          message.ack();
-        } else {
-          const responseBody = (await response.text().catch(() => "")).slice(0, 500);
-          console.error(
-            `[notification-queue] delivery failed job_id=${message.body.job_id} status=${response.status} body=${responseBody}`,
-          );
-          if (response.status >= 400 && response.status < 500) {
-            message.ack();
-          } else {
-            message.retry();
-          }
-        }
-      } catch (error) {
-        console.error(`[notification-queue] delivery request failed job_id=${message.body.job_id}`, error);
-        message.retry();
-      }
-    }
+    await deliverNotifications(batch, getContainer(env.BEGIT_API, "begit-background-singleton"), env.APP_BASE_URL, {
+      ...internalHeaders(env),
+      "X-Notification-Queue-Secret": env.NOTIFICATION_QUEUE_SECRET ?? "",
+    });
   },
 
   // scheduled は [triggers] crons から起動される。

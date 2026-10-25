@@ -2,15 +2,20 @@
   "name": "begit",
   "version": "0.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@cloudflare/containers": "latest",
     "@cloudflare/workers-types": "latest",
     "typescript": "^5.0.0",
+    "vitest": "3.2.4",
     "wrangler": "latest"
   }
 }

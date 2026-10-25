@@ -190,6 +190,24 @@ func TestPostService_CreatePost_PullRequest(t *testing.T) {
 	}
 }
 
+// 同じ BeGit Time! への2回目の報告（UNIQUE(notification_id, user_id) 違反）は 409 にする（今までは 500）
+func TestPostService_CreatePost_ConstraintViolationIsConflict(t *testing.T) {
+	body := "2回目"
+	postRepo := &mockPostRepository{createFunc: func(ctx context.Context, post *model.Post) (*model.Post, error) {
+		return nil, repository.ErrConstraintViolation
+	}}
+	svc := NewPostService(nil, nil, postRepo, nil, nil, nil)
+
+	_, err := svc.CreatePost(context.Background(), CreatePostRequest{
+		Body:          &body,
+		PostType:      "memo",
+		ContentSource: "manual",
+	}, 1, 1)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("CreatePost() error = %v, want ErrConflict", err)
+	}
+}
+
 func TestPostService_CreatePost_MemoSkipsGitHub(t *testing.T) {
 	body := "今日は設計を整理します"
 	var created *model.Post
@@ -333,5 +351,28 @@ func TestPostService_PhotoReportAcceptedLateWithinSprint(t *testing.T) {
 	}, 3, 1)
 	if err != nil || !post.IsDraft {
 		t.Fatalf("late photo report must be uploadable: %+v %v", post, err)
+	}
+}
+
+// TestPostService_CreatePost_CompletedProject は完成済みのグループには報告できず、メッセージで区別できることを確認する
+func TestPostService_CreatePost_CompletedProject(t *testing.T) {
+	id := int64(9)
+	completedAt := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	groups := &mockGroupRepository{getByIDFunc: func(_ context.Context, groupID int64) (*model.Group, error) {
+		return &model.Group{ID: groupID, CompletedAt: &completedAt}, nil
+	}}
+	repo := &mockPostRepository{createDraftFunc: func(context.Context, *model.Post) (*model.Post, error) {
+		t.Fatal("completed project must not create a report")
+		return nil, nil
+	}}
+	_, err := NewPostService(nil, nil, repo, groups, nil, nil).CreatePost(context.Background(), CreatePostRequest{
+		NotificationID: &id, PostType: "memo", ContentSource: "photo",
+	}, 3, 1)
+	if !errors.Is(err, ErrProjectCompleted) || !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrProjectCompleted wrapping ErrConflict, got %v", err)
+	}
+	// posts ハンドラは ErrConflict の本文に err.Error() を返す
+	if err.Error() != "conflict: project is completed" {
+		t.Errorf("unexpected message: %q", err.Error())
 	}
 }

@@ -123,6 +123,10 @@ func (h *NotificationHandler) Send(c *gin.Context) {
 			respondError(c, http.StatusUnprocessableEntity, "invalid game mode or notification members")
 			return
 		}
+		if errors.Is(err, service.ErrProjectCompleted) {
+			respondError(c, http.StatusConflict, err.Error())
+			return
+		}
 		if errors.Is(err, service.ErrConflict) {
 			respondError(c, http.StatusConflict, "conflict: a challenge is in progress or already sent in this sprint")
 			return

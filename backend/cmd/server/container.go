@@ -141,6 +141,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// ⑦ ソーシャル通知付き（fcm 依存注入）
 	reactionSvc := service.NewReactionServiceWithExternalNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
+	// Worker が Queue に積んだ FCM 通知を送る（#134）
+	pushNotificationSvc := service.NewPushNotificationService(userRepo, fcmTokenRepo, fcmClient)
+
 	commentSvc := service.NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
 	// ③④⑤⑥ Cron サービス
@@ -202,6 +205,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	notificationChannelHandler := handler.NewNotificationChannelHandler(notificationChannelSvc)
 	beGitTimeScheduleHandler := handler.NewBeGitTimeScheduleHandler(beGitTimeScheduleSvc)
 	externalDeliveryHandler := handler.NewNotificationDeliveryHandler(externalDeliverySvc, cfg.NotificationQueueSecret)
+	pushNotificationHandler := handler.NewPushNotificationHandler(pushNotificationSvc, cfg.NotificationQueueSecret)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -213,6 +217,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// RemoveExtraSlash は有効にしないこと。有効にすると gin がその場でパスを整形してからルーティングし、
+	// /x/..%2Finternal/cron のようなパスで Worker の /internal/* 遮断（src/index.ts の isInternalPath）を
+	// 迂回して内部エンドポイントに到達できるようになる。
 	// パスは一致するがメソッドが異なる場合は 404 ではなく 405 を返す（従来挙動を維持）
 	r.HandleMethodNotAllowed = true
 	r.NoMethod(func(c *gin.Context) {
@@ -244,6 +251,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// Workers scheduled() 経由でのみ到達する想定で公開はしない）。
 	r.POST("/internal/cron", cronHandler.Run)
 	r.POST("/internal/notification-deliveries/:jobId", externalDeliveryHandler.Deliver)
+	r.POST("/internal/push-notifications", pushNotificationHandler.Send)
 
 	// dev 専用ログイン（DEV_MODE=true のときだけ登録。false なら未登録＝404）
 	if cfg.DevMode {

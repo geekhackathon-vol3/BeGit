@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/irj0927/begit/pkg/d1"
 )
@@ -54,6 +55,7 @@ func NewPointsRepository(db d1.Client) *PointsRepository { return &PointsReposit
 // FinalizeBonuses persists one immutable game result per due notification.
 // The notification_game_result_award trigger atomically creates the unique
 // bonus award for successful results, so retries cannot duplicate points.
+// The every-minute cron (groupID 0) only checks challenges sent within 25 hours.
 func (r *PointsRepository) FinalizeBonuses(ctx context.Context, groupID int64) error {
 	_, err := r.db.Exec(ctx, `WITH candidates AS (
  SELECT n.id AS notification_id, n.game_mode, n.sent_by,
@@ -91,6 +93,7 @@ func (r *PointsRepository) FinalizeBonuses(ctx context.Context, groupID int64) e
  JOIN sprints s ON s.id = n.sprint_id
  JOIN groups g ON g.id = s.group_id
  WHERE (? = 0 OR s.group_id = ?) AND g.completed_at IS NULL
+  AND n.sent_at >= CASE WHEN ? = 0 THEN datetime('now', '-25 hours') ELSE '' END
    AND (n.stopped_at IS NOT NULL OR datetime(COALESCE(n.ended_at, datetime(n.sent_at, '+1 hour'))) <= datetime('now'))
 )
 INSERT OR IGNORE INTO notification_game_results(
@@ -100,7 +103,7 @@ SELECT notification_id, game_mode,
  CASE WHEN cancelled = 1 THEN 'cancelled' WHEN succeeded = 1 THEN 'succeeded' ELSE 'failed' END,
  CASE WHEN succeeded = 1 AND cancelled = 0 THEN sent_by ELSE NULL END,
  CASE WHEN succeeded = 1 AND cancelled = 0 THEN 10 ELSE 0 END
-FROM candidates`, []interface{}{groupID, groupID})
+FROM candidates`, []interface{}{groupID, groupID, groupID})
 	if err != nil {
 		return fmt.Errorf("points: finalize bonuses: %w", err)
 	}
@@ -145,6 +148,9 @@ func (r *PointsRepository) Result(ctx context.Context, groupID int64) (*FinalRes
 	completedAt, ok := rows[0]["completed_at"].(string)
 	if !ok || completedAt == "" {
 		return nil, ErrNotFound
+	}
+	if parsed := parseScheduleTime(completedAt); parsed != nil {
+		completedAt = parsed.Format(time.RFC3339)
 	}
 	result := &FinalResult{GroupID: groupID, CompletedAt: completedAt, Members: []FinalMemberPoints{}, ModeResults: []FinalModeResult{}}
 	members, err := r.db.Query(ctx, `SELECT user_id, login, avatar_url, report_points, bonus_points

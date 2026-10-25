@@ -39,7 +39,8 @@ extension Components.Schemas.Handler_GroupJSON {
             memberCount: memberCount ?? 0,
             members: [],
             isReadOnly: readOnly ?? false,
-            ownerVerified: ownerVerified ?? true
+            ownerVerified: ownerVerified ?? true,
+            completedAt: completedAt.flatMap(parseBackendDate)
         )
     }
 }
@@ -61,7 +62,8 @@ extension Components.Schemas.Handler_GroupDetailJSON {
             // 旧Backendがmy_roleを返さない場合は、従来どおり投稿可能として扱う。
             myRole: myRole.map { RepositoryRole(backendValue: $0) } ?? .poster,
             ownerVerified: ownerVerified ?? true,
-            activeChallenge: activeChallenge?.toActiveChallenge()
+            activeChallenge: activeChallenge?.toActiveChallenge(),
+            completedAt: completedAt.flatMap(parseBackendDate)
         )
     }
 }
