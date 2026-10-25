@@ -12,6 +12,26 @@ export function postColumns(alias: string): string {
   return POST_COLUMN_NAMES.map((column) => `${alias}.${column}`).join(", ");
 }
 
+// 写真の報告を受け付けているかは SQL で判定する（steering の tech.md「書き込みの前提は SQL で守る」）。
+// 読み取りでは結果を列として読んで応答を決め、書き込みでは同じ条件を WHERE に付けて、確かめた後に状態が変わっても書かない。
+// 引数は SQL の式をそのまま埋め込むので、"?" や列名などの定数だけを渡す
+
+// groupCompleted は、groups の別名 alias のプロジェクトが完了しているかの条件。
+// 空文字は完了していないとみなす（Go の scan は空文字を時刻として読まない）
+export function groupCompleted(alias: string): string {
+  return `COALESCE(${alias}.completed_at, '') <> ''`;
+}
+
+// acceptsPhotoReports は、通知 notificationIDExpr が写真の報告を受け付けているかの条件。
+// 止めていない・スプリントの終わり前・プロジェクトが完了していない。ends_at は書き方が混ざりうるので julianday で比べる（読めなければ締め切り済み）
+export function acceptsPhotoReports(notificationIDExpr: string): string {
+  return `EXISTS (SELECT 1 FROM notifications pn JOIN sprints ps ON ps.id = pn.sprint_id JOIN groups pg ON pg.id = ps.group_id
+    WHERE pn.id = ${notificationIDExpr} AND COALESCE(pn.stopped_at, '') = '' AND NOT ${groupCompleted("pg")}
+      AND julianday(ps.ends_at) > julianday('now'))`;
+}
+
+export const NOT_ACCEPTING_POSTS = "conflict: notification is no longer accepting posts";
+
 export interface PostRow {
   id: number;
   notification_id: number | null;
