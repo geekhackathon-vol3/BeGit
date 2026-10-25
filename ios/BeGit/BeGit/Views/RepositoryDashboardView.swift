@@ -49,6 +49,14 @@ struct RepositoryDashboardView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 0) {
+                    NavigationLink(value: RepositoryNavigationRoute.points(viewModel.repository)) {
+                        Image(systemName: "trophy.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("ポイントを表示")
+
                     Button {
                         selectedView = selectedView.next
                     } label: {
@@ -195,9 +203,10 @@ struct RepositoryDashboardView: View {
             }
 
             BeGitTimeProgressSummaryView(
-                members: viewModel.repository.members,
+                members: displayedChallengeMembers,
                 achievedMemberLogins: achievedMemberLogins,
-                dimUnachieved: shouldDimUnachievedMembers
+                dimUnachieved: shouldDimUnachievedMembers,
+                comment: viewModel.notificationMessage
             )
             activityTimeline
         }
@@ -343,7 +352,7 @@ struct RepositoryDashboardView: View {
     ) -> some View {
         let accentPurple = Color(red: 0.72, green: 0.58, blue: 0.98)
         let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
-        let issuer = viewModel.repository.members.first(where: {
+        let issuer = displayedChallengeMembers.first(where: {
             $0.backendUserID == activeBeGitTime.sentBy
         }) ?? viewModel.repository.members.first
         let issuerLogin = issuer?.login ?? "メンバー"
@@ -564,6 +573,20 @@ struct RepositoryDashboardView: View {
             $0.date >= challenge.sentAt &&
             $0.date < challenge.expiresAt
         }.map(\.author.login))
+    }
+
+    private var displayedChallengeMembers: [RepositoryMember] {
+        guard viewModel.notificationMemberStatuses.isEmpty == false else {
+            return viewModel.repository.members
+        }
+        return viewModel.notificationMemberStatuses.map { status in
+            RepositoryMember(
+                backendUserID: status.id,
+                login: status.login,
+                avatarURL: status.avatarURL,
+                role: .poster
+            )
+        }
     }
 
     private var shouldDimUnachievedMembers: Bool {

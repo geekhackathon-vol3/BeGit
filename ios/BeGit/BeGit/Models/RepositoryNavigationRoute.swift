@@ -10,8 +10,8 @@ enum RepositoryNavigationRoute: Hashable, Sendable {
     //  通知作成画面
     case makeNotification(Repository)
     case camera(notification: RepositoryNotification) 
-    //  通知結果画面
-    case notificationResult(RepositoryNotification)
+    //  現在ポイント・完成リザルト画面
+    case points(Repository)
 
     // MARK: - FCM 通知タップからの deep link（#55 ルーティング基盤）
     // Push の data には ID しか載らないため、リッチな Repository / RepositoryNotification ではなく

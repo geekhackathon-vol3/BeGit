@@ -11,6 +11,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
     @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var endedBeGitTime: ActiveBeGitTime?
     @Published private(set) var notificationMemberStatuses: [NotificationMemberStatus] = []
+    @Published private(set) var notificationMessage = ""
     @Published private(set) var gameResult: BeGitGameResult = .pending
     @Published private(set) var isLoading = false                   //  Timeline取得中
     @Published var errorMessage: String?                            //  APIエラー表示
@@ -130,6 +131,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             activeBeGitTime = nil
             activeChallenge = nil
             notificationMemberStatuses = []
+            notificationMessage = ""
             return
         }
 
@@ -141,6 +143,8 @@ final class RepositoryDashboardViewModel: ObservableObject {
             if let active {
                 activeBeGitTime = active
                 endedBeGitTime = nil
+                notificationMemberStatuses = []
+                notificationMessage = ""
                 if let statuses = try? await repositoryAPI.getNotificationStatus(
                     repositoryID: repositoryID,
                     notificationID: active.notificationID,
@@ -148,6 +152,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 ) {
                     notificationMemberStatuses = statuses.members
                     gameResult = statuses.gameResult
+                    notificationMessage = statuses.message
                 }
             } else if NotificationDeliveryMode.current.usesLocalNotificationMock,
                       let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
@@ -158,6 +163,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
                 if endedBeGitTime == nil {
                     notificationMemberStatuses = []
+                    notificationMessage = ""
                 }
             }
         } catch {
@@ -172,6 +178,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             }
             if activeBeGitTime == nil && endedBeGitTime == nil {
                 notificationMemberStatuses = []
+                notificationMessage = ""
             }
         }
 
@@ -211,6 +218,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             activeChallenge = nil
             ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
             notificationMemberStatuses = []
+            notificationMessage = ""
             return
         }
 
@@ -248,6 +256,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
         ) {
             notificationMemberStatuses = statuses.members
             gameResult = statuses.gameResult
+            notificationMessage = statuses.message
         }
     }
 
