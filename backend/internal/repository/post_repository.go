@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/irj0927/begit/internal/model"
@@ -161,6 +162,40 @@ func (r *postRepository) ListByGroupID(ctx context.Context, groupID int64) ([]mo
 	return posts, nil
 }
 
+// ListPageByGroupID は created_at + id のキーセットカーソルでフィードを取得する。
+// limit+1件を読むことで次ページの有無を追加COUNTなしで判定できる。
+func (r *postRepository) ListPageByGroupID(ctx context.Context, groupID int64, limit int, before time.Time, beforeID int64) ([]model.Post, error) {
+	if limit < 1 {
+		limit = 20
+	}
+	query := `SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
+		 FROM posts WHERE group_id = ? AND is_draft = 0 AND (status IS NULL OR status != 'missed')`
+	args := []interface{}{groupID}
+	if !before.IsZero() {
+		query += ` AND (datetime(created_at) < datetime(?) OR (datetime(created_at) = datetime(?) AND id < ?))`
+		stamp := before.UTC().Format(time.RFC3339)
+		args = append(args, stamp, stamp, beforeID)
+	}
+	query += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := r.db.Query(ctx, query, args)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return []model.Post{}, nil
+		}
+		return nil, fmt.Errorf("post_repository: ListPageByGroupID failed: %w", err)
+	}
+	posts := make([]model.Post, 0, len(rows))
+	for _, row := range rows {
+		post, scanErr := scanPost(row)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		posts = append(posts, *post)
+	}
+	return posts, nil
+}
+
 // GetByID は postID で投稿を取得する
 func (r *postRepository) GetByID(ctx context.Context, postID int64) (*model.Post, error) {
 	rows, err := r.db.Query(ctx,
@@ -180,6 +215,37 @@ func (r *postRepository) GetByID(ctx context.Context, postID int64) (*model.Post
 	}
 
 	return scanPost(rows[0])
+}
+
+// ListByNotificationAndUsers は通知結果判定に必要な投稿を一括取得する。
+func (r *postRepository) ListByNotificationAndUsers(ctx context.Context, notifID int64, userIDs []int64) (map[int64]model.Post, error) {
+	result := make(map[int64]model.Post, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(userIDs)), ",")
+	args := make([]interface{}, 0, len(userIDs)+1)
+	args = append(args, notifID)
+	for _, id := range userIDs {
+		args = append(args, id)
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT id, notification_id, user_id, group_id, post_type, body, repo_full_name, branch_name, commit_count, additions, deletions, latest_commit_message, status, is_draft, created_at
+		 FROM posts WHERE notification_id = ? AND user_id IN (`+placeholders+`)`, args)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return result, nil
+		}
+		return nil, fmt.Errorf("post_repository: ListByNotificationAndUsers failed: %w", err)
+	}
+	for _, row := range rows {
+		post, scanErr := scanPost(row)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		result[post.UserID] = *post
+	}
+	return result, nil
 }
 
 // HasPostedInSprint は userID が sprintID のスプリントで投稿済みかどうかを確認する

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/pkg/d1"
@@ -17,6 +18,37 @@ type ReactionRepository interface {
 	Remove(ctx context.Context, postID, userID int64, reactionType string) error
 	// ListByPostID は投稿のリアクション一覧を users JOIN 付きで取得する。
 	ListByPostID(ctx context.Context, postID int64) ([]model.Reaction, error)
+}
+
+// ListByPostIDs は複数投稿のリアクションを1回のSQLで取得する。
+// ReactionRepository本体とは分けた拡張メソッドにして、既存のテストダブルとの互換性を保つ。
+func (r *reactionRepository) ListByPostIDs(ctx context.Context, postIDs []int64) (map[int64][]model.Reaction, error) {
+	result := make(map[int64][]model.Reaction, len(postIDs))
+	if len(postIDs) == 0 {
+		return result, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(postIDs)), ",")
+	args := make([]interface{}, len(postIDs))
+	for i, id := range postIDs {
+		args[i] = id
+	}
+	rows, err := r.db.Query(ctx,
+		`SELECT rx.id, rx.post_id, rx.user_id, rx.reaction_type, u.github_login as login, u.avatar_url
+		 FROM reactions rx
+		 INNER JOIN users u ON rx.user_id = u.id
+		 WHERE rx.post_id IN (`+placeholders+`)
+		 ORDER BY rx.id ASC`, args)
+	if err != nil {
+		if errors.Is(err, d1.ErrNotFound) {
+			return result, nil
+		}
+		return nil, fmt.Errorf("reaction_repository: ListByPostIDs failed: %w", err)
+	}
+	for _, row := range rows {
+		reaction := scanReaction(row)
+		result[reaction.PostID] = append(result[reaction.PostID], reaction)
+	}
+	return result, nil
 }
 
 // reactionRepository は ReactionRepository インターフェースの実装

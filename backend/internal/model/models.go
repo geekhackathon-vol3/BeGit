@@ -172,6 +172,8 @@ type PostFeed struct {
 	AvatarURL string
 	// Photos は投稿に紐づく写真（presigned URL 付き）。
 	Photos []FeedPhoto
+	// Reactions は一覧表示に必要なリアクションを一括取得したもの。
+	Reactions []Reaction
 }
 
 // Photo は posts に紐づく写真。R2 バケット "begit-photos" のオブジェクトキーを保持する。

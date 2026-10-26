@@ -507,8 +507,32 @@ func computeMemberStatuses(
 ) ([]MemberStatus, error) {
 	deadline := challengeDeadline(notif)
 	statuses := make([]MemberStatus, 0, len(members))
+	postsByUser := make(map[int64]model.Post, len(members))
+	if batch, ok := postRepo.(interface {
+		ListByNotificationAndUsers(context.Context, int64, []int64) (map[int64]model.Post, error)
+	}); ok {
+		userIDs := make([]int64, 0, len(members))
+		for _, member := range members {
+			userIDs = append(userIDs, member.UserID)
+		}
+		var err error
+		postsByUser, err = batch.ListByNotificationAndUsers(ctx, notif.ID, userIDs)
+		if err != nil {
+			return nil, fmt.Errorf("ListByNotificationAndUsers failed: %w", err)
+		}
+	}
 	for _, member := range members {
-		post, err := postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)
+		var post *model.Post
+		var err error
+		if batchPost, found := postsByUser[member.UserID]; found {
+			post = &batchPost
+		} else if _, batchEnabled := postRepo.(interface {
+			ListByNotificationAndUsers(context.Context, int64, []int64) (map[int64]model.Post, error)
+		}); !batchEnabled {
+			post, err = postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)
+		} else {
+			err = repository.ErrNotFound
+		}
 
 		var status string
 		if err != nil {

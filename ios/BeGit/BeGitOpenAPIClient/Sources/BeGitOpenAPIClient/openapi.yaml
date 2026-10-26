@@ -425,6 +425,11 @@ components:
           uniqueItems: false
         post_type:
           type: string
+        reactions:
+          items:
+            $ref: '#/components/schemas/handler.ReactionJSON'
+          type: array
+          uniqueItems: false
         repo_full_name:
           type: string
         status:
@@ -461,6 +466,10 @@ components:
       type: object
     handler.PostListResponse:
       properties:
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
         posts:
           items:
             $ref: '#/components/schemas/handler.PostFeedJSON'
@@ -579,6 +588,33 @@ components:
             $ref: '#/components/schemas/handler.RepoJSON'
           type: array
           uniqueItems: false
+      type: object
+    handler.RepositoryChangeJSON:
+      properties:
+        entity_id:
+          type: integer
+        entity_type:
+          type: string
+        operation:
+          type: string
+        post_id:
+          type: integer
+        sequence:
+          type: integer
+      type: object
+    handler.RepositoryChangesResponse:
+      properties:
+        changes:
+          items:
+            $ref: '#/components/schemas/handler.RepositoryChangeJSON'
+          type: array
+          uniqueItems: false
+        cursor:
+          type: integer
+        has_more:
+          type: boolean
+        reset_required:
+          type: boolean
       type: object
     handler.SendNotificationRequestJSON:
       properties:
@@ -1115,6 +1151,39 @@ paths:
       summary: BeGit Time 自動開催設定を更新
       tags:
       - begit-time-schedule
+  /groups/{id}/changes:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 前回カーソル
+        in: query
+        name: after
+        schema:
+          default: 0
+          type: integer
+      - description: 取得件数（最大200）
+        in: query
+        name: limit
+        schema:
+          default: 100
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.RepositoryChangesResponse'
+          description: OK
+      security:
+      - BearerAuth: []
+      summary: Repository差分取得
+      tags:
+      - repository-changes
   /groups/{id}/claim-ownership:
     post:
       parameters:
@@ -1827,6 +1896,17 @@ paths:
         required: true
         schema:
           type: integer
+      - description: 取得件数（最大50）
+        in: query
+        name: limit
+        schema:
+          default: 20
+          type: integer
+      - description: 次ページカーソル
+        in: query
+        name: cursor
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -1975,6 +2055,38 @@ paths:
       security:
       - BearerAuth: []
       summary: 投稿削除
+      tags:
+      - posts
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.PostFeedJSON'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: 投稿単体取得
       tags:
       - posts
   /groups/{id}/posts/{postId}/comments:

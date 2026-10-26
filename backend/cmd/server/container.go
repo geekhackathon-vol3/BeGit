@@ -96,6 +96,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	notificationDeliveryJobRepo := repository.NewNotificationDeliveryJobRepository(d1Client)
 	beGitTimeScheduleRepo := repository.NewBeGitTimeScheduleRepository(d1Client)
 	pointsRepo := repository.NewPointsRepository(d1Client)
+	repositoryChangeRepo := repository.NewRepositoryChangeRepository(d1Client)
 
 	externalSender := externalnotify.NewClient()
 	queueClient := notificationqueue.NewClient(cfg.AppBaseURL, cfg.NotificationQueueSecret)
@@ -128,6 +129,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	service.AttachPointsToNotifications(notifSvc, pointsRepo)
 
 	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client, notifRepo)
+	service.AttachReactionsToPosts(postSvc, reactionRepo)
 
 	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo, notifRepo)
 
@@ -194,6 +196,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	pointsHandler := handler.NewPointsHandler(service.NewPointsService(groupRepo, pointsRepo))
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	postHandler := handler.NewPostHandler(postSvc)
+	repositoryChangeHandler := handler.NewRepositoryChangeHandler(repositoryChangeRepo)
 	photoHandler := handler.NewPhotoHandler(photoSvc, r2Client)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, webhookRepo, cfg.GitHubWebhookSecret)
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc, authSvc)
@@ -285,7 +288,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupOwner, notifHandler.End)
 	r.POST("/groups/:id/posts", bearerAuth, groupPoster, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.GET("/groups/:id/posts/:postId", bearerAuth, groupMember, postHandler.Get)
 	r.DELETE("/groups/:id/posts/:postId", bearerAuth, groupPoster, postHandler.Delete)
+	r.GET("/groups/:id/changes", bearerAuth, groupMember, repositoryChangeHandler.List)
 	r.GET("/groups/:id/posts/:postId/draft", bearerAuth, groupPoster, postHandler.GetDraft)
 	r.POST("/groups/:id/posts/:postId/confirm", bearerAuth, groupPoster, postHandler.Confirm)
 	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupPoster, photoHandler.Upload)
