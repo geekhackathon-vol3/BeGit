@@ -89,7 +89,9 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 }
             }
 
-            activities = fetched
+            if fetched != activities {
+                activities = fetched
+            }
         } catch {
             errorMessage = "投稿を取得できませんでした"
         }
@@ -120,7 +122,10 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 fetched[index].reactions = reactions
             }
 
-            activities = fetched
+            let merged = RepositoryActivity.mergingRefresh(fetched, preserving: activities)
+            if merged != activities {
+                activities = merged
+            }
         } catch {
             //  バックグラウンド更新失敗時は、現在表示中の投稿を維持する。
         }
@@ -144,38 +149,38 @@ final class RepositoryDashboardViewModel: ObservableObject {
             )
             if let active {
                 let notificationChanged = previousNotificationID != active.notificationID
-                activeBeGitTime = active
-                endedBeGitTime = nil
+                if activeBeGitTime != active {
+                    activeBeGitTime = active
+                }
+                if endedBeGitTime != nil {
+                    endedBeGitTime = nil
+                }
                 if notificationChanged {
-                    notificationMemberStatuses = []
-                    notificationMessage = ""
-                    gameResult = .pending
+                    resetNotificationStatus()
                 }
                 if let statuses = try? await repositoryAPI.getNotificationStatus(
                     repositoryID: repositoryID,
                     notificationID: active.notificationID,
                     accessToken: accessToken
                 ) {
-                    notificationMemberStatuses = statuses.members
-                    gameResult = statuses.gameResult
-                    notificationMessage = statuses.message
+                    applyNotificationStatus(statuses)
                 }
             } else if NotificationDeliveryMode.current.usesLocalNotificationMock,
                       let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
                 // ローカルモック時だけ端末内のBeGit Timeを表示する。
-                activeBeGitTime = cached
+                if activeBeGitTime != cached {
+                    activeBeGitTime = cached
+                }
                 if previousNotificationID != cached.notificationID {
-                    notificationMemberStatuses = []
-                    notificationMessage = ""
-                    gameResult = .pending
+                    resetNotificationStatus()
                 }
             } else {
-                activeBeGitTime = nil
+                if activeBeGitTime != nil {
+                    activeBeGitTime = nil
+                }
                 ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
                 if endedBeGitTime == nil {
-                    notificationMemberStatuses = []
-                    notificationMessage = ""
-                    gameResult = .pending
+                    resetNotificationStatus()
                 }
             }
         } catch {
@@ -183,20 +188,19 @@ final class RepositoryDashboardViewModel: ObservableObject {
             // 旧ローカルモックの notificationID=0 を復元すると、存在しない通知の停止を
             // 試みてしまうため除外する。
             let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
-            activeBeGitTime = cached.flatMap { cached in
+            let fallback = cached.flatMap { cached in
                 NotificationDeliveryMode.current.usesLocalNotificationMock || cached.notificationID > 0
                     ? cached
                     : nil
             }
+            if activeBeGitTime != fallback {
+                activeBeGitTime = fallback
+            }
             if activeBeGitTime?.notificationID != previousNotificationID {
-                notificationMemberStatuses = []
-                notificationMessage = ""
-                gameResult = .pending
+                resetNotificationStatus()
             }
             if activeBeGitTime == nil && endedBeGitTime == nil {
-                notificationMemberStatuses = []
-                notificationMessage = ""
-                gameResult = .pending
+                resetNotificationStatus()
             }
         }
 
@@ -272,9 +276,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             notificationID: serverActive.notificationID,
             accessToken: accessToken
         ) {
-            notificationMemberStatuses = statuses.members
-            gameResult = statuses.gameResult
-            notificationMessage = statuses.message
+            applyNotificationStatus(statuses)
         }
     }
 
@@ -305,7 +307,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
     }
 
     func toggleReaction(
-        activityID: UUID,
+        activityID: RepositoryActivity.ID,
         type: ActivityReactionType,
         accessToken: String?,
         currentUserID: Int64?
@@ -366,7 +368,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
         }
     }
 
-    private func updateReactions(_ reactions: [ActivityReaction], for activityID: UUID) {
+    private func updateReactions(_ reactions: [ActivityReaction], for activityID: RepositoryActivity.ID) {
         if let index = activities.firstIndex(where: { $0.id == activityID }) {
             activities[index].reactions = reactions
         }
@@ -382,9 +384,35 @@ final class RepositoryDashboardViewModel: ObservableObject {
 
         do {
             let synced = try await repositoryAPI.getRepository(id: backendID, accessToken: accessToken)
-            activeChallenge = synced.activeChallenge
+            if activeChallenge != synced.activeChallenge {
+                activeChallenge = synced.activeChallenge
+            }
         } catch {
             //  失敗しても既存表示を維持
+        }
+    }
+
+    private func applyNotificationStatus(_ status: NotificationStatusSummary) {
+        if notificationMemberStatuses != status.members {
+            notificationMemberStatuses = status.members
+        }
+        if gameResult != status.gameResult {
+            gameResult = status.gameResult
+        }
+        if notificationMessage != status.message {
+            notificationMessage = status.message
+        }
+    }
+
+    private func resetNotificationStatus() {
+        if notificationMemberStatuses.isEmpty == false {
+            notificationMemberStatuses = []
+        }
+        if notificationMessage.isEmpty == false {
+            notificationMessage = ""
+        }
+        if gameResult != .pending {
+            gameResult = .pending
         }
     }
 

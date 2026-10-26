@@ -9,7 +9,7 @@ struct RepositoryActivityTimelineView: View {
     let allowsDeletion: Bool
     let allowsReactions: Bool
     let onDeleteRequested: ((RepositoryActivity) -> Void)?
-    let onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)?
+    let onReactionTapped: ((RepositoryActivity.ID, ActivityReactionType) async throws -> [ActivityReaction]?)?
 
     init(
         activities: [RepositoryActivity],
@@ -17,7 +17,7 @@ struct RepositoryActivityTimelineView: View {
         allowsDeletion: Bool = true,
         allowsReactions: Bool = true,
         onDeleteRequested: ((RepositoryActivity) -> Void)? = nil,
-        onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
+        onReactionTapped: ((RepositoryActivity.ID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activities = activities
         self.currentUserLogin = currentUserLogin

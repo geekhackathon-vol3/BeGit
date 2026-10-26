@@ -49,7 +49,7 @@ enum BeGitAPIError: LocalizedError {
     }
 }
 
-struct ActiveBeGitTime: Sendable {
+struct ActiveBeGitTime: Sendable, Equatable {
     let notificationID: Int64
     let sentBy: Int64
     let sentAt: Date
@@ -57,14 +57,14 @@ struct ActiveBeGitTime: Sendable {
     let gameMode: BeGitGameMode
 }
 
-struct NotificationMemberStatus: Sendable, Identifiable {
+struct NotificationMemberStatus: Sendable, Identifiable, Equatable {
     let id: Int64
     let login: String
     let avatarURL: URL?
     let status: String
 }
 
-struct NotificationStatusSummary: Sendable {
+struct NotificationStatusSummary: Sendable, Equatable {
     let gameMode: BeGitGameMode
     let gameResult: BeGitGameResult
     let message: String

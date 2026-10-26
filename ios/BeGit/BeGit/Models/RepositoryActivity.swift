@@ -6,7 +6,12 @@ import Foundation
 //  Repository Timeline activity
 struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
-    let id: UUID                        //  activity識別子
+    enum ID: Hashable, Sendable {
+        case backendPost(Int64)
+        case local(UUID)
+    }
+
+    let id: ID                          //  activity識別子（Backend投稿は再取得しても不変）
     let backendPostID: Int64?           //  Backend上の投稿ID（削除・リアクションに使用）
     let notificationID: Int64?          //  投稿が属するBeGit Time通知
     
@@ -22,7 +27,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     var reactions: [ActivityReaction]   //  リアクション一覧
 
     init(
-        id: UUID = UUID(),
+        id: ID? = nil,
         backendPostID: Int64? = nil,
         notificationID: Int64? = nil,
         type: RepositoryActivityType,
@@ -36,7 +41,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         author: RepositoryMember,
         reactions: [ActivityReaction] = []
     ) {
-        self.id = id
+        self.id = id ?? backendPostID.map(ID.backendPost) ?? .local(UUID())
         self.backendPostID = backendPostID
         self.notificationID = notificationID
         self.type = type
@@ -55,6 +60,53 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     // GitHub活動のみの実投稿に、写真投稿の見た目を誤って付けないために使用する。
     var hasVisualMedia: Bool {
         mainPhotoURL != nil || frontPhotoURL != nil || imageName != nil || frontImageName != nil
+    }
+
+    // 定期取得では同じ投稿のView identity・リアクション・署名付き画像URLを維持する。
+    // R2の署名クエリだけが変わった場合にAsyncImageを再読み込みさせない。
+    func preservingClientState(from current: RepositoryActivity) -> RepositoryActivity {
+        guard backendPostID != nil, backendPostID == current.backendPostID else { return self }
+
+        return RepositoryActivity(
+            id: current.id,
+            backendPostID: backendPostID,
+            notificationID: notificationID,
+            type: type,
+            title: title,
+            comment: comment,
+            date: date,
+            imageName: imageName,
+            frontImageName: frontImageName,
+            mainPhotoURL: Self.preferredPhotoURL(current: current.mainPhotoURL, refreshed: mainPhotoURL),
+            frontPhotoURL: Self.preferredPhotoURL(current: current.frontPhotoURL, refreshed: frontPhotoURL),
+            author: author,
+            reactions: current.reactions
+        )
+    }
+
+    static func mergingRefresh(
+        _ refreshed: [RepositoryActivity],
+        preserving current: [RepositoryActivity]
+    ) -> [RepositoryActivity] {
+        let currentByPostID = current.reduce(into: [Int64: RepositoryActivity]()) { result, activity in
+            guard let postID = activity.backendPostID else { return }
+            result[postID] = activity
+        }
+
+        return refreshed.map { activity in
+            guard let postID = activity.backendPostID,
+                  let existing = currentByPostID[postID] else { return activity }
+            return activity.preservingClientState(from: existing)
+        }
+    }
+
+    private static func preferredPhotoURL(current: URL?, refreshed: URL?) -> URL? {
+        guard let refreshed else { return nil }
+        guard let current else { return refreshed }
+
+        let currentResource = (current.scheme, current.host, current.path)
+        let refreshedResource = (refreshed.scheme, refreshed.host, refreshed.path)
+        return currentResource == refreshedResource ? current : refreshed
     }
 }
 
