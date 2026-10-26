@@ -23,6 +23,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
     let frontImageName: String?         //  左上小窓画像名（Mock/Asset 用）
     let mainPhotoURL: URL?              //  背面写真の presigned URL（背景表示用）
     let frontPhotoURL: URL?             //  前面写真の presigned URL（BeReal 小窓表示用）
+    let mainPhotoID: Int64?             //  署名URLが変わっても同じ画像としてcacheするキー
+    let frontPhotoID: Int64?
     let author: RepositoryMember        //  activity実行ユーザー
     var reactions: [ActivityReaction]   //  リアクション一覧
 
@@ -38,6 +40,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         frontImageName: String? = nil,
         mainPhotoURL: URL? = nil,
         frontPhotoURL: URL? = nil,
+        mainPhotoID: Int64? = nil,
+        frontPhotoID: Int64? = nil,
         author: RepositoryMember,
         reactions: [ActivityReaction] = []
     ) {
@@ -52,6 +56,8 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         self.frontImageName = frontImageName
         self.mainPhotoURL = mainPhotoURL
         self.frontPhotoURL = frontPhotoURL
+        self.mainPhotoID = mainPhotoID
+        self.frontPhotoID = frontPhotoID
         self.author = author
         self.reactions = reactions
     }
@@ -64,7 +70,7 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
 
     // 定期取得では同じ投稿のView identity・リアクション・署名付き画像URLを維持する。
     // R2の署名クエリだけが変わった場合にAsyncImageを再読み込みさせない。
-    func preservingClientState(from current: RepositoryActivity) -> RepositoryActivity {
+    func preservingClientState(from current: RepositoryActivity, preservingReactions: Bool = true) -> RepositoryActivity {
         guard backendPostID != nil, backendPostID == current.backendPostID else { return self }
 
         return RepositoryActivity(
@@ -79,8 +85,10 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
             frontImageName: frontImageName,
             mainPhotoURL: Self.preferredPhotoURL(current: current.mainPhotoURL, refreshed: mainPhotoURL),
             frontPhotoURL: Self.preferredPhotoURL(current: current.frontPhotoURL, refreshed: frontPhotoURL),
+            mainPhotoID: mainPhotoID ?? current.mainPhotoID,
+            frontPhotoID: frontPhotoID ?? current.frontPhotoID,
             author: author,
-            reactions: current.reactions
+            reactions: preservingReactions ? current.reactions : reactions
         )
     }
 

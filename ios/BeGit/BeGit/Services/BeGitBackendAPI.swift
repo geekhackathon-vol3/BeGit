@@ -271,19 +271,35 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
     }
 
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity] {
-        guard let backendID = repository.backendID else { return [] }
-        let output = try await makeClient(accessToken: accessToken).getGroupsIdPosts(
-            .init(path: .init(id: Int(backendID)))
-        )
-        #if DEBUG
-        print("API response")
-        #endif
-        guard case let .ok(ok) = output else { throw BeGitAPIError.invalidResponse }
-        #if DEBUG
-        print(try ok.body.json)
-        #endif
-        return (try ok.body.json.posts ?? []).map { post in
-            let postID = post.id.map(Int64.init)
+        try await listActivityPage(
+            repository: repository,
+            cursor: nil,
+            currentUserID: nil,
+            accessToken: accessToken
+        ).activities
+    }
+
+    func listActivityPage(
+        repository: Repository,
+        cursor: String?,
+        currentUserID: Int64?,
+        accessToken: String
+    ) async throws -> RepositoryActivityPage {
+        guard let backendID = repository.backendID else {
+            return RepositoryActivityPage(activities: [], nextCursor: nil, hasMore: false)
+        }
+        var components = URLComponents(url: baseURL.appending(path: "groups/\(backendID)/posts"), resolvingAgainstBaseURL: false)
+        var query = [URLQueryItem(name: "limit", value: "20")]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        components?.queryItems = query
+        guard let url = components?.url else { throw BeGitAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        let payload = try JSONDecoder().decode(PostFeedPageDTO.self, from: data)
+        let activities = payload.posts.map { post in
+            let postID = post.id
             let savedType = postID.flatMap {
                 PostTypeOverrideStore.type(for: $0, namespace: postTypeOverrideNamespace)
             }
@@ -294,11 +310,36 @@ struct BeGitBackendAPI: AuthAPI, RepositoryAPI, GroupMemberRoleAPI, CurrentUserA
                 PostTypeOverrideStore.remove(for: postID, namespace: postTypeOverrideNamespace)
             }
 
-            return post.toActivity(
-                fallbackRepository: repository,
-                typeOverride: savedType
-            )
+            return post.activity(repository: repository, typeOverride: savedType, currentUserID: currentUserID)
         }
+        return RepositoryActivityPage(activities: activities, nextCursor: payload.nextCursor, hasMore: payload.hasMore)
+    }
+
+    func getActivity(repository: Repository, postID: Int64, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivity? {
+        guard let backendID = repository.backendID else { return nil }
+        let url = baseURL.appending(path: "groups/\(backendID)/posts/\(postID)")
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw BeGitAPIError.invalidResponse }
+        if http.statusCode == 404 { return nil }
+        try validateHTTPResponse(response, data: data)
+        let post = try JSONDecoder().decode(PostFeedDTO.self, from: data)
+        return post.activity(repository: repository, typeOverride: nil, currentUserID: currentUserID)
+    }
+
+    func listRepositoryChanges(repositoryID: Int64, after: Int64, accessToken: String) async throws -> RepositoryChanges {
+        var components = URLComponents(url: baseURL.appending(path: "groups/\(repositoryID)/changes"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "after", value: String(after)),
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        guard let url = components?.url else { throw BeGitAPIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let (data, response) = try await session.data(for: request)
+        try validateHTTPResponse(response, data: data)
+        return try JSONDecoder().decode(RepositoryChanges.self, from: data)
     }
 
     func listReactions(
@@ -1099,6 +1140,113 @@ private nonisolated struct PullRequestDTO: Decodable {
         case authorLogin = "author_login"
         case updatedAt = "updated_at"
     }
+}
+
+private struct PostFeedPageDTO: Decodable {
+    let posts: [PostFeedDTO]
+    let nextCursor: String?
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case posts
+        case nextCursor = "next_cursor"
+        case hasMore = "has_more"
+    }
+}
+
+private struct PostFeedDTO: Decodable {
+    let id: Int64?
+    let notificationID: Int64?
+    let userID: Int64?
+    let postType: String?
+    let body: String?
+    let repoFullName: String?
+    let commitCount: Int?
+    let latestCommitMessage: String?
+    let status: String?
+    let createdAt: String?
+    let login: String?
+    let avatarURL: String?
+    let photos: [PostFeedPhotoDTO]?
+    let reactions: [PostFeedReactionDTO]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, body, status, login, photos, reactions
+        case notificationID = "notification_id"
+        case userID = "user_id"
+        case postType = "post_type"
+        case repoFullName = "repo_full_name"
+        case commitCount = "commit_count"
+        case latestCommitMessage = "latest_commit_message"
+        case createdAt = "created_at"
+        case avatarURL = "avatar_url"
+    }
+
+    func activity(repository: Repository, typeOverride: RepositoryActivityType?, currentUserID: Int64?) -> RepositoryActivity {
+        let groupedReactions = Dictionary(grouping: reactions ?? [], by: \.reactionType)
+        let activityReactions = ActivityReactionType.allCases.compactMap { type -> ActivityReaction? in
+            let matching = groupedReactions[type.rawValue] ?? []
+            guard matching.isEmpty == false else { return nil }
+            return ActivityReaction(
+                type: type,
+                count: matching.count,
+                reactedByMe: currentUserID.map { id in matching.contains { $0.userID == id } } ?? false
+            )
+        }
+        let mainURL = photos?.first { $0.photoType == "main" }.flatMap { URL(string: $0.url) }
+        let frontURL = photos?.first { $0.photoType == "front" }.flatMap { URL(string: $0.url) }
+        let title: String
+        if let latestCommitMessage, latestCommitMessage.isEmpty == false {
+            title = latestCommitMessage
+        } else if let body, body.isEmpty == false {
+            title = body
+        } else if (commitCount ?? 0) > 0 {
+            title = "\(commitCount ?? 0) commits in \(repoFullName ?? repository.name)"
+        } else {
+            title = status ?? "No activity yet"
+        }
+        return RepositoryActivity(
+            backendPostID: id,
+            notificationID: notificationID,
+            type: typeOverride ?? RepositoryActivityType.fromAPIValue(postType),
+            title: title,
+            comment: body?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            date: createdAt.flatMap(Self.parseDate) ?? Date(),
+            mainPhotoURL: mainURL,
+            frontPhotoURL: frontURL,
+            mainPhotoID: photos?.first { $0.photoType == "main" }?.id,
+            frontPhotoID: photos?.first { $0.photoType == "front" }?.id,
+            author: RepositoryMember(
+                backendUserID: userID,
+                login: login ?? "",
+                avatarURL: avatarURL.flatMap(URL.init(string:))
+            ),
+            reactions: activityReactions
+        )
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
+private struct PostFeedPhotoDTO: Decodable {
+    let id: Int64
+    let photoType: String
+    let url: String
+    enum CodingKeys: String, CodingKey { case id, url; case photoType = "photo_type" }
+}
+
+private struct PostFeedReactionDTO: Decodable {
+    let userID: Int64
+    let reactionType: String
+    enum CodingKeys: String, CodingKey { case userID = "user_id"; case reactionType = "reaction_type" }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 // 古いAPIが投稿タイプをcommit固定で返す場合にも、作成時に選んだタイプを維持する。

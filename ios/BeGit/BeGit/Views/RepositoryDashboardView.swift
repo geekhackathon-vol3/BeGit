@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct RepositoryDashboardView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.scenePhase) private var scenePhase
     //  Dashboard画面の状態を管理するViewModel
     @StateObject private var viewModel: RepositoryDashboardViewModel
     @State private var selectedView: RepositoryDashboardDisplayMode = .timeline
@@ -132,28 +133,41 @@ struct RepositoryDashboardView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
-        //  accessToken変更時に前のタスクを自動キャンセルしてリロード
-        .task(id: authState.accessToken) {
-            await viewModel.loadActivities(
-                accessToken: authState.accessToken,
-                currentUserID: authState.githubUser.map { Int64($0.id) }
-            )
-            var activePollCount = 0
+        //  画面表示中かつForegroundのときだけ更新する。
+        //  通知状態は15秒、Timelineは30秒ごとに更新する。
+        .task(id: pollingTaskID) {
+            guard scenePhase == .active, selectedView == .timeline else { return }
+            if viewModel.activities.isEmpty {
+                await viewModel.loadActivities(
+                    accessToken: authState.accessToken,
+                    currentUserID: authState.githubUser.map { Int64($0.id) }
+                )
+            } else {
+                await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
+                await viewModel.refreshRepositoryChanges(accessToken: authState.accessToken)
+            }
+
+            var statusPollCount = 0
             while Task.isCancelled == false {
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(15))
                 if Task.isCancelled { break }
                 await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
-                activePollCount += 1
-                if activePollCount.isMultiple(of: 3) {
-                    await viewModel.refreshActivities(accessToken: authState.accessToken)
+                statusPollCount += 1
+                if statusPollCount.isMultiple(of: 2) {
+                    await viewModel.refreshRepositoryChanges(accessToken: authState.accessToken)
                 }
             }
         }
-        //  投稿一覧は上の .task だけで取得する。ここでも loadActivities を呼ぶと、
-        //  初回表示時に同じ一覧・リアクションAPIが二重実行される。
-        .onAppear {
-            Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDataDidChange)) { notification in
+            guard scenePhase == .active,
+                  let groupID = notification.userInfo?["group_id"] as? Int,
+                  Int64(groupID) == viewModel.repository.backendID else { return }
+            Task { await viewModel.refreshRepositoryChanges(accessToken: authState.accessToken) }
         }
+    }
+
+    private var pollingTaskID: String {
+        "\(authState.accessToken ?? "")|\(selectedView)|\(scenePhase)"
     }
 
     @ViewBuilder
@@ -246,24 +260,35 @@ struct RepositoryDashboardView: View {
     }
 
     private var activityTimeline: some View {
-        RepositoryActivityTimelineView(
-            activities: viewModel.activities,
-            currentUserLogin: authState.githubUser?.login,
-            allowsDeletion: viewModel.repository.canPost,
-            allowsReactions: viewModel.repository.canPost,
-            onDeleteRequested: {
-                activityToDelete = $0
-                isShowingDeleteConfirmation = true
-            },
-            onReactionTapped: { activityID, type in
-                try await viewModel.toggleReaction(
-                    activityID: activityID,
-                    type: type,
-                    accessToken: authState.accessToken,
-                    currentUserID: authState.githubUser.map { Int64($0.id) }
-                )
+        LazyVStack(spacing: 12) {
+            RepositoryActivityTimelineView(
+                activities: viewModel.activities,
+                currentUserLogin: authState.githubUser?.login,
+                allowsDeletion: viewModel.repository.canPost,
+                allowsReactions: viewModel.repository.canPost,
+                onDeleteRequested: {
+                    activityToDelete = $0
+                    isShowingDeleteConfirmation = true
+                },
+                onReactionTapped: { activityID, type in
+                    try await viewModel.toggleReaction(
+                        activityID: activityID,
+                        type: type,
+                        accessToken: authState.accessToken,
+                        currentUserID: authState.githubUser.map { Int64($0.id) }
+                    )
+                }
+            )
+
+            if viewModel.hasMoreActivities {
+                ProgressView()
+                    .tint(AppTheme.accent)
+                    .padding(.vertical, 16)
+                    .onAppear {
+                        Task { await viewModel.loadMoreActivities(accessToken: authState.accessToken) }
+                    }
             }
-        )
+        }
         .padding(.horizontal, -20)
     }
 

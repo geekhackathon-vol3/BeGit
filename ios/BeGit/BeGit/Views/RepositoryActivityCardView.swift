@@ -2,6 +2,7 @@
 //  Repository DashboardとResultで表示するTimeline card
 
 import SwiftUI
+import Combine
 
 struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
@@ -35,7 +36,7 @@ struct RepositoryActivityTimelineView: View {
     }()
 
     var body: some View {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
             ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
                 if shouldShowDateHeader(at: index) {
                     dateHeader(for: activity.date)
@@ -510,21 +511,16 @@ struct RepositoryActivityCardView: View {
 
                 if let mainPhotoURL = displayedMainURL {
                     //  背面写真（実写真）を背景に表示
-                    AsyncImage(url: mainPhotoURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .empty:
+                    TimelineCachedImage(
+                        url: mainPhotoURL,
+                        cacheKey: "photo-\(activity.mainPhotoID.map(String.init) ?? mainPhotoURL.path)",
+                        targetSize: CGSize(width: max(proxy.size.width * 3, 900), height: max(proxy.size.height * 3, 900))
+                    ) { image in
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } placeholder: {
+                        if displayedMainURL != nil {
                             ProgressView()
                                 .tint(.white)
-                        case .failure:
-                            Image(systemName: activity.type.systemImage)
-                                .font(.system(size: 86, weight: .black))
-                                .foregroundStyle(activity.type.tint.opacity(0.30))
-                        @unknown default:
-                            Color.clear
                         }
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -550,20 +546,17 @@ struct RepositoryActivityCardView: View {
         ZStack {
             if let frontPhotoURL = displayedFrontURL {
                 //  前面写真（セルフィー）を小窓に表示
-                AsyncImage(url: frontPhotoURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .empty:
+                TimelineCachedImage(
+                    url: frontPhotoURL,
+                    cacheKey: "photo-\(activity.frontPhotoID.map(String.init) ?? frontPhotoURL.path)",
+                    targetSize: CGSize(width: 216, height: 288)
+                ) { image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                } placeholder: {
+                    ZStack {
                         activity.type.tint.opacity(0.16)
                         ProgressView()
                             .tint(.white)
-                    case .failure:
-                        thumbnailFallback
-                    @unknown default:
-                        Color.clear
                     }
                 }
             } else {
@@ -629,6 +622,64 @@ struct RepositoryActivityCardView: View {
         )
     }
 
+}
+
+@MainActor
+private final class TimelineImageLoader: ObservableObject {
+    private static let cache = NSCache<NSString, UIImage>()
+    @Published var image: UIImage?
+
+    func load(url: URL, cacheKey: String, targetSize: CGSize) async {
+        let key = cacheKey as NSString
+        if let cached = Self.cache.object(forKey: key) {
+            image = cached
+            return
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let source = UIImage(data: data) else { return }
+            let rendered = source.preparingThumbnail(of: targetSize) ?? source
+            Self.cache.setObject(rendered, forKey: key, cost: rendered.jpegData(compressionQuality: 0.7)?.count ?? data.count)
+            image = rendered
+        } catch {
+            // 次の表示または署名URL更新時に再試行する。
+        }
+    }
+}
+
+@MainActor
+private struct TimelineCachedImage<Content: View, Placeholder: View>: View {
+    let url: URL
+    let cacheKey: String
+    let targetSize: CGSize
+    let content: (UIImage) -> Content
+    let placeholder: () -> Placeholder
+    @StateObject private var loader = TimelineImageLoader()
+
+    init(
+        url: URL,
+        cacheKey: String,
+        targetSize: CGSize,
+        @ViewBuilder content: @escaping (UIImage) -> Content,
+        @ViewBuilder placeholder: @escaping () -> Placeholder
+    ) {
+        self.url = url
+        self.cacheKey = cacheKey
+        self.targetSize = targetSize
+        self.content = content
+        self.placeholder = placeholder
+    }
+
+    var body: some View {
+        Group {
+            if let image = loader.image { content(image) } else { placeholder() }
+        }
+        .task(id: "\(cacheKey)|\(url.absoluteString)") {
+            await loader.load(url: url, cacheKey: cacheKey, targetSize: targetSize)
+        }
+    }
 }
 
 // 以降は変更なし（BottomLeadingRoundedRectangle, RepositoryActivityType extension）

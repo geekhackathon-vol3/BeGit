@@ -71,6 +71,41 @@ struct NotificationStatusSummary: Sendable, Equatable {
     let members: [NotificationMemberStatus]
 }
 
+struct RepositoryActivityPage: Sendable, Equatable {
+    let activities: [RepositoryActivity]
+    let nextCursor: String?
+    let hasMore: Bool
+}
+
+struct RepositoryChange: Sendable, Equatable, Decodable {
+    let sequence: Int64
+    let entityType: String
+    let entityID: Int64
+    let postID: Int64?
+    let operation: String
+
+    enum CodingKeys: String, CodingKey {
+        case sequence
+        case entityType = "entity_type"
+        case entityID = "entity_id"
+        case postID = "post_id"
+        case operation
+    }
+}
+
+struct RepositoryChanges: Sendable, Equatable, Decodable {
+    let cursor: Int64
+    let changes: [RepositoryChange]
+    let resetRequired: Bool
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case cursor, changes
+        case resetRequired = "reset_required"
+        case hasMore = "has_more"
+    }
+}
+
 // 新しいactive通知APIが未反映の環境でも、送信直後の表示を維持するための互換キャッシュ。
 enum ActiveBeGitTimeStore {
     private static let keyPrefix = "begit.active-time"
@@ -214,6 +249,9 @@ protocol RepositoryAPI: Sendable {
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
     func deleteRepository(id: Int64, accessToken: String) async throws
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
+    func listActivityPage(repository: Repository, cursor: String?, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivityPage
+    func getActivity(repository: Repository, postID: Int64, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivity?
+    func listRepositoryChanges(repositoryID: Int64, after: Int64, accessToken: String) async throws -> RepositoryChanges
     func listReactions(
         repositoryID: Int64,
         postID: Int64,
@@ -246,6 +284,22 @@ protocol RepositoryAPI: Sendable {
         frontImageData: Data?,
         accessToken: String
     ) async throws
+}
+
+extension RepositoryAPI {
+    func listActivityPage(repository: Repository, cursor: String?, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivityPage {
+        let activities = try await listActivities(repository: repository, accessToken: accessToken)
+        return RepositoryActivityPage(activities: activities, nextCursor: nil, hasMore: false)
+    }
+
+    func getActivity(repository: Repository, postID: Int64, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivity? {
+        try await listActivities(repository: repository, accessToken: accessToken)
+            .first { $0.backendPostID == postID }
+    }
+
+    func listRepositoryChanges(repositoryID: Int64, after: Int64, accessToken: String) async throws -> RepositoryChanges {
+        RepositoryChanges(cursor: after, changes: [], resetRequired: true, hasMore: false)
+    }
 }
 
 protocol GroupMemberRoleAPI: Sendable {
