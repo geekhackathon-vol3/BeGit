@@ -123,7 +123,6 @@ struct ProjectPointsView: View {
                 .foregroundStyle(AppTheme.accent)
         }
         .padding(18)
-        .background(AppTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -172,7 +171,6 @@ struct ProjectPointsView: View {
                 .foregroundStyle(AppTheme.accent)
         }
         .padding(14)
-        .background(AppTheme.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
