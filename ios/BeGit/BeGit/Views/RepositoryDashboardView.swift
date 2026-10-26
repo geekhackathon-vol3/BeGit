@@ -138,11 +138,15 @@ struct RepositoryDashboardView: View {
                 accessToken: authState.accessToken,
                 currentUserID: authState.githubUser.map { Int64($0.id) }
             )
+            var activePollCount = 0
             while Task.isCancelled == false {
                 try? await Task.sleep(for: .seconds(5))
                 if Task.isCancelled { break }
-                await viewModel.refreshActivities(accessToken: authState.accessToken)
                 await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
+                activePollCount += 1
+                if activePollCount.isMultiple(of: 3) {
+                    await viewModel.refreshActivities(accessToken: authState.accessToken)
+                }
             }
         }
         //  投稿一覧は上の .task だけで取得する。ここでも loadActivities を呼ぶと、
@@ -215,37 +219,27 @@ struct RepositoryDashboardView: View {
     @ViewBuilder
     private var challengeStatusView: some View {
         if let challenge = viewModel.activeChallenge {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if context.date < challenge.endsAt {
-                    activeChallengeCard(
-                        activeBeGitTime: ActiveBeGitTime(
-                            notificationID: challenge.notificationID,
-                            sentBy: challenge.issuer.userID,
-                            sentAt: challenge.sentAt,
-                            expiresAt: challenge.endsAt,
-                            gameMode: challenge.gameMode
-                        ),
-                        now: context.date,
-                        canStop: challenge.canEnd,
-                        draftPost: challenge.myPost,
-                        onStop: { isShowingStopConfirmation = true }
-                    )
-                }
-            }
+            activeChallengeCard(
+                activeBeGitTime: ActiveBeGitTime(
+                    notificationID: challenge.notificationID,
+                    sentBy: challenge.issuer.userID,
+                    sentAt: challenge.sentAt,
+                    expiresAt: challenge.endsAt,
+                    gameMode: challenge.gameMode
+                ),
+                canStop: challenge.canEnd,
+                draftPost: challenge.myPost,
+                onStop: { isShowingStopConfirmation = true }
+            )
         } else if let activeBeGitTime = viewModel.activeBeGitTime {
             //  active_challenge APIの反映待ちでも開催中表示は維持する。
             //  active_challenge APIの反映待ちでも写真報告へ進める。
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if context.date < activeBeGitTime.expiresAt {
-                    activeChallengeCard(
-                        activeBeGitTime: activeBeGitTime,
-                        now: context.date,
-                        canStop: isNotificationOwner(activeBeGitTime),
-                        draftPost: nil,
-                        onStop: { isShowingStopConfirmation = true }
-                    )
-                }
-            }
+            activeChallengeCard(
+                activeBeGitTime: activeBeGitTime,
+                canStop: isNotificationOwner(activeBeGitTime),
+                draftPost: nil,
+                onStop: { isShowingStopConfirmation = true }
+            )
         } else if viewModel.endedBeGitTime != nil {
             endedChallengeCard
         }
@@ -352,7 +346,6 @@ struct RepositoryDashboardView: View {
 
     private func activeChallengeCard(
         activeBeGitTime: ActiveBeGitTime,
-        now: Date,
         canStop: Bool,
         draftPost: ActiveChallenge.MyPost?,
         onStop: @escaping () -> Void
@@ -381,10 +374,12 @@ struct RepositoryDashboardView: View {
 
                 Spacer(minLength: 8)
 
-                Text(remainingTimeText(until: activeBeGitTime.expiresAt, now: now))
-                    .font(.system(size: 17, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppTheme.softPink)
-                    .monospacedDigit()
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(remainingTimeText(until: activeBeGitTime.expiresAt, now: context.date))
+                        .font(.system(size: 17, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppTheme.softPink)
+                        .monospacedDigit()
+                }
             }
 
             Label(activeBeGitTime.gameMode.title, systemImage: activeBeGitTime.gameMode.systemImage)
