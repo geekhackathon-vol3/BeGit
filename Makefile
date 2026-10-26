@@ -16,6 +16,8 @@ setup:
 # v2.0.0-rc5: OpenAPI 3.1 生成に対応。ローカルの swag のバージョンには依存しない。
 openapi:
 	cd backend && go run github.com/swaggo/swag/v2/cmd/swag@$(SWAG_VERSION) init -g cmd/server/main.go -o docs --ot json,yaml --parseInternal --v3.1
+	python3 ./scripts/normalize-openapi-generated.py backend/docs/swagger.json
+	python3 ./scripts/normalize-openapi-generated.py backend/docs/swagger.yaml
 	@echo "✅ OpenAPI 3.1 仕様を backend/docs/ に生成しました"
 
 # OpenAPI 仕様を再生成し、iOS (swift-openapi-generator) のターゲットへ配布する。

@@ -2455,16 +2455,7 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "oneOf": [
-                                    {
-                                        "type": "object"
-                                    },
-                                    {
-                                        "$ref": "#/components/schemas/handler.SendNotificationRequestJSON",
-                                        "summary": "request",
-                                        "description": "ゲームモード・通知対象メンバー"
-                                    }
-                                ]
+                                "$ref": "#/components/schemas/handler.SendNotificationRequestJSON"
                             }
                         }
                     },

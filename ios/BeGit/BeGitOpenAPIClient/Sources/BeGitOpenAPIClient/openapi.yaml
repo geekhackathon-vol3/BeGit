@@ -1544,11 +1544,7 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-              - type: object
-              - $ref: '#/components/schemas/handler.SendNotificationRequestJSON'
-                description: ゲームモード・通知対象メンバー
-                summary: request
+              $ref: '#/components/schemas/handler.SendNotificationRequestJSON'
         description: ゲームモード・通知対象メンバー
       responses:
         "201":
