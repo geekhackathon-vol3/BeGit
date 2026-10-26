@@ -75,7 +75,9 @@ type notificationService struct {
 	groupRepo         repository.GroupRepository
 	postRepo          repository.PostRepository
 	externalPublisher ExternalNotificationPublisher
-	pointsRepo        *repository.PointsRepository
+	pointsRepo        interface {
+		FinalizeBonuses(context.Context, int64) error
+	}
 	// allowMultiplePerSprint が true なら「1スプリント1人1回」を適用しない（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT）。
 	// ゼロ値 false = 制限あり。1時間の時間的非共存ルールは常に適用する。
 	allowMultiplePerSprint bool
@@ -339,7 +341,7 @@ func (s *notificationService) StopNotification(ctx context.Context, groupID, not
 	}
 	if s.pointsRepo != nil {
 		if err := s.pointsRepo.FinalizeBonuses(ctx, groupID); err != nil {
-			return fmt.Errorf("notification_service: finalize stopped challenge failed: %w", err)
+			log.Printf("notification_service: finalize stopped challenge failed: %v", err)
 		}
 	}
 	return nil
@@ -486,7 +488,7 @@ func (s *notificationService) EndChallenge(ctx context.Context, groupID, notifID
 	}
 	if s.pointsRepo != nil {
 		if err := s.pointsRepo.FinalizeBonuses(ctx, groupID); err != nil {
-			return nil, fmt.Errorf("notification_service: finalize ended challenge failed: %w", err)
+			log.Printf("notification_service: finalize ended challenge failed: %v", err)
 		}
 	}
 	return updated, nil

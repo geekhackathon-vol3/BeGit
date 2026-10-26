@@ -340,6 +340,12 @@ func (f *failingFCMClient) SendToTokensWithData(ctx context.Context, tokens []st
 	return errors.New("fcm down")
 }
 
+type failingPointsFinalizer struct{}
+
+func (failingPointsFinalizer) FinalizeBonuses(context.Context, int64) error {
+	return errors.New("points unavailable")
+}
+
 // TestNotificationService_SendNotification_Conflict は同一スプリントで2回目の通知発行を試みると ErrConflict が返ることを確認する
 func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	sprintRepo := &mockSprintRepository{}
@@ -400,9 +406,10 @@ func TestNotificationService_StopNotification_AllowsIssuer(t *testing.T) {
 		},
 	}
 	svc := NewNotificationService(sprintRepo, notifRepo, nil, nil)
+	svc.(*notificationService).pointsRepo = failingPointsFinalizer{}
 
 	if err := svc.StopNotification(context.Background(), 12, 8, 23); err != nil {
-		t.Fatalf("StopNotification() failed for issuer: %v", err)
+		t.Fatalf("StopNotification() must keep the successful stop when point finalization fails: %v", err)
 	}
 	if stoppedBy != 23 {
 		t.Fatalf("expected issuer 23 to stop notification, got %d", stoppedBy)
@@ -890,10 +897,11 @@ func TestNotificationService_EndChallenge_OK(t *testing.T) {
 		return true, nil
 	}
 	svc := NewNotificationServiceWithGroupRepo(sprintRepo, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+	svc.(*notificationService).pointsRepo = failingPointsFinalizer{}
 
 	notif, err := svc.EndChallenge(context.Background(), 12, 8, 23)
 	if err != nil {
-		t.Fatalf("EndChallenge() failed: %v", err)
+		t.Fatalf("EndChallenge() must return the updated notification when point finalization fails: %v", err)
 	}
 	if notif.EndedAt == nil || !notif.EndedAt.Equal(endedAt) {
 		t.Errorf("expected EndedAt %v, got %v", endedAt, notif.EndedAt)
