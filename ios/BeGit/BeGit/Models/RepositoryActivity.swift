@@ -50,6 +50,12 @@ struct RepositoryActivity: Identifiable, Equatable, Hashable, Sendable {
         self.author = author
         self.reactions = reactions
     }
+
+    // 実写真またはPreview用画像を持つ投稿だけ、写真カードとして表示する。
+    // GitHub活動のみの実投稿に、写真投稿の見た目を誤って付けないために使用する。
+    var hasVisualMedia: Bool {
+        mainPhotoURL != nil || frontPhotoURL != nil || imageName != nil || frontImageName != nil
+    }
 }
 
 //  Repository activity種別
