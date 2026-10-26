@@ -24,8 +24,8 @@ func (r *repositoryChangeRepository) ListAfter(ctx context.Context, groupID, aft
 	if limit < 1 {
 		limit = 100
 	}
-	if limit > 200 {
-		limit = 200
+	if limit > 201 {
+		limit = 201
 	}
 	bounds, err := r.db.Query(ctx,
 		`SELECT COALESCE(MIN(sequence), 0) AS min_sequence, COALESCE(MAX(sequence), 0) AS max_sequence

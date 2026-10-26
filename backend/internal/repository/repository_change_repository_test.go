@@ -43,3 +43,19 @@ func TestRepositoryChangeRepositoryRequiresResetForExpiredCursor(t *testing.T) {
 		t.Fatalf("expected reset cursor=120, got cursor=%d reset=%v changes=%+v", cursor, reset, changes)
 	}
 }
+
+func TestRepositoryChangeRepositoryAllowsLookaheadAtMaximumPageSize(t *testing.T) {
+	mock := &mockD1Client{queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+		if strings.Contains(sql, "MIN(sequence)") {
+			return []map[string]interface{}{{"min_sequence": float64(1), "max_sequence": float64(201)}}, nil
+		}
+		if got := params[2]; got != 201 {
+			t.Fatalf("expected lookahead limit 201, got %v", got)
+		}
+		return []map[string]interface{}{}, nil
+	}}
+	repo := NewRepositoryChangeRepository(mock)
+	if _, _, _, err := repo.ListAfter(context.Background(), 7, 0, 201); err != nil {
+		t.Fatalf("ListAfter failed: %v", err)
+	}
+}
