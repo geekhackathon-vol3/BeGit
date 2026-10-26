@@ -150,6 +150,10 @@ struct RepositoryActivityCardView: View {
         isSwapped ? activity.imageName : activity.frontImageName
     }
 
+    private var hasDisplayedThumbnail: Bool {
+        displayedFrontURL != nil || displayedFrontImageName != nil
+    }
+
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ja_JP")
@@ -197,19 +201,21 @@ struct RepositoryActivityCardView: View {
 
     private var unlockedCardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
-            ZStack(alignment: .bottomTrailing) {
-                photoArea
+            if activity.hasVisualMedia {
+                //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
+                ZStack(alignment: .bottomTrailing) {
+                    photoArea
 
-                if allowsReactions && showReactionPicker {
-                    reactionPicker
-                        .padding(.trailing, 16)
-                        .padding(.bottom, reactionPickerBottomOffset)
-                        .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
-                        .zIndex(10)
+                    if allowsReactions && showReactionPicker {
+                        reactionPicker
+                            .padding(.trailing, 16)
+                            .padding(.bottom, reactionPickerBottomOffset)
+                            .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+                            .zIndex(10)
+                    }
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
             }
-            .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
 
             postText
                 .padding(.horizontal, 16)
@@ -233,27 +239,28 @@ struct RepositoryActivityCardView: View {
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top) {
-
-                    //  小窓タップで背景と入れ替え（何度でも可）＋ぽよよんアニメ
-                    activityThumbnailFrame
-                        .scaleEffect(thumbnailScale)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard canSwap else { return }
-                            //  背景⇄小窓をバネで入れ替え
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                isSwapped.toggle()
-                            }
-                            //  ぽよよん：素早く拡大しきってから、よく弾むバネで戻す
-                            withAnimation(.easeOut(duration: 0.07)) {
-                                thumbnailScale = 1.25
-                            } completion: {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.3)) {
-                                    thumbnailScale = 1.0
+                    if hasDisplayedThumbnail {
+                        //  小窓タップで背景と入れ替え（何度でも可）＋ぽよよんアニメ
+                        activityThumbnailFrame
+                            .scaleEffect(thumbnailScale)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard canSwap else { return }
+                                //  背景⇄小窓をバネで入れ替え
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    isSwapped.toggle()
+                                }
+                                //  ぽよよん：素早く拡大しきってから、よく弾むバネで戻す
+                                withAnimation(.easeOut(duration: 0.07)) {
+                                    thumbnailScale = 1.25
+                                } completion: {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.3)) {
+                                        thumbnailScale = 1.0
+                                    }
                                 }
                             }
-                        }
-                        .sensoryFeedback(.impact(weight: .light), trigger: isSwapped)
+                            .sensoryFeedback(.impact(weight: .light), trigger: isSwapped)
+                    }
                 }
                 Spacer()
 
@@ -577,10 +584,6 @@ struct RepositoryActivityCardView: View {
         ZStack {
             if let name = displayedFrontImageName, UIImage(named: name) != nil {
                 Image(name)
-                    .resizable()
-                    .scaledToFill()
-            } else if UIImage(named: "begit_github_character") != nil {
-                Image("begit_github_character")
                     .resizable()
                     .scaledToFill()
             } else {
