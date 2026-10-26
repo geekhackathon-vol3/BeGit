@@ -142,6 +142,14 @@ struct RepositoryActivityCardView: View {
         isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
     }
 
+    private var displayedMainPhotoID: Int64? {
+        isSwapped ? activity.frontPhotoID : activity.mainPhotoID
+    }
+
+    private var displayedFrontPhotoID: Int64? {
+        isSwapped ? activity.mainPhotoID : activity.frontPhotoID
+    }
+
     //  モック画像用の表示名も、入れ替え状態に合わせて反転する。
     private var displayedMainImageName: String? {
         isSwapped ? activity.frontImageName : activity.imageName
@@ -513,7 +521,7 @@ struct RepositoryActivityCardView: View {
                     //  背面写真（実写真）を背景に表示
                     TimelineCachedImage(
                         url: mainPhotoURL,
-                        cacheKey: "photo-\(activity.mainPhotoID.map(String.init) ?? mainPhotoURL.path)",
+                        cacheKey: "photo-\(displayedMainPhotoID.map(String.init) ?? mainPhotoURL.path)",
                         targetSize: CGSize(width: max(proxy.size.width * 3, 900), height: max(proxy.size.height * 3, 900))
                     ) { image in
                         Image(uiImage: image).resizable().scaledToFill()
@@ -548,7 +556,7 @@ struct RepositoryActivityCardView: View {
                 //  前面写真（セルフィー）を小窓に表示
                 TimelineCachedImage(
                     url: frontPhotoURL,
-                    cacheKey: "photo-\(activity.frontPhotoID.map(String.init) ?? frontPhotoURL.path)",
+                    cacheKey: "photo-\(displayedFrontPhotoID.map(String.init) ?? frontPhotoURL.path)",
                     targetSize: CGSize(width: 216, height: 288)
                 ) { image in
                     Image(uiImage: image).resizable().scaledToFill()
@@ -640,8 +648,11 @@ private final class TimelineImageLoader: ObservableObject {
             request.cachePolicy = .returnCacheDataElseLoad
             let (data, _) = try await URLSession.shared.data(for: request)
             guard let source = UIImage(data: data) else { return }
-            let rendered = source.preparingThumbnail(of: targetSize) ?? source
-            Self.cache.setObject(rendered, forKey: key, cost: rendered.jpegData(compressionQuality: 0.7)?.count ?? data.count)
+            let rendered = await source.byPreparingThumbnail(ofSize: targetSize) ?? source
+            let pixelWidth = Int(rendered.size.width * rendered.scale)
+            let pixelHeight = Int(rendered.size.height * rendered.scale)
+            let cost = max(pixelWidth * pixelHeight * 4, 1)
+            Self.cache.setObject(rendered, forKey: key, cost: cost)
             image = rendered
         } catch {
             // 次の表示または署名URL更新時に再試行する。

@@ -82,6 +82,13 @@ final class RepositoryDashboardViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
+            if repositoryChangeCursor == 0, let repositoryID = repository.backendID,
+               let watermark = try? await repositoryAPI.listRepositoryChanges(
+                    repositoryID: repositoryID, after: Int64.max, accessToken: accessToken
+               ) {
+                repositoryChangeCursor = watermark.cursor
+                RepositoryChangeCursorStore.save(watermark.cursor, repositoryID: repositoryID)
+            }
             let page = try await repositoryAPI.listActivityPage(
                 repository: repository, cursor: nil, currentUserID: currentUserID, accessToken: accessToken
             )
@@ -91,13 +98,6 @@ final class RepositoryDashboardViewModel: ObservableObject {
             }
             nextActivityCursor = page.nextCursor
             hasMoreActivities = page.hasMore
-            if repositoryChangeCursor == 0, let repositoryID = repository.backendID,
-               let watermark = try? await repositoryAPI.listRepositoryChanges(
-                    repositoryID: repositoryID, after: Int64.max, accessToken: accessToken
-               ) {
-                repositoryChangeCursor = watermark.cursor
-                RepositoryChangeCursorStore.save(watermark.cursor, repositoryID: repositoryID)
-            }
             saveCache()
         } catch {
             errorMessage = "投稿を取得できませんでした"
