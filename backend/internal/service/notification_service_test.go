@@ -991,7 +991,7 @@ func TestNotificationService_SendNotification_CompletedProject(t *testing.T) {
 	}}
 	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, &mockNotificationRepository{}, groupRepo, nil)
 
-	_, err := svc.SendNotification(context.Background(), 1, 2)
+	_, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{})
 	if !errors.Is(err, ErrProjectCompleted) || !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrProjectCompleted wrapping ErrConflict, got %v", err)
 	}
