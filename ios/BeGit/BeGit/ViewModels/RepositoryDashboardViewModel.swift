@@ -127,11 +127,13 @@ final class RepositoryDashboardViewModel: ObservableObject {
     }
 
     func refreshActiveChallenge(accessToken: String?) async {
+        let previousNotificationID = activeBeGitTime?.notificationID
         guard let accessToken, let repositoryID = repository.backendID else {
             activeBeGitTime = nil
             activeChallenge = nil
             notificationMemberStatuses = []
             notificationMessage = ""
+            gameResult = .pending
             return
         }
 
@@ -141,10 +143,14 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 accessToken: accessToken
             )
             if let active {
+                let notificationChanged = previousNotificationID != active.notificationID
                 activeBeGitTime = active
                 endedBeGitTime = nil
-                notificationMemberStatuses = []
-                notificationMessage = ""
+                if notificationChanged {
+                    notificationMemberStatuses = []
+                    notificationMessage = ""
+                    gameResult = .pending
+                }
                 if let statuses = try? await repositoryAPI.getNotificationStatus(
                     repositoryID: repositoryID,
                     notificationID: active.notificationID,
@@ -158,12 +164,18 @@ final class RepositoryDashboardViewModel: ObservableObject {
                       let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
                 // ローカルモック時だけ端末内のBeGit Timeを表示する。
                 activeBeGitTime = cached
+                if previousNotificationID != cached.notificationID {
+                    notificationMemberStatuses = []
+                    notificationMessage = ""
+                    gameResult = .pending
+                }
             } else {
                 activeBeGitTime = nil
                 ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
                 if endedBeGitTime == nil {
                     notificationMemberStatuses = []
                     notificationMessage = ""
+                    gameResult = .pending
                 }
             }
         } catch {
@@ -176,9 +188,15 @@ final class RepositoryDashboardViewModel: ObservableObject {
                     ? cached
                     : nil
             }
+            if activeBeGitTime?.notificationID != previousNotificationID {
+                notificationMemberStatuses = []
+                notificationMessage = ""
+                gameResult = .pending
+            }
             if activeBeGitTime == nil && endedBeGitTime == nil {
                 notificationMemberStatuses = []
                 notificationMessage = ""
+                gameResult = .pending
             }
         }
 

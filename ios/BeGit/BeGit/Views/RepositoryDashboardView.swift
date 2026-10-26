@@ -587,7 +587,12 @@ struct RepositoryDashboardView: View {
             return viewModel.repository.members
         }
         return viewModel.notificationMemberStatuses.map { status in
-            RepositoryMember(
+            if let existing = viewModel.repository.members.first(where: {
+                $0.backendUserID == status.id
+            }) {
+                return existing
+            }
+            return RepositoryMember(
                 backendUserID: status.id,
                 login: status.login,
                 avatarURL: status.avatarURL,
