@@ -66,6 +66,16 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         print("APNs registration failed: \(error.localizedDescription)")
     }
 
+    // data-only FCMも差分同期のヒントとして扱う。実データは必ずAPIから取得する。
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        publishRepositoryChange(from: userInfo)
+        completionHandler(.newData)
+    }
+
     //  userInfo を parse して、遷移先を共有 Router に積む。未知 type は無視。
     private func route(from userInfo: [AnyHashable: Any]) {
         if let notification = localNotification(from: userInfo) {
@@ -80,6 +90,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         Task { @MainActor in
             NotificationRouter.shared.requestRoute(route)
         }
+    }
+
+    private func publishRepositoryChange(from userInfo: [AnyHashable: Any]) {
+        guard let payload = NotificationPayload(userInfo: userInfo) else { return }
+        NotificationCenter.default.post(
+            name: .repositoryDataDidChange,
+            object: nil,
+            userInfo: ["group_id": payload.groupId]
+        )
     }
 
     private func localNotification(from userInfo: [AnyHashable: Any]) -> RepositoryNotification? {
@@ -137,6 +156,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        publishRepositoryChange(from: notification.request.content.userInfo)
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -146,7 +166,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        publishRepositoryChange(from: response.notification.request.content.userInfo)
         route(from: response.notification.request.content.userInfo)
         completionHandler()
     }
+}
+
+extension Notification.Name {
+    static let repositoryDataDidChange = Notification.Name("BeGit.repositoryDataDidChange")
 }

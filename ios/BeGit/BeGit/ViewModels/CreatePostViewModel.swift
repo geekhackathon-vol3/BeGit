@@ -170,10 +170,10 @@ final class CreatePostViewModel: ObservableObject {
         let api = BeGitBackendAPI()
 
         guard let mainImage,
-              let mainData = mainImage.jpegData(compressionQuality: 0.8)
+              let mainData = Self.timelineImageData(mainImage, maxDimension: 1_280)
         else { throw BeGitAPIError.invalidResponse }
 
-        let frontData = frontImage?.jpegData(compressionQuality: 0.8)
+        let frontData = frontImage.flatMap { Self.timelineImageData($0, maxDimension: 640) }
 
         //  既存の報告に写真を添付する。
         if let draftPostID {
@@ -213,6 +213,21 @@ final class CreatePostViewModel: ObservableObject {
         // 次のフィード取得が完了すると、サーバーの正規データへ置き換わる。
         // createPostが返したIDを渡し、即時表示中もリアクションAPIの対象にする。
         postedActivity = makeDemoActivity(backendPostID: postID)
+    }
+
+    // Timeline表示サイズに合わせてアップロード前に縮小する。
+    // 巨大なカメラ原本をR2・通信・画像decodeへ持ち込まない。
+    private static func timelineImageData(_ image: UIImage, maxDimension: CGFloat) -> Data? {
+        let longest = max(image.size.width, image.size.height)
+        let rendered: UIImage
+        if longest > maxDimension {
+            let scale = maxDimension / longest
+            let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            rendered = image.preparingThumbnail(of: target) ?? image
+        } else {
+            rendered = image
+        }
+        return rendered.jpegData(compressionQuality: 0.78)
     }
 
     //  写真アップロードを失敗時に1回だけ再試行する

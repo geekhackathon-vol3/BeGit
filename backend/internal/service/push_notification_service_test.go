@@ -33,7 +33,7 @@ func TestPush_BeGitTime_SameAsSendNotification(t *testing.T) {
 		}},
 		tokens, before,
 	)
-	if _, err := notifSvc.SendNotification(context.Background(), 12, 2); err != nil {
+	if _, err := notifSvc.SendNotification(context.Background(), 12, 2, SendNotificationRequest{}); err != nil {
 		t.Fatalf("SendNotification() failed: %v", err)
 	}
 

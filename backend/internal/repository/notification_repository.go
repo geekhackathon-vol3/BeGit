@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -9,6 +10,13 @@ import (
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/pkg/d1"
 )
+
+// NotificationAudienceRepository is a production-only extension kept separate
+// from NotificationRepository so existing lightweight test doubles remain valid.
+type NotificationAudienceRepository interface {
+	GetNotificationMembers(ctx context.Context, notifID int64) ([]model.GroupMember, error)
+	GetGameResult(ctx context.Context, notifID int64) (*model.NotificationGameResult, error)
+}
 
 // NotificationRepository は notifications テーブルへのアクセスインターフェース
 type NotificationRepository interface {
@@ -85,6 +93,12 @@ func scanNotification(row map[string]interface{}) (*model.Notification, error) {
 	if n.Source == "" {
 		n.Source = "manual"
 	}
+	if v, ok := row["game_mode"].(string); ok {
+		n.GameMode = model.GameMode(v)
+	}
+	if !model.IsValidGameMode(n.GameMode) {
+		n.GameMode = model.GameModeEveryone
+	}
 	if v, ok := row["sent_at"].(string); ok {
 		t, err := parseNotificationTime(v)
 		if err != nil {
@@ -124,9 +138,17 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 	if source == "" {
 		source = "manual"
 	}
-	_, err := r.db.Exec(ctx,
-		`INSERT INTO notifications (sprint_id, sent_by, message, source) VALUES (?, ?, ?, ?)`,
-		[]interface{}{notif.SprintID, notif.SentBy, message, source},
+	mode := notif.GameMode
+	if !model.IsValidGameMode(mode) {
+		mode = model.GameModeEveryone
+	}
+	audience, err := json.Marshal(notif.AudienceUserIDs)
+	if err != nil {
+		return nil, fmt.Errorf("notification_repository: encode audience failed: %w", err)
+	}
+	_, err = r.db.Exec(ctx,
+		`INSERT INTO notifications (sprint_id, sent_by, message, source, game_mode, audience_user_ids) VALUES (?, ?, ?, ?, ?, ?)`,
+		[]interface{}{notif.SprintID, notif.SentBy, message, source, string(mode), string(audience)},
 	)
 	if err != nil {
 		if errors.Is(err, d1.ErrConstraintViolation) {
@@ -137,7 +159,7 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 
 	// 作成されたレコードを取得して返す
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_by = ?
 		 ORDER BY id DESC LIMIT 1`,
@@ -153,7 +175,7 @@ func (r *notificationRepository) Create(ctx context.Context, notif *model.Notifi
 // GetLatestInSprintBefore は同一スプリント内・指定時刻以前で最新の通知を返す
 func (r *notificationRepository) GetLatestInSprintBefore(ctx context.Context, sprintID int64, before time.Time) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_at <= datetime(?)
 		 ORDER BY sent_at DESC, id DESC
@@ -209,8 +231,16 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 	if source == "" {
 		source = "manual"
 	}
-	query := `INSERT INTO notifications (sprint_id, sent_by, message, source)
-		 SELECT ?, ?, ?, ?
+	mode := notif.GameMode
+	if !model.IsValidGameMode(mode) {
+		mode = model.GameModeEveryone
+	}
+	audience, err := json.Marshal(notif.AudienceUserIDs)
+	if err != nil {
+		return nil, fmt.Errorf("notification_repository: encode audience failed: %w", err)
+	}
+	query := `INSERT INTO notifications (sprint_id, sent_by, message, source, game_mode, audience_user_ids)
+			 SELECT ?, ?, ?, ?, ?, ?
 		 WHERE EXISTS (
 		   SELECT 1 FROM sprints s JOIN groups g ON g.id = s.group_id
 		   WHERE s.id = ? AND g.completed_at IS NULL
@@ -220,7 +250,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 		   WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
 		     AND datetime(sent_at, '+1 hour') > datetime('now')
 		 )`
-	params := []interface{}{notif.SprintID, notif.SentBy, message, source, notif.SprintID, notif.SprintID}
+	params := []interface{}{notif.SprintID, notif.SentBy, message, source, string(mode), string(audience), notif.SprintID, notif.SprintID}
 	if !allowMultiplePerSprint {
 		query += `
 		 AND NOT EXISTS (
@@ -247,7 +277,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 
 	// Fetch the created record
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications
 		 WHERE sprint_id = ? AND sent_by = ?
 		 ORDER BY id DESC LIMIT 1`,
@@ -265,7 +295,7 @@ func (r *notificationRepository) CreateIfNoActive(ctx context.Context, notif *mo
 // 既に challenge_end として送信済み（notification_deliveries に記録済み）の通知は除外する。
 func (r *notificationRepository) ListChallengeEndDue(ctx context.Context) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications
 		 WHERE (datetime(sent_at, '+1 hour') <= datetime('now') OR stopped_at IS NOT NULL OR ended_at IS NOT NULL)
 		 AND NOT EXISTS (
@@ -297,7 +327,7 @@ func (r *notificationRepository) ListChallengeReminderDue(ctx context.Context, r
 		return nil, fmt.Errorf("notification_repository: unsupported reminder minutes %d", remainingMinutes)
 	}
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications
 		 WHERE stopped_at IS NULL AND ended_at IS NULL
 		   AND datetime(sent_at, '+' || ? || ' minutes') <= datetime('now')
@@ -320,7 +350,7 @@ func (r *notificationRepository) ListChallengeReminderDue(ctx context.Context, r
 // ListBySprintID は指定スプリントの全通知を返す
 func (r *notificationRepository) ListBySprintID(ctx context.Context, sprintID int64) ([]model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications WHERE sprint_id = ?`,
 		[]interface{}{sprintID},
 	)
@@ -350,7 +380,7 @@ func scanNotifications(rows []map[string]interface{}) ([]model.Notification, err
 // sprints.group_id で引くため現在のスプリントを経由しない（スプリント切替直後の取りこぼし防止）。
 func (r *notificationRepository) GetActiveByGroup(ctx context.Context, groupID int64) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source
+		`SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode
 		 FROM notifications n
 		 INNER JOIN sprints s ON s.id = n.sprint_id
 		 WHERE s.group_id = ? AND n.stopped_at IS NULL AND n.ended_at IS NULL
@@ -390,7 +420,7 @@ func (r *notificationRepository) EndIfActive(ctx context.Context, notifID int64)
 // GetByID は notifID で通知を取得する
 func (r *notificationRepository) GetByID(ctx context.Context, notifID int64) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications WHERE id = ? LIMIT 1`,
 		[]interface{}{notifID},
 	)
@@ -407,7 +437,7 @@ func (r *notificationRepository) GetByID(ctx context.Context, notifID int64) (*m
 // GetActiveInSprint は送信から1時間以内の最新通知を返す。
 func (r *notificationRepository) GetActiveInSprint(ctx context.Context, sprintID int64, now time.Time) (*model.Notification, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source
+		`SELECT id, sprint_id, sent_by, message, sent_at, stopped_at, ended_at, source, game_mode
 		 FROM notifications
 		 WHERE sprint_id = ? AND stopped_at IS NULL AND ended_at IS NULL
 		 AND datetime(sent_at, '+1 hour') > datetime(?)
@@ -421,6 +451,69 @@ func (r *notificationRepository) GetActiveInSprint(ctx context.Context, sprintID
 		return nil, fmt.Errorf("notification_repository: GetActiveInSprint failed: %w", err)
 	}
 	return scanNotification(rows[0])
+}
+
+func (r *notificationRepository) GetNotificationMembers(ctx context.Context, notifID int64) ([]model.GroupMember, error) {
+	rows, err := r.db.Query(ctx, `SELECT s.group_id, nm.user_id, u.github_login AS login,
+ COALESCE(u.avatar_url, '') AS avatar_url
+ FROM notification_members nm
+ JOIN notifications n ON n.id = nm.notification_id
+ JOIN sprints s ON s.id = n.sprint_id
+ JOIN users u ON u.id = nm.user_id
+ WHERE nm.notification_id = ?
+ ORDER BY u.github_login COLLATE NOCASE`, []interface{}{notifID})
+	if errors.Is(err, d1.ErrNotFound) {
+		return []model.GroupMember{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("notification_repository: GetNotificationMembers failed: %w", err)
+	}
+	members := make([]model.GroupMember, 0, len(rows))
+	for _, row := range rows {
+		members = append(members, model.GroupMember{
+			GroupID:   int64(numberValue(row["group_id"])),
+			UserID:    int64(numberValue(row["user_id"])),
+			Login:     textValue(row["login"]),
+			AvatarURL: textValue(row["avatar_url"]),
+			Role:      model.GroupRolePoster,
+		})
+	}
+	return members, nil
+}
+
+func (r *notificationRepository) GetGameResult(ctx context.Context, notifID int64) (*model.NotificationGameResult, error) {
+	rows, err := r.db.Query(ctx, `SELECT notification_id, game_mode, outcome, bonus_user_id,
+ bonus_points, finalized_at FROM notification_game_results WHERE notification_id = ?`, []interface{}{notifID})
+	if errors.Is(err, d1.ErrNotFound) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("notification_repository: GetGameResult failed: %w", err)
+	}
+	row := rows[0]
+	result := &model.NotificationGameResult{
+		NotificationID: int64(numberValue(row["notification_id"])),
+		GameMode:       model.GameMode(textValue(row["game_mode"])),
+		Outcome:        model.GameOutcome(textValue(row["outcome"])),
+		BonusPoints:    int(numberValue(row["bonus_points"])),
+	}
+	if bonusUserID := int64(numberValue(row["bonus_user_id"])); bonusUserID > 0 {
+		result.BonusUserID = &bonusUserID
+	}
+	if finalizedAt := textValue(row["finalized_at"]); finalizedAt != "" {
+		result.FinalizedAt, _ = parseNotificationTime(finalizedAt)
+	}
+	return result, nil
+}
+
+func numberValue(value interface{}) float64 {
+	number, _ := value.(float64)
+	return number
+}
+
+func textValue(value interface{}) string {
+	text, _ := value.(string)
+	return text
 }
 
 // Stop は通知発行者本人の通知を停止する。

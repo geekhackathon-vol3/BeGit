@@ -60,10 +60,10 @@ iOS は受信通知の `data.type` で分岐する（[ios-guide.md §2](ios-guid
 
 | # | `type` | 受信者 | タップ後の遷移先画面 | そこで叩く API |
 |---|---|---|---|---|
-| ① | `begit_time` | グループ全員 | 投稿作成 UI（memo 可） | `POST /groups/:id/posts`（`post_type=memo`） |
+| ① | `begit_time` | 通知対象メンバー | 投稿作成 UI（memo 可） | `POST /groups/:id/posts`（`post_type=memo`） |
 | ①a | `challenge_reminder` | 残り30分/10分時点の未投稿者 | 投稿作成 UI（memo 可） | `POST /groups/:id/posts`（`post_type=memo`） |
 | ② | `nice_work` | 本人だけ | 下書きプレフィル → 撮影 → 確定 | `GET …/posts/:postId/draft` → `POST …/photos` → `POST …/posts/:postId/confirm` |
-| ③ | `challenge_end` | グループ全員 | チャレンジ結果画面 | `GET /groups/:id/notifications/:nid` |
+| ③ | `challenge_end` | 通知対象メンバー | チャレンジ結果画面 | `GET /groups/:id/notifications/:nid` |
 | ④ | `sprint_reminder` | グループ全員 | スプリント概要画面 | `GET /groups/:id`（+ `GET …/posts`） |
 | ⑤ | `sprint_end` | グループ全員 | スプリント結果画面 | `GET /groups/:id`（+ `GET …/posts`） |
 | ⑥ | `sprint_start` | グループ全員 | スプリント概要画面 | `GET /groups/:id` |
@@ -137,7 +137,7 @@ sequenceDiagram
     Note over Sender,FCM: ① BeGit Time! 発行
     Sender->>API: POST /groups/:id/notifications
     API-->>Sender: 201（進行中チャレンジありなら 409）
-    API->>FCM: begit_time を全員へ
+    API->>FCM: begit_time を通知対象へ（game_mode付き）
     FCM-->>Member: Push begit_time
 
     Note over Member,FCM: ① タップ → memo 投稿（コミットできない人）
@@ -158,7 +158,7 @@ sequenceDiagram
     Note over Cron,FCM: ③ 発行+1h で結果サマリ
     Cron->>API: POST /internal/cron kind=minutely
     API->>API: On Time/Late/Missed 集計（送信済みは skip）
-    API->>FCM: challenge_end を全員へ
+    API->>FCM: challenge_end を通知対象へ（game_mode/game_result付き）
     FCM-->>Member: Push challenge_end
     Member->>API: GET /groups/:id/notifications/:nid
 ```

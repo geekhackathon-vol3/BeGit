@@ -19,6 +19,7 @@ final class MakeNotificationViewModel: ObservableObject {
     @Published private(set) var repositoryMemberCandidates: [RepositoryMember] // Repository由来のmember候補一覧
     @Published var selectedMemberIDs: Set<UUID>     //  選択中member ID一覧
     @Published var comment = ""                     //  通知コメント入力値
+    @Published var selectedGameMode: BeGitGameMode = .everyone
     @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var isSending = false   //  通知送信中
     @Published private(set) var isLoadingMembers = false // member同期中
@@ -32,9 +33,10 @@ final class MakeNotificationViewModel: ObservableObject {
 
     init(repository: Repository, repositoryAPI: any RepositoryAPI = BeGitBackendAPI()) {
         self.repository = repository
-        self.members = repository.members                           //  初期member一覧
-        self.repositoryMemberCandidates = repository.members         //  初期Repository member候補一覧
-        self.selectedMemberIDs = Set(repository.members.map(\.id))  //  初期状態では全memberを選択
+        let eligibleMembers = repository.members.filter { $0.role != .viewer }
+        self.members = eligibleMembers
+        self.repositoryMemberCandidates = eligibleMembers
+        self.selectedMemberIDs = Set(eligibleMembers.map(\.id))
         self.activeChallenge = repository.activeChallenge
         self.isCompleted = repository.isCompleted
         self.repositoryAPI = repositoryAPI
@@ -108,8 +110,14 @@ final class MakeNotificationViewModel: ObservableObject {
             return
         }
 
-        members.append(member)
-        selectedMemberIDs.insert(member.id)
+        guard let candidate = repositoryMemberCandidates.first(where: {
+            $0.login.caseInsensitiveCompare(member.login) == .orderedSame && $0.backendUserID != nil
+        }) else {
+            errorMessage = "通知対象にはRepositoryの投稿可能メンバーだけを追加できます。"
+            return
+        }
+        members.append(candidate)
+        selectedMemberIDs.insert(candidate.id)
     }
 
     //  通知モデル生成
@@ -120,7 +128,8 @@ final class MakeNotificationViewModel: ObservableObject {
             //  選択中memberのみ通知対象
             selectedMembers: selectedMembers,
             //  前後空白を除去
-            comment: comment.trimmingCharacters(in: .whitespacesAndNewlines)
+            comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
+            gameMode: selectedGameMode
         )
     }
 
@@ -128,9 +137,10 @@ final class MakeNotificationViewModel: ObservableObject {
         guard isLoadingMembers == false else { return }
         guard let accessToken else { return }
         guard let backendID = repository.backendID else {
-            members = repository.members
-            repositoryMemberCandidates = repository.members
-            selectedMemberIDs = Set(repository.members.map(\.id))
+            let eligibleMembers = repository.members.filter { $0.role != .viewer }
+            members = eligibleMembers
+            repositoryMemberCandidates = eligibleMembers
+            selectedMemberIDs = Set(eligibleMembers.map(\.id))
             return
         }
 
@@ -140,15 +150,17 @@ final class MakeNotificationViewModel: ObservableObject {
 
         do {
             let syncedRepository = try await repositoryAPI.getRepository(id: backendID, accessToken: accessToken)
-            members = syncedRepository.members
-            repositoryMemberCandidates = syncedRepository.members
-            selectedMemberIDs = Set(syncedRepository.members.map(\.id))
+            let eligibleMembers = syncedRepository.members.filter { $0.role != .viewer }
+            members = eligibleMembers
+            repositoryMemberCandidates = eligibleMembers
+            selectedMemberIDs = Set(eligibleMembers.map(\.id))
             activeChallenge = syncedRepository.activeChallenge
             isCompleted = syncedRepository.isCompleted
         } catch {
-            members = repository.members
-            repositoryMemberCandidates = repository.members
-            selectedMemberIDs = Set(repository.members.map(\.id))
+            let eligibleMembers = repository.members.filter { $0.role != .viewer && $0.backendUserID != nil }
+            members = eligibleMembers
+            repositoryMemberCandidates = eligibleMembers
+            selectedMemberIDs = Set(eligibleMembers.map(\.id))
         }
     }
 
@@ -198,12 +210,24 @@ final class MakeNotificationViewModel: ObservableObject {
             }
 
             do {
-                let notificationID = try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
+                let memberIDs = selectedMembers.compactMap(\.backendUserID)
+                guard memberIDs.isEmpty == false else {
+                    errorMessage = "通知対象のメンバーを選択してください。"
+                    return nil
+                }
+                let notificationID = try await repositoryAPI.sendNotification(
+                    repositoryID: backendID,
+                    gameMode: selectedGameMode,
+                    memberIDs: memberIDs,
+                    message: comment.trimmingCharacters(in: .whitespacesAndNewlines),
+                    accessToken: accessToken
+                )
                 ActiveBeGitTimeStore.save(
                     repositoryID: backendID,
                     notificationID: notificationID,
                     sentBy: sentBy ?? 0,
-                    expiresAt: Date().addingTimeInterval(60 * 60)
+                    expiresAt: Date().addingTimeInterval(60 * 60),
+                    gameMode: selectedGameMode
                 )
                 await loadActiveBeGitTime(accessToken: accessToken)
                 return makeNotification(backendID: notificationID)
@@ -229,7 +253,8 @@ final class MakeNotificationViewModel: ObservableObject {
             ActiveBeGitTimeStore.save(
                 repositoryID: repositoryID,
                 sentBy: sentBy ?? 0,
-                expiresAt: notification.createdAt.addingTimeInterval(60 * 60)
+                expiresAt: notification.createdAt.addingTimeInterval(60 * 60),
+                gameMode: selectedGameMode
             )
         }
         LocalNotificationScheduler.shared.scheduleNotification(for: notification)

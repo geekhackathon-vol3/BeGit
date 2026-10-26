@@ -22,6 +22,13 @@ type FCMTokenRepository interface {
 	DeleteByUserID(ctx context.Context, userID int64) error
 }
 
+// NotificationFCMTokenRepository narrows deliveries to the frozen audience.
+// It is separate from FCMTokenRepository to preserve compatibility with test fakes.
+type NotificationFCMTokenRepository interface {
+	GetTokensByNotificationID(ctx context.Context, notificationID int64) ([]string, error)
+	GetTokensByNotificationIDExcludingResponders(ctx context.Context, notificationID int64) ([]string, error)
+}
+
 // fcmTokenRepository は FCMTokenRepository インターフェースの実装
 type fcmTokenRepository struct {
 	db d1.Client
@@ -120,6 +127,40 @@ func (r *fcmTokenRepository) GetTokensByGroupIDExcludingResponders(ctx context.C
 	}
 	if err != nil {
 		return nil, fmt.Errorf("fcm_token_repository: GetTokensByGroupIDExcludingResponders failed: %w", err)
+	}
+	tokens := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if token, ok := row["token"].(string); ok {
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens, nil
+}
+
+func (r *fcmTokenRepository) GetTokensByNotificationID(ctx context.Context, notificationID int64) ([]string, error) {
+	return r.notificationTokens(ctx, notificationID, false)
+}
+
+func (r *fcmTokenRepository) GetTokensByNotificationIDExcludingResponders(ctx context.Context, notificationID int64) ([]string, error) {
+	return r.notificationTokens(ctx, notificationID, true)
+}
+
+func (r *fcmTokenRepository) notificationTokens(ctx context.Context, notificationID int64, excludeResponders bool) ([]string, error) {
+	query := `SELECT ft.token FROM fcm_tokens ft
+ INNER JOIN notification_members nm ON nm.user_id = ft.user_id
+ WHERE nm.notification_id = ?`
+	if excludeResponders {
+		query += ` AND NOT EXISTS (
+ SELECT 1 FROM posts p WHERE p.notification_id = nm.notification_id AND p.user_id = nm.user_id
+   AND p.is_draft = 0 AND (p.status IS NULL OR p.status != 'missed')
+)`
+	}
+	rows, err := r.db.Query(ctx, query, []interface{}{notificationID})
+	if errors.Is(err, d1.ErrNotFound) {
+		return []string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fcm_token_repository: notificationTokens failed: %w", err)
 	}
 	tokens := make([]string, 0, len(rows))
 	for _, row := range rows {

@@ -49,17 +49,61 @@ enum BeGitAPIError: LocalizedError {
     }
 }
 
-struct ActiveBeGitTime: Sendable {
+struct ActiveBeGitTime: Sendable, Equatable {
     let notificationID: Int64
     let sentBy: Int64
     let sentAt: Date
     let expiresAt: Date
+    let gameMode: BeGitGameMode
 }
 
-struct NotificationMemberStatus: Sendable, Identifiable {
+struct NotificationMemberStatus: Sendable, Identifiable, Equatable {
     let id: Int64
     let login: String
+    let avatarURL: URL?
     let status: String
+}
+
+struct NotificationStatusSummary: Sendable, Equatable {
+    let gameMode: BeGitGameMode
+    let gameResult: BeGitGameResult
+    let message: String
+    let members: [NotificationMemberStatus]
+}
+
+struct RepositoryActivityPage: Sendable, Equatable {
+    let activities: [RepositoryActivity]
+    let nextCursor: String?
+    let hasMore: Bool
+}
+
+struct RepositoryChange: Sendable, Equatable, Decodable {
+    let sequence: Int64
+    let entityType: String
+    let entityID: Int64
+    let postID: Int64?
+    let operation: String
+
+    enum CodingKeys: String, CodingKey {
+        case sequence
+        case entityType = "entity_type"
+        case entityID = "entity_id"
+        case postID = "post_id"
+        case operation
+    }
+}
+
+struct RepositoryChanges: Sendable, Equatable, Decodable {
+    let cursor: Int64
+    let changes: [RepositoryChange]
+    let resetRequired: Bool
+    let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case cursor, changes
+        case resetRequired = "reset_required"
+        case hasMore = "has_more"
+    }
 }
 
 // 新しいactive通知APIが未反映の環境でも、送信直後の表示を維持するための互換キャッシュ。
@@ -71,7 +115,8 @@ enum ActiveBeGitTimeStore {
         notificationID: Int64 = 0,
         sentBy: Int64 = 0,
         sentAt: Date = Date(),
-        expiresAt: Date
+        expiresAt: Date,
+        gameMode: BeGitGameMode = .everyone
     ) {
         UserDefaults.standard.set(
             [
@@ -82,6 +127,7 @@ enum ActiveBeGitTimeStore {
             ],
             forKey: key(for: repositoryID)
         )
+        UserDefaults.standard.set(gameMode.rawValue, forKey: modeKey(for: repositoryID))
     }
 
     static func load(repositoryID: Int64, now: Date = Date()) -> ActiveBeGitTime? {
@@ -119,17 +165,21 @@ enum ActiveBeGitTimeStore {
             notificationID: notificationID,
             sentBy: sentBy,
             sentAt: sentAt,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            gameMode: BeGitGameMode(rawValue: UserDefaults.standard.string(forKey: modeKey(for: repositoryID)) ?? "") ?? .everyone
         )
     }
 
     static func remove(repositoryID: Int64) {
         UserDefaults.standard.removeObject(forKey: key(for: repositoryID))
+        UserDefaults.standard.removeObject(forKey: modeKey(for: repositoryID))
     }
 
     private static func key(for repositoryID: Int64) -> String {
         "\(keyPrefix).\(repositoryID)"
     }
+
+    private static func modeKey(for repositoryID: Int64) -> String { "\(keyPrefix).mode.\(repositoryID)" }
 }
 
 // OpenAPI Runtime は Middleware から投げられたエラーを ClientError などで
@@ -199,6 +249,9 @@ protocol RepositoryAPI: Sendable {
     func getRepository(id: Int64, accessToken: String) async throws -> Repository
     func deleteRepository(id: Int64, accessToken: String) async throws
     func listActivities(repository: Repository, accessToken: String) async throws -> [RepositoryActivity]
+    func listActivityPage(repository: Repository, cursor: String?, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivityPage
+    func getActivity(repository: Repository, postID: Int64, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivity?
+    func listRepositoryChanges(repositoryID: Int64, after: Int64, accessToken: String) async throws -> RepositoryChanges
     func listReactions(
         repositoryID: Int64,
         postID: Int64,
@@ -219,10 +272,10 @@ protocol RepositoryAPI: Sendable {
         currentUserID: Int64?,
         accessToken: String
     ) async throws -> [ActivityReaction]
-    func sendNotification(repositoryID: Int64, accessToken: String) async throws -> Int64
+    func sendNotification(repositoryID: Int64, gameMode: BeGitGameMode, memberIDs: [Int64], message: String, accessToken: String) async throws -> Int64
     func stopNotification(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws
     func getActiveBeGitTime(repositoryID: Int64, accessToken: String) async throws -> ActiveBeGitTime?
-    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> [NotificationMemberStatus]
+    func getNotificationStatus(repositoryID: Int64, notificationID: Int64, accessToken: String) async throws -> NotificationStatusSummary
     func deletePost(repositoryID: Int64, postID: Int64, accessToken: String) async throws
     func uploadPhotos(
         repositoryID: Int64,
@@ -233,6 +286,22 @@ protocol RepositoryAPI: Sendable {
     ) async throws
 }
 
+extension RepositoryAPI {
+    func listActivityPage(repository: Repository, cursor: String?, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivityPage {
+        let activities = try await listActivities(repository: repository, accessToken: accessToken)
+        return RepositoryActivityPage(activities: activities, nextCursor: nil, hasMore: false)
+    }
+
+    func getActivity(repository: Repository, postID: Int64, currentUserID: Int64?, accessToken: String) async throws -> RepositoryActivity? {
+        try await listActivities(repository: repository, accessToken: accessToken)
+            .first { $0.backendPostID == postID }
+    }
+
+    func listRepositoryChanges(repositoryID: Int64, after: Int64, accessToken: String) async throws -> RepositoryChanges {
+        RepositoryChanges(cursor: after, changes: [], resetRequired: true, hasMore: false)
+    }
+}
+
 protocol GroupMemberRoleAPI: Sendable {
     func updateMemberRole(
         repositoryID: Int64,
@@ -240,6 +309,12 @@ protocol GroupMemberRoleAPI: Sendable {
         role: RepositoryRole,
         accessToken: String
     ) async throws
+}
+
+protocol ProjectPointsAPI: Sendable {
+    func getPointsSummary(repositoryID: Int64, accessToken: String) async throws -> ProjectPointsSummary
+    func getFinalResult(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult?
+    func completeRepository(repositoryID: Int64, accessToken: String) async throws -> ProjectFinalResult
 }
 
 //  開発・テスト用。ネットワークを使わず固定値を返す。

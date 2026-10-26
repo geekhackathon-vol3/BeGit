@@ -2,6 +2,7 @@
 //  Repository DashboardとResultで表示するTimeline card
 
 import SwiftUI
+import Combine
 
 struct RepositoryActivityTimelineView: View {
     let activities: [RepositoryActivity]
@@ -9,7 +10,7 @@ struct RepositoryActivityTimelineView: View {
     let allowsDeletion: Bool
     let allowsReactions: Bool
     let onDeleteRequested: ((RepositoryActivity) -> Void)?
-    let onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)?
+    let onReactionTapped: ((RepositoryActivity.ID, ActivityReactionType) async throws -> [ActivityReaction]?)?
 
     init(
         activities: [RepositoryActivity],
@@ -17,7 +18,7 @@ struct RepositoryActivityTimelineView: View {
         allowsDeletion: Bool = true,
         allowsReactions: Bool = true,
         onDeleteRequested: ((RepositoryActivity) -> Void)? = nil,
-        onReactionTapped: ((UUID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
+        onReactionTapped: ((RepositoryActivity.ID, ActivityReactionType) async throws -> [ActivityReaction]?)? = nil
     ) {
         self.activities = activities
         self.currentUserLogin = currentUserLogin
@@ -35,7 +36,7 @@ struct RepositoryActivityTimelineView: View {
     }()
 
     var body: some View {
-        VStack(spacing: 0) {
+        LazyVStack(spacing: 0) {
             ForEach(Array(activities.enumerated()), id: \.element.id) { index, activity in
                 if shouldShowDateHeader(at: index) {
                     dateHeader(for: activity.date)
@@ -141,6 +142,14 @@ struct RepositoryActivityCardView: View {
         isSwapped ? activity.mainPhotoURL : activity.frontPhotoURL
     }
 
+    private var displayedMainPhotoID: Int64? {
+        isSwapped ? activity.frontPhotoID : activity.mainPhotoID
+    }
+
+    private var displayedFrontPhotoID: Int64? {
+        isSwapped ? activity.mainPhotoID : activity.frontPhotoID
+    }
+
     //  モック画像用の表示名も、入れ替え状態に合わせて反転する。
     private var displayedMainImageName: String? {
         isSwapped ? activity.frontImageName : activity.imageName
@@ -148,6 +157,10 @@ struct RepositoryActivityCardView: View {
 
     private var displayedFrontImageName: String? {
         isSwapped ? activity.imageName : activity.frontImageName
+    }
+
+    private var hasDisplayedThumbnail: Bool {
+        displayedFrontURL != nil || displayedFrontImageName != nil
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -197,19 +210,21 @@ struct RepositoryActivityCardView: View {
 
     private var unlockedCardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
-            //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
-            ZStack(alignment: .bottomTrailing) {
-                photoArea
+            if activity.hasVisualMedia {
+                //  写真 + リアクションピッカー（ピッカーは写真の右下基準で出す）
+                ZStack(alignment: .bottomTrailing) {
+                    photoArea
 
-                if allowsReactions && showReactionPicker {
-                    reactionPicker
-                        .padding(.trailing, 16)
-                        .padding(.bottom, reactionPickerBottomOffset)
-                        .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
-                        .zIndex(10)
+                    if allowsReactions && showReactionPicker {
+                        reactionPicker
+                            .padding(.trailing, 16)
+                            .padding(.bottom, reactionPickerBottomOffset)
+                            .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+                            .zIndex(10)
+                    }
                 }
+                .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
             }
-            .animation(.spring(response: 0.28, dampingFraction: 0.68), value: showReactionPicker)
 
             postText
                 .padding(.horizontal, 16)
@@ -233,27 +248,28 @@ struct RepositoryActivityCardView: View {
             //  サムネ（左上）・リアクション（右下）
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top) {
-
-                    //  小窓タップで背景と入れ替え（何度でも可）＋ぽよよんアニメ
-                    activityThumbnailFrame
-                        .scaleEffect(thumbnailScale)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard canSwap else { return }
-                            //  背景⇄小窓をバネで入れ替え
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                                isSwapped.toggle()
-                            }
-                            //  ぽよよん：素早く拡大しきってから、よく弾むバネで戻す
-                            withAnimation(.easeOut(duration: 0.07)) {
-                                thumbnailScale = 1.25
-                            } completion: {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.3)) {
-                                    thumbnailScale = 1.0
+                    if hasDisplayedThumbnail {
+                        //  小窓タップで背景と入れ替え（何度でも可）＋ぽよよんアニメ
+                        activityThumbnailFrame
+                            .scaleEffect(thumbnailScale)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard canSwap else { return }
+                                //  背景⇄小窓をバネで入れ替え
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                                    isSwapped.toggle()
+                                }
+                                //  ぽよよん：素早く拡大しきってから、よく弾むバネで戻す
+                                withAnimation(.easeOut(duration: 0.07)) {
+                                    thumbnailScale = 1.25
+                                } completion: {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.3)) {
+                                        thumbnailScale = 1.0
+                                    }
                                 }
                             }
-                        }
-                        .sensoryFeedback(.impact(weight: .light), trigger: isSwapped)
+                            .sensoryFeedback(.impact(weight: .light), trigger: isSwapped)
+                    }
                 }
                 Spacer()
 
@@ -503,21 +519,16 @@ struct RepositoryActivityCardView: View {
 
                 if let mainPhotoURL = displayedMainURL {
                     //  背面写真（実写真）を背景に表示
-                    AsyncImage(url: mainPhotoURL) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .empty:
+                    TimelineCachedImage(
+                        url: mainPhotoURL,
+                        cacheKey: "photo-\(displayedMainPhotoID.map(String.init) ?? mainPhotoURL.path)",
+                        targetSize: CGSize(width: max(proxy.size.width * 3, 900), height: max(proxy.size.height * 3, 900))
+                    ) { image in
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } placeholder: {
+                        if displayedMainURL != nil {
                             ProgressView()
                                 .tint(.white)
-                        case .failure:
-                            Image(systemName: activity.type.systemImage)
-                                .font(.system(size: 86, weight: .black))
-                                .foregroundStyle(activity.type.tint.opacity(0.30))
-                        @unknown default:
-                            Color.clear
                         }
                     }
                     .frame(width: proxy.size.width, height: proxy.size.height)
@@ -543,20 +554,17 @@ struct RepositoryActivityCardView: View {
         ZStack {
             if let frontPhotoURL = displayedFrontURL {
                 //  前面写真（セルフィー）を小窓に表示
-                AsyncImage(url: frontPhotoURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .empty:
+                TimelineCachedImage(
+                    url: frontPhotoURL,
+                    cacheKey: "photo-\(displayedFrontPhotoID.map(String.init) ?? frontPhotoURL.path)",
+                    targetSize: CGSize(width: 216, height: 288)
+                ) { image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                } placeholder: {
+                    ZStack {
                         activity.type.tint.opacity(0.16)
                         ProgressView()
                             .tint(.white)
-                    case .failure:
-                        thumbnailFallback
-                    @unknown default:
-                        Color.clear
                     }
                 }
             } else {
@@ -577,10 +585,6 @@ struct RepositoryActivityCardView: View {
         ZStack {
             if let name = displayedFrontImageName, UIImage(named: name) != nil {
                 Image(name)
-                    .resizable()
-                    .scaledToFill()
-            } else if UIImage(named: "begit_github_character") != nil {
-                Image("begit_github_character")
                     .resizable()
                     .scaledToFill()
             } else {
@@ -626,6 +630,67 @@ struct RepositoryActivityCardView: View {
         )
     }
 
+}
+
+@MainActor
+private final class TimelineImageLoader: ObservableObject {
+    private static let cache = NSCache<NSString, UIImage>()
+    @Published var image: UIImage?
+
+    func load(url: URL, cacheKey: String, targetSize: CGSize) async {
+        let key = cacheKey as NSString
+        if let cached = Self.cache.object(forKey: key) {
+            image = cached
+            return
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let source = UIImage(data: data) else { return }
+            let rendered = await source.byPreparingThumbnail(ofSize: targetSize) ?? source
+            let pixelWidth = Int(rendered.size.width * rendered.scale)
+            let pixelHeight = Int(rendered.size.height * rendered.scale)
+            let cost = max(pixelWidth * pixelHeight * 4, 1)
+            Self.cache.setObject(rendered, forKey: key, cost: cost)
+            image = rendered
+        } catch {
+            // 次の表示または署名URL更新時に再試行する。
+        }
+    }
+}
+
+@MainActor
+private struct TimelineCachedImage<Content: View, Placeholder: View>: View {
+    let url: URL
+    let cacheKey: String
+    let targetSize: CGSize
+    let content: (UIImage) -> Content
+    let placeholder: () -> Placeholder
+    @StateObject private var loader = TimelineImageLoader()
+
+    init(
+        url: URL,
+        cacheKey: String,
+        targetSize: CGSize,
+        @ViewBuilder content: @escaping (UIImage) -> Content,
+        @ViewBuilder placeholder: @escaping () -> Placeholder
+    ) {
+        self.url = url
+        self.cacheKey = cacheKey
+        self.targetSize = targetSize
+        self.content = content
+        self.placeholder = placeholder
+    }
+
+    var body: some View {
+        Group {
+            if let image = loader.image { content(image) } else { placeholder() }
+        }
+        .task(id: "\(cacheKey)|\(url.absoluteString)") {
+            await loader.load(url: url, cacheKey: cacheKey, targetSize: targetSize)
+        }
+    }
 }
 
 // 以降は変更なし（BottomLeadingRoundedRectangle, RepositoryActivityType extension）

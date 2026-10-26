@@ -17,16 +17,17 @@ import (
 
 // mockNotificationService はテスト用の NotificationService モック
 type mockNotificationService struct {
-	sendFunc              func(ctx context.Context, groupID, userID int64) (*model.Notification, error)
+	sendFunc              func(ctx context.Context, groupID, userID int64, request service.SendNotificationRequest) (*model.Notification, error)
 	getActiveNotification func(ctx context.Context, groupID int64) (*service.ActiveNotification, error)
 	getStatusFunc         func(ctx context.Context, notifID, groupID int64) (*service.NotificationStatus, error)
 	getActiveFunc         func(ctx context.Context, groupID, userID int64) (*service.ActiveChallenge, error)
+	stopFunc              func(ctx context.Context, groupID, notifID, userID int64) error
 	endFunc               func(ctx context.Context, groupID, notifID, userID int64) (*model.Notification, error)
 }
 
-func (m *mockNotificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
+func (m *mockNotificationService) SendNotification(ctx context.Context, groupID, userID int64, request service.SendNotificationRequest) (*model.Notification, error) {
 	if m.sendFunc != nil {
-		return m.sendFunc(ctx, groupID, userID)
+		return m.sendFunc(ctx, groupID, userID, request)
 	}
 	return &model.Notification{ID: 1, SprintID: 1, SentBy: userID, SentAt: time.Now()}, nil
 }
@@ -60,6 +61,9 @@ func (m *mockNotificationService) EndChallenge(ctx context.Context, groupID, not
 }
 
 func (m *mockNotificationService) StopNotification(ctx context.Context, groupID, notifID, userID int64) error {
+	if m.stopFunc != nil {
+		return m.stopFunc(ctx, groupID, notifID, userID)
+	}
 	return nil
 }
 
@@ -74,8 +78,53 @@ func newNotificationRouter(svc service.NotificationService, userID int64) *gin.E
 	}
 	h := NewNotificationHandler(svc)
 	r.POST("/groups/:id/notifications", inject, h.Send)
+	r.POST("/groups/:id/notifications/:nid/stop", inject, h.Stop)
 	r.POST("/groups/:id/notifications/:nid/end", inject, h.End)
 	return r
+}
+
+func TestNotificationHandler_Stop_ForwardsAuthenticatedUser(t *testing.T) {
+	svc := &mockNotificationService{
+		stopFunc: func(_ context.Context, groupID, notifID, userID int64) error {
+			if groupID != 12 || notifID != 8 || userID != 23 {
+				t.Fatalf("unexpected args: group=%d notif=%d user=%d", groupID, notifID, userID)
+			}
+			return nil
+		},
+	}
+	r := newNotificationRouter(svc, 23)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/notifications/8/stop", nil))
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestNotificationHandler_Stop_ErrorMapping(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err  error
+		want int
+	}{
+		"not issuer":  {service.ErrForbidden, http.StatusForbidden},
+		"wrong group": {service.ErrNotFound, http.StatusNotFound},
+		"not active":  {service.ErrConflict, http.StatusConflict},
+		"internal":    {context.DeadlineExceeded, http.StatusInternalServerError},
+	} {
+		t.Run(name, func(t *testing.T) {
+			svc := &mockNotificationService{
+				stopFunc: func(context.Context, int64, int64, int64) error {
+					return tc.err
+				},
+			}
+			r := newNotificationRouter(svc, 24)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/notifications/8/stop", nil))
+			if w.Code != tc.want {
+				t.Fatalf("expected %d, got %d: %s", tc.want, w.Code, w.Body.String())
+			}
+		})
+	}
 }
 
 // TestNotificationHandler_End_OK は発行者の中断で 200 と ended_at を返すことを確認する
@@ -162,15 +211,46 @@ func TestNotificationHandler_Send_NoEndedAt(t *testing.T) {
 	}
 }
 
-// TestNotificationHandler_Send_CompletedProject は完成済みの 409 が進行中の 409 と別のメッセージになることを確認する
-func TestNotificationHandler_Send_CompletedProject(t *testing.T) {
-	svc := &mockNotificationService{sendFunc: func(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
-		return nil, service.ErrProjectCompleted
-	}}
+func TestNotificationHandler_Send_ForwardsModeMembersAndMessage(t *testing.T) {
+	var captured service.SendNotificationRequest
+	svc := &mockNotificationService{
+		sendFunc: func(_ context.Context, groupID, userID int64, request service.SendNotificationRequest) (*model.Notification, error) {
+			if groupID != 12 || userID != 23 {
+				t.Fatalf("unexpected ids: group=%d user=%d", groupID, userID)
+			}
+			captured = request
+			return &model.Notification{ID: 9, SprintID: 4, SentBy: userID, SentAt: time.Now(), GameMode: request.GameMode}, nil
+		},
+	}
 	r := newNotificationRouter(svc, 23)
 	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/notifications", nil))
-	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "project is completed") {
-		t.Errorf("expected 409 with project is completed, got %d %s", w.Code, w.Body.String())
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/groups/12/notifications",
+		strings.NewReader(`{"game_mode":"spotlight","member_ids":[23,45],"message":"ship it"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
 	}
+	if captured.GameMode != model.GameModeSpotlight || captured.Message != "ship it" || len(captured.MemberIDs) != 2 || captured.MemberIDs[1] != 45 {
+		t.Fatalf("unexpected request: %+v", captured)
+}
+}
+
+// TestNotificationHandler_Send_CompletedProject は完成済みの 409 が進行中の 409 と別のメッセージになることを確認する
+func TestNotificationHandler_Send_CompletedProject(t *testing.T) {
+svc := &mockNotificationService{
+	sendFunc: func(_ context.Context, _, _ int64, _ service.SendNotificationRequest) (*model.Notification, error) {
+		return nil, service.ErrProjectCompleted
+	},
+}
+r := newNotificationRouter(svc, 23)
+w := httptest.NewRecorder()
+r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/groups/12/notifications", nil))
+if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "project is completed") {
+	t.Errorf("expected 409 with project is completed, got %d %s", w.Code, w.Body.String())
+}
 }

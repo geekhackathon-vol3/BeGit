@@ -65,7 +65,10 @@ struct RepoSettingView: View {
             }
             .sheet(isPresented: $showingFinalResult) {
                 if let finalResult {
-                    ProjectFinalResultView(repositoryName: repository.name, result: finalResult)
+                    NavigationStack {
+                        ProjectPointsView(repository: repository, initialFinalResult: finalResult)
+                    }
+                    .environmentObject(authState)
                 }
             }
             .confirmationDialog("この作品を完成しますか？集計が確定し、新しいBeGit Timeは発行できなくなります。", isPresented: $showingCompletionConfirmation) {

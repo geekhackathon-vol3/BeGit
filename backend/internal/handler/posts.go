@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -43,14 +45,46 @@ type PostJSON struct {
 // PostFeedJSON はフィードレスポンス型
 type PostFeedJSON struct {
 	PostJSON
-	Login     string      `json:"login"`
-	AvatarURL string      `json:"avatar_url"`
-	Photos    []PhotoJSON `json:"photos"`
+	Login     string         `json:"login"`
+	AvatarURL string         `json:"avatar_url"`
+	Photos    []PhotoJSON    `json:"photos"`
+	Reactions []ReactionJSON `json:"reactions"`
 }
 
 // PostListResponse は GET /groups/:id/posts のレスポンス
 type PostListResponse struct {
-	Posts []PostFeedJSON `json:"posts"`
+	Posts      []PostFeedJSON `json:"posts"`
+	NextCursor *string        `json:"next_cursor,omitempty"`
+	HasMore    bool           `json:"has_more"`
+}
+
+type postCursor struct {
+	CreatedAt string `json:"created_at"`
+	ID        int64  `json:"id"`
+}
+
+func postFeedJSON(feed model.PostFeed) PostFeedJSON {
+	photos := make([]PhotoJSON, 0, len(feed.Photos))
+	for _, photo := range feed.Photos {
+		photos = append(photos, PhotoJSON{ID: photo.ID, PhotoType: photo.PhotoType, URL: photo.URL})
+	}
+	reactions := make([]ReactionJSON, 0, len(feed.Reactions))
+	for _, reaction := range feed.Reactions {
+		reactions = append(reactions, ReactionJSON{
+			ID: reaction.ID, PostID: reaction.PostID, UserID: reaction.UserID,
+			ReactionType: reaction.ReactionType, Login: reaction.Login, AvatarURL: reaction.AvatarURL,
+		})
+	}
+	return PostFeedJSON{
+		PostJSON: PostJSON{
+			ID: feed.ID, NotificationID: feed.NotificationID, UserID: feed.UserID,
+			PostType: feed.PostType, Body: feed.Body, RepoFullName: feed.RepoFullName,
+			CommitCount: feed.CommitCount, Additions: feed.Additions, Deletions: feed.Deletions,
+			LatestCommitMessage: feed.LatestCommitMessage, Status: feed.Status,
+			CreatedAt: feed.CreatedAt.UTC().Format(time.RFC3339),
+		},
+		Login: feed.Login, AvatarURL: feed.AvatarURL, Photos: photos, Reactions: reactions,
+	}
 }
 
 // PostHandler は投稿エンドポイントのハンドラ
@@ -269,6 +303,8 @@ func respondPostDraftError(c *gin.Context, err error) {
 //	@Produce		json
 //	@Security		BearerAuth
 //	@Param			id	path		int	true	"グループ ID"
+//	@Param			limit	query	int	false	"取得件数（最大50）" default(20)
+//	@Param			cursor	query	string	false	"次ページカーソル"
 //	@Success		200	{object}	PostListResponse
 //	@Failure		401	{object}	ErrorResponse
 //	@Failure		500	{object}	ErrorResponse
@@ -286,7 +322,45 @@ func (h *PostHandler) List(c *gin.Context) {
 		return
 	}
 
-	feeds, err := h.postService.ListPosts(c.Request.Context(), groupID, userID)
+	limit := 20
+	if raw := c.Query("limit"); raw != "" {
+		parsed, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || parsed < 1 {
+			respondError(c, http.StatusBadRequest, "invalid limit")
+			return
+		}
+		if parsed > 50 {
+			parsed = 50
+		}
+		limit = parsed
+	}
+	var before time.Time
+	var beforeID int64
+	if raw := c.Query("cursor"); raw != "" {
+		decoded, decodeErr := base64.RawURLEncoding.DecodeString(raw)
+		var cursor postCursor
+		if decodeErr != nil || json.Unmarshal(decoded, &cursor) != nil {
+			respondError(c, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		before, err = time.Parse(time.RFC3339Nano, cursor.CreatedAt)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, "invalid cursor")
+			return
+		}
+		beforeID = cursor.ID
+	}
+
+	var feeds []model.PostFeed
+	var hasMore bool
+	if paged, ok := h.postService.(service.PostPageService); ok {
+		feeds, hasMore, err = paged.ListPostsPage(c.Request.Context(), groupID, userID, limit, before, beforeID)
+	} else {
+		feeds, err = h.postService.ListPosts(c.Request.Context(), groupID, userID)
+		if len(feeds) > limit {
+			feeds, hasMore = feeds[:limit], true
+		}
+	}
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, "internal server error")
 		return
@@ -294,32 +368,55 @@ func (h *PostHandler) List(c *gin.Context) {
 
 	result := make([]PostFeedJSON, 0, len(feeds))
 	for _, feed := range feeds {
-		photos := make([]PhotoJSON, 0, len(feed.Photos))
-		for _, p := range feed.Photos {
-			photos = append(photos, PhotoJSON{ID: p.ID, PhotoType: p.PhotoType, URL: p.URL})
-		}
-		result = append(result, PostFeedJSON{
-			PostJSON: PostJSON{
-				ID:                  feed.ID,
-				NotificationID:      feed.NotificationID,
-				UserID:              feed.UserID,
-				PostType:            feed.PostType,
-				Body:                feed.Body,
-				RepoFullName:        feed.RepoFullName,
-				CommitCount:         feed.CommitCount,
-				Additions:           feed.Additions,
-				Deletions:           feed.Deletions,
-				LatestCommitMessage: feed.LatestCommitMessage,
-				Status:              feed.Status,
-				CreatedAt:           feed.CreatedAt.UTC().Format(time.RFC3339),
-			},
-			Login:     feed.Login,
-			AvatarURL: feed.AvatarURL,
-			Photos:    photos,
-		})
+		result = append(result, postFeedJSON(feed))
 	}
 
-	c.JSON(http.StatusOK, PostListResponse{Posts: result})
+	var nextCursor *string
+	if hasMore && len(feeds) > 0 {
+		last := feeds[len(feeds)-1]
+		encoded, _ := json.Marshal(postCursor{CreatedAt: last.CreatedAt.UTC().Format(time.RFC3339Nano), ID: last.ID})
+		value := base64.RawURLEncoding.EncodeToString(encoded)
+		nextCursor = &value
+	}
+	c.JSON(http.StatusOK, PostListResponse{Posts: result, NextCursor: nextCursor, HasMore: hasMore})
+}
+
+// Get は差分同期用に1投稿の最新スナップショットを返す。
+//
+//	@Summary		投稿単体取得
+//	@Tags			posts
+//	@Produce		json
+//	@Security		BearerAuth
+//	@Param			id path int true "グループ ID"
+//	@Param			postId path int true "投稿 ID"
+//	@Success		200 {object} PostFeedJSON
+//	@Failure		404 {object} ErrorResponse
+//	@Router			/groups/{id}/posts/{postId} [get]
+func (h *PostHandler) Get(c *gin.Context) {
+	userID, ok := userIDFromContext(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	groupID, postID, ok := parseGroupAndPostID(c)
+	if !ok {
+		return
+	}
+	paged, ok := h.postService.(service.PostPageService)
+	if !ok {
+		respondError(c, http.StatusNotImplemented, "post delta is not supported")
+		return
+	}
+	feed, err := paged.GetPostFeed(c.Request.Context(), groupID, userID, postID)
+	if err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			respondError(c, http.StatusNotFound, "not found")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	c.JSON(http.StatusOK, postFeedJSON(*feed))
 }
 
 // Delete は投稿を削除する（本人のみ）。GitHub上のcommit/PRは削除しない。
