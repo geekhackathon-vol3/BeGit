@@ -12,6 +12,8 @@ struct RepositoryListView: View {
     @ObservedObject private var oauthManager = GitHubOAuthManager.shared //  再ログイン用OAuthフロー
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
     @State private var isShowingAuthExpiredAlert = false       //  GitHub再接続アラートの表示状態
+    @State private var isShowingThemePicker = false            //  Theme選択Sheetの表示状態
+    @AppStorage(AppTheme.storageKey) private var selectedThemeRawValue = AppTheme.Theme.violet.rawValue
     private let currentUserAPI: any CurrentUserAPI
 
     //  デフォルトViewModelで初期化
@@ -97,7 +99,18 @@ struct RepositoryListView: View {
                     BeGitToolbarLogoView()
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    //  Theme選択
+                    Button {
+                        isShowingThemePicker = true
+                    } label: {
+                        Image(systemName: "paintpalette.fill")
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityIdentifier("theme_picker_button")
+                    .accessibilityLabel("テーマを変更")
+
                     //  ログアウト
                     Button(action: authState.logout) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -106,6 +119,12 @@ struct RepositoryListView: View {
                     }
                     .accessibilityLabel("ログアウト")
                 }
+            }
+            .sheet(isPresented: $isShowingThemePicker) {
+                ThemePickerView(selection: selectedThemeBinding)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(AppTheme.background)
             }
             //  Repository追加Sheet
             .sheet(isPresented: $viewModel.isShowingAddRepository) {
@@ -178,6 +197,19 @@ struct RepositoryListView: View {
     }
 
     // MARK: - Components
+
+    private var selectedThemeBinding: Binding<AppTheme.Theme> {
+        Binding(
+            get: {
+                AppTheme.Theme(rawValue: selectedThemeRawValue) ?? .violet
+            },
+            set: { theme in
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    selectedThemeRawValue = theme.rawValue
+                }
+            }
+        )
+    }
 
     //  認証期限切れ時のインライン接続状態
     private var authExpiredStatusRow: some View {
@@ -428,6 +460,112 @@ struct RepositoryListView: View {
             NotificationSprintResultStubView(groupId: groupId, sprintId: sprintId)
         case let .notificationPostDetail(groupId, postId, kind):
             NotificationPostDetailStubView(groupId: groupId, postId: postId, kind: kind)
+        }
+    }
+}
+
+private struct ThemePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selection: AppTheme.Theme
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("カラーテーマ")
+                    .font(.system(size: 24, weight: .black, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.primary)
+
+                Text("アプリ全体のカラーを選択できます")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.medium)
+
+                VStack(spacing: 12) {
+                    ForEach(AppTheme.Theme.allCases) { theme in
+                        themeRow(theme)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 22)
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完了") {
+                        dismiss()
+                    }
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppTheme.accent)
+                }
+            }
+        }
+        .tint(AppTheme.accent)
+    }
+
+    private func themeRow(_ theme: AppTheme.Theme) -> some View {
+        let palette = theme.palette
+        let isSelected = selection == theme
+
+        return Button {
+            selection = theme
+        } label: {
+            HStack(spacing: 14) {
+                themePreview(palette)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(theme.name)
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.primary)
+
+                    Text(theme.description)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.medium)
+                }
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isSelected ? palette.accent : AppTheme.Text.muted)
+            }
+            .padding(12)
+            .background(isSelected ? palette.accent.opacity(0.12) : AppTheme.fieldBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? palette.accent : AppTheme.borderSubtle, lineWidth: isSelected ? 2 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("theme_option_\(theme.rawValue)")
+        .accessibilityLabel("\(theme.name)テーマ")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func themePreview(_ palette: AppTheme.Palette) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(palette.background)
+
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(palette.cardBackground)
+                .frame(width: 36, height: 28)
+
+            Circle()
+                .fill(palette.accent)
+                .frame(width: 13, height: 13)
+                .offset(x: 15, y: 12)
+
+            Circle()
+                .fill(palette.softPink)
+                .frame(width: 8, height: 8)
+                .offset(x: -17, y: -13)
+        }
+        .frame(width: 58, height: 48)
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
         }
     }
 }
