@@ -7,17 +7,20 @@ struct PrimaryButton: View {
     let title: String           //  ボタンタイトル
     let systemImage: String?    //  SF Symbols icon名
     let isEnabled: Bool         //  ボタン有効状態
+    let backgroundColor: Color  //  Themeに応じた背景色
     let action: () -> Void      //  ボタン押下時の処理
 
     init(
         _ title: String,
         systemImage: String? = nil,
         isEnabled: Bool = true,
+        backgroundColor: Color = AppTheme.accent,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.systemImage = systemImage
         self.isEnabled = isEnabled
+        self.backgroundColor = backgroundColor
         self.action = action
     }
 
@@ -27,7 +30,8 @@ struct PrimaryButton: View {
             PrimaryCapsuleButtonLabel(
                 title: title,
                 systemImage: systemImage,
-                isEnabled: isEnabled
+                isEnabled: isEnabled,
+                backgroundColor: backgroundColor
             )
         }
         .buttonStyle(.plain)            //  デフォルトbutton style無効化
@@ -40,6 +44,19 @@ struct PrimaryCapsuleButtonLabel: View {
     let title: String           //  ボタンタイトル
     let systemImage: String?    //  SF Symbols icon名
     let isEnabled: Bool         //  ボタン有効状態
+    let backgroundColor: Color  //  Themeに応じた背景色
+
+    init(
+        title: String,
+        systemImage: String?,
+        isEnabled: Bool,
+        backgroundColor: Color = AppTheme.accent
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.isEnabled = isEnabled
+        self.backgroundColor = backgroundColor
+    }
 
     var body: some View {
         //  button label本体
@@ -57,7 +74,7 @@ struct PrimaryCapsuleButtonLabel: View {
         .foregroundStyle(.black)
         .frame(maxWidth: .infinity) //  横幅最大
         .frame(height: 56)          //  ボタン高さ
-        .background(AppTheme.accent.opacity(isEnabled ? 1 : 0.45))  //  disabled時は透明度を下げる
+        .background(backgroundColor.opacity(isEnabled ? 1 : 0.45))  //  disabled時は透明度を下げる
         .clipShape(Capsule())
     }
 }
