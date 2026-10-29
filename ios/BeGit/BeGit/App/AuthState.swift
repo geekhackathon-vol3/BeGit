@@ -6,7 +6,12 @@ import Foundation
 
 @MainActor
 final class AuthState: ObservableObject {
-    static let shared = AuthState(keychainManager: KeychainManager())   // アプリ全体で共有する認証状態
+    static let shared: AuthState = {
+        if AppRuntime.isUnitTesting {
+            return AuthState(keychainManager: UnitTestKeychainManager(), restoreOnInit: false)
+        }
+        return AuthState(keychainManager: KeychainManager())
+    }()
 
     @Published var isLoggedIn = false   // ログイン状態
     @Published var accessToken: String? // GitHubアクセストークン
@@ -18,9 +23,11 @@ final class AuthState: ObservableObject {
     private let savedGitHubUserKey = "savedGitHubUser"
     private let savedGitHubAppInstallationIDKey = "savedGitHubAppInstallationID"
 
-    init(keychainManager: any KeychainManaging) {
+    init(keychainManager: any KeychainManaging, restoreOnInit: Bool = true) {
         self.keychainManager = keychainManager
-        restoreSession()
+        if restoreOnInit {
+            restoreSession()
+        }
     }
 
     //  前回ログイン情報を復元する
@@ -151,6 +158,12 @@ final class AuthState: ObservableObject {
         return installationID > 0 ? installationID : nil
     }
 
+}
+
+private struct UnitTestKeychainManager: KeychainManaging {
+    func saveAccessToken(_ token: String) throws {}
+    func readAccessToken() throws -> String? { nil }
+    func deleteAccessToken() throws {}
 }
 
 private struct SavedGitHubUser: Codable {
