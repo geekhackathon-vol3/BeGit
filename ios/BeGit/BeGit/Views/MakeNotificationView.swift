@@ -45,6 +45,7 @@ struct MakeNotificationView: View {
                             activeChallengeNotice(activeChallengeMessage)
                         }
 
+                        gameModeSection
                         membersSection
                         commentsSection
 
@@ -148,6 +149,62 @@ struct MakeNotificationView: View {
         }
     }
 
+    private var gameModeSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionTitle("■ Game Mode")
+            VStack(spacing: 10) {
+                ForEach(BeGitGameMode.allCases, id: \.self) { mode in
+                    gameModeCard(mode)
+                }
+            }
+        }
+    }
+
+    private func gameModeCard(_ mode: BeGitGameMode) -> some View {
+        let isSelected = viewModel.selectedGameMode == mode
+        return Button {
+            viewModel.selectedGameMode = mode
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: mode.systemImage)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(isSelected ? .black : AppTheme.accent)
+                    .frame(width: 38, height: 38)
+                    .background(isSelected ? AppTheme.accent : AppTheme.fieldBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(mode.title)
+                        .appFont(.subheadline)
+                        .foregroundStyle(AppTheme.Text.primary)
+                    Text(mode.detail)
+                        .appFont(.label)
+                        .foregroundStyle(AppTheme.Text.medium)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("達成すると発行者に +10 pt")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppTheme.accent)
+                }
+
+                Spacer(minLength: 8)
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(isSelected ? AppTheme.accent : AppTheme.Text.disabled)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(isSelected ? AppTheme.accent.opacity(0.10) : AppTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .stroke(isSelected ? AppTheme.accent : AppTheme.borderSubtle, lineWidth: 2)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(mode.title)
+        .accessibilityValue(isSelected ? "選択中" : "未選択")
+    }
+
     private func activeChallengeBanner(endTimeText: String) -> some View {
         let darkPurple = Color(red: 0.30, green: 0.18, blue: 0.52)
         let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
@@ -225,7 +282,8 @@ struct MakeNotificationView: View {
     }
 
     private func selectedMemberRow(_ member: RepositoryMember) -> some View {
-        HStack(spacing: 12) {
+        let isCurrentUser = member.backendUserID == authState.githubUser.map { Int64($0.id) }
+        return HStack(spacing: 12) {
             AvatarView(member: member, size: 34)
 
             Text(member.login)
@@ -235,18 +293,24 @@ struct MakeNotificationView: View {
 
             Spacer()
 
-            Button {
-                viewModel.removeMember(member)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 16, weight: .black))
-                    .foregroundStyle(.black)
-                    .frame(width: 30, height: 30)
-                    .background(AppTheme.softPink)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            if isCurrentUser {
+                Text("YOU")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppTheme.accent)
+            } else {
+                Button {
+                    viewModel.removeMember(member)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(.black)
+                        .frame(width: 30, height: 30)
+                        .background(AppTheme.softPink)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(member.login)を通知対象から外す")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(member.login)を通知対象から外す")
         }
     }
 

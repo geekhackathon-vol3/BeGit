@@ -23,13 +23,14 @@ type CreateGroupRequest struct {
 
 // GroupJSON は GET /groups レスポンスのグループ型
 type GroupJSON struct {
-	ID            int64  `json:"id"`
-	Name          string `json:"name"`
-	RepoFullName  string `json:"repo_full_name"`
-	AvatarURL     string `json:"avatar_url"`
-	ReadOnly      bool   `json:"read_only"`
-	OwnerVerified bool   `json:"owner_verified"`
-	MemberCount   int    `json:"member_count,omitempty"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	RepoFullName  string  `json:"repo_full_name"`
+	AvatarURL     string  `json:"avatar_url"`
+	ReadOnly      bool    `json:"read_only"`
+	OwnerVerified bool    `json:"owner_verified"`
+	CompletedAt   *string `json:"completed_at,omitempty"`
+	MemberCount   int     `json:"member_count,omitempty"`
 }
 
 // GroupListResponse は GET /groups のレスポンス
@@ -57,7 +58,8 @@ type ActiveChallengeJSON struct {
 	// CanEnd は要求ユーザーが発行者で、途中中断（POST /groups/:id/notifications/:nid/end）できるか
 	CanEnd bool `json:"can_end"`
 	// MyPost は要求ユーザー自身のこの通知への投稿。無ければ省略。is_draft=true なら投稿作成（カメラ）へ誘導できる
-	MyPost *ActiveChallengePostJSON `json:"my_post,omitempty"`
+	MyPost   *ActiveChallengePostJSON `json:"my_post,omitempty"`
+	GameMode string                   `json:"game_mode" enums:"everyone,spotlight"`
 }
 
 // ActiveChallengeIssuerJSON は進行中チャレンジの発行者
@@ -374,6 +376,7 @@ func toActiveChallengeJSON(active *service.ActiveChallenge, members []model.Grou
 		SentAt:         notif.SentAt.UTC().Format(time.RFC3339),
 		EndsAt:         active.EndsAt.UTC().Format(time.RFC3339),
 		CanEnd:         notif.SentBy == userID,
+		GameMode:       string(notif.GameMode),
 	}
 	if active.MyPost != nil {
 		out.MyPost = &ActiveChallengePostJSON{
@@ -386,6 +389,11 @@ func toActiveChallengeJSON(active *service.ActiveChallenge, members []model.Grou
 }
 
 func toGroupDetailJSON(detail service.GroupDetail) GroupDetailJSON {
+	var completedAt *string
+	if detail.CompletedAt != nil {
+		value := detail.CompletedAt.UTC().Format(time.RFC3339)
+		completedAt = &value
+	}
 	members := make([]GroupMemberJSON, 0, len(detail.Members))
 	for _, m := range detail.Members {
 		members = append(members, GroupMemberJSON{
@@ -404,6 +412,7 @@ func toGroupDetailJSON(detail service.GroupDetail) GroupDetailJSON {
 			AvatarURL:     detail.AvatarURL,
 			ReadOnly:      detail.ReadOnly,
 			OwnerVerified: detail.OwnerVerified,
+			CompletedAt:   completedAt,
 			MemberCount:   len(members),
 		},
 		Members: members,

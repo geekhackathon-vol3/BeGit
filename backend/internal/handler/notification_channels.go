@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"crypto/subtle"
 	"errors"
 	"net/http"
 	"strconv"
@@ -275,8 +274,7 @@ func NewNotificationDeliveryHandler(service service.ExternalNotificationDelivery
 }
 
 func (h *NotificationDeliveryHandler) Deliver(c *gin.Context) {
-	provided := c.GetHeader("X-Notification-Queue-Secret")
-	if h.secret == "" || len(provided) != len(h.secret) || subtle.ConstantTimeCompare([]byte(provided), []byte(h.secret)) != 1 {
+	if !validQueueSecret(c, h.secret) {
 		respondError(c, http.StatusForbidden, "forbidden")
 		return
 	}

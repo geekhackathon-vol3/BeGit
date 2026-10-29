@@ -45,6 +45,13 @@ type cronService struct {
 	fcmClient         fcm.Client
 	externalPublisher ExternalNotificationPublisher
 	scheduleRepo      repository.BeGitTimeScheduleRepository
+	pointsRepo        *repository.PointsRepository
+}
+
+func AttachPointsToCron(cron CronService, points *repository.PointsRepository) {
+	if s, ok := cron.(*cronService); ok {
+		s.pointsRepo = points
+	}
 }
 
 // NewCronService は CronService を作成する
@@ -106,6 +113,11 @@ func (s *cronService) RunCron(ctx context.Context, kind string) error {
 // runMinutely は自動開催、残り時間リマインド、③ challenge_end を発火する。
 func (s *cronService) runMinutely(ctx context.Context) error {
 	now := time.Now().UTC()
+	if s.pointsRepo != nil {
+		if err := s.pointsRepo.FinalizeBonuses(ctx, 0); err != nil {
+			log.Printf("cron_service: FinalizeBonuses failed: %v", err)
+		}
+	}
 	s.runScheduledBeGitTimes(ctx, now)
 	s.runChallengeReminders(ctx, 30)
 	s.runChallengeReminders(ctx, 10)
@@ -125,7 +137,7 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 		}
 
 		// サマリ算出（On Time/Late/Missed）。③ 時点では missed を永続化しない（確定は ⑤）。
-		members, err := s.groupRepo.GetMembers(ctx, sprint.GroupID)
+		members, err := s.notificationMembers(ctx, &notif, sprint.GroupID)
 		if err != nil {
 			log.Printf("cron_service: GetMembers group %d failed: %v", sprint.GroupID, err)
 		} else {
@@ -140,7 +152,8 @@ func (s *cronService) runMinutely(ctx context.Context) error {
 		}
 
 		// 全員へ challenge_end を送信（FCM 成功後に delivery INSERT で冪等化）
-		if err := s.sendToGroupIfNotSent(ctx, deliveryChallengeEnd, notif.ID, sprint.GroupID, BuildChallengeEnd(sprint.GroupID, notif.ID)); err != nil {
+		outcome := s.notificationOutcome(ctx, notif.ID)
+		if err := s.sendToNotificationIfNotSent(ctx, deliveryChallengeEnd, notif.ID, sprint.GroupID, BuildChallengeEndWithResult(sprint.GroupID, notif.ID, notif.GameMode, outcome)); err != nil {
 			log.Printf("cron_service: sendToGroupIfNotSent challenge_end %d failed: %v", notif.ID, err)
 		}
 		s.publishExternal(ctx, deliveryChallengeEnd, notif.ID, sprint.GroupID, externalFields)
@@ -168,6 +181,10 @@ func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time)
 			log.Printf("cron_service: GetByID group %d failed: %v", schedule.GroupID, err)
 			continue
 		}
+		if group.CompletedAt != nil {
+			s.advanceSchedule(ctx, schedule, now)
+			continue
+		}
 		durationDays := group.SprintDurationDays
 		if durationDays <= 0 {
 			durationDays = 7
@@ -180,7 +197,7 @@ func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time)
 
 		notif, err := s.notifRepo.CreateIfNoActive(ctx, &model.Notification{
 			SprintID: sprint.ID, SentBy: group.OwnerUserID,
-			Message: "今、なに作ってる？", Source: "scheduled",
+			Message: "今、なに作ってる？", Source: "scheduled", GameMode: model.GameModeEveryone,
 		}, true)
 		if errors.Is(err, repository.ErrConstraintViolation) {
 			// A previous run may have inserted the scheduled challenge before it could advance the schedule.
@@ -197,7 +214,7 @@ func (s *cronService) runScheduledBeGitTimes(ctx context.Context, now time.Time)
 			continue
 		}
 
-		if err := s.sendToGroupIfNotSent(ctx, deliveryBeGitTime, notif.ID, schedule.GroupID, BuildBeGitTime(schedule.GroupID, notif.ID, sprint.ID)); err != nil {
+		if err := s.sendToNotificationIfNotSent(ctx, deliveryBeGitTime, notif.ID, schedule.GroupID, BuildBeGitTimeWithMode(schedule.GroupID, notif.ID, sprint.ID, notif.GameMode)); err != nil {
 			log.Printf("cron_service: scheduled begit_time delivery %d failed: %v", notif.ID, err)
 		} else {
 			s.publishExternal(ctx, model.EventBeGitTime, notif.ID, schedule.GroupID, map[string]string{
@@ -357,12 +374,12 @@ func (s *cronService) finalizeMissed(ctx context.Context, sp model.Sprint) {
 		log.Printf("cron_service: ListBySprintID %d failed: %v", sp.ID, err)
 		return
 	}
-	members, err := s.groupRepo.GetMembers(ctx, sp.GroupID)
-	if err != nil {
-		log.Printf("cron_service: GetMembers group %d failed: %v", sp.GroupID, err)
-		return
-	}
 	for _, n := range notifs {
+		members, err := s.notificationMembers(ctx, &n, sp.GroupID)
+		if err != nil {
+			log.Printf("cron_service: notification members %d failed: %v", n.ID, err)
+			continue
+		}
 		for _, m := range members {
 			// 既に投稿/draft がある場合は UNIQUE 違反で skip（CreateMissed が ErrConstraintViolation）
 			if err := s.postRepo.CreateMissed(ctx, n.ID, m.UserID, sp.GroupID); err != nil {
@@ -422,6 +439,38 @@ func (s *cronService) sendToGroupIfNotSent(ctx context.Context, kind string, ref
 	return nil
 }
 
+func (s *cronService) sendToNotificationIfNotSent(ctx context.Context, kind string, refID, groupID int64, payload Payload) error {
+	alreadySent, err := s.deliveryRepo.MarkSent(ctx, kind, refID)
+	if err != nil {
+		return fmt.Errorf("delivery claim failed: %w", err)
+	}
+	if alreadySent {
+		return nil
+	}
+	if s.fcmTokenRepo == nil || s.fcmClient == nil {
+		return nil
+	}
+	var tokens []string
+	if targeted, ok := s.fcmTokenRepo.(repository.NotificationFCMTokenRepository); ok {
+		tokens, err = targeted.GetTokensByNotificationID(ctx, refID)
+	} else {
+		tokens, err = s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
+	}
+	if err != nil {
+		s.releaseDelivery(kind, refID)
+		return fmt.Errorf("notification token lookup failed: %w", err)
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+	if err := s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data); err != nil {
+		s.releaseDelivery(kind, refID)
+		return fmt.Errorf("FCM send failed: %w", err)
+	}
+	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
+	return nil
+}
+
 func (s *cronService) sendToUnpostedIfNotSent(ctx context.Context, kind string, refID, groupID int64, payload Payload) error {
 	alreadySent, err := s.deliveryRepo.MarkSent(ctx, kind, refID)
 	if err != nil {
@@ -433,7 +482,12 @@ func (s *cronService) sendToUnpostedIfNotSent(ctx context.Context, kind string, 
 	if s.fcmTokenRepo == nil || s.fcmClient == nil {
 		return nil
 	}
-	tokens, err := s.fcmTokenRepo.GetTokensByGroupIDExcludingResponders(ctx, groupID, refID)
+	var tokens []string
+	if targeted, ok := s.fcmTokenRepo.(repository.NotificationFCMTokenRepository); ok {
+		tokens, err = targeted.GetTokensByNotificationIDExcludingResponders(ctx, refID)
+	} else {
+		tokens, err = s.fcmTokenRepo.GetTokensByGroupIDExcludingResponders(ctx, groupID, refID)
+	}
 	if err != nil {
 		s.releaseDelivery(kind, refID)
 		return fmt.Errorf("GetTokensByGroupIDExcludingResponders failed: %w", err)
@@ -447,6 +501,22 @@ func (s *cronService) sendToUnpostedIfNotSent(ctx context.Context, kind string, 
 	}
 	log.Printf("fcm sent ok (type=%s, tokens=%d)", payload.Data["type"], len(tokens))
 	return nil
+}
+
+func (s *cronService) notificationMembers(ctx context.Context, notif *model.Notification, groupID int64) ([]model.GroupMember, error) {
+	if audience, ok := s.notifRepo.(repository.NotificationAudienceRepository); ok {
+		return audience.GetNotificationMembers(ctx, notif.ID)
+	}
+	return s.groupRepo.GetMembers(ctx, groupID)
+}
+
+func (s *cronService) notificationOutcome(ctx context.Context, notifID int64) model.GameOutcome {
+	if audience, ok := s.notifRepo.(repository.NotificationAudienceRepository); ok {
+		if result, err := audience.GetGameResult(ctx, notifID); err == nil {
+			return result.Outcome
+		}
+	}
+	return model.GameOutcomePending
 }
 
 func (s *cronService) releaseDelivery(kind string, refID int64) {

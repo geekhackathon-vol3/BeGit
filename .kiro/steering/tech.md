@@ -57,6 +57,11 @@ open ios/BeGit/BeGit.xcodeproj  # Xcode で ⌘R
 - **GitHub OAuth をバックエンド経由に集約**: アクセストークンをクライアントに持たせず、Workers Secrets + `DB_ENCRYPTION_KEY` で暗号化保存
 - **グループ参加の自動化**: `GET /repos/{owner}/{repo}/collaborators` を使い、手動招待なしで参加させる
 - **ぼかし制御をサーバー側で**: フィード API がリクエストユーザーの投稿状況を見てレスポンスを制御
+- **書き込みの前提は SQL で守る**: D1 には「読んでから書く」をまとめるトランザクションがなく、1回の `batch()` だけがまとめて実行される。また移行中は Go と Worker が同じテーブルに書く
+  - 書き込みの前提（「この状態のときだけ書いてよい」）が同時に変わりうるなら、制約か書き込みの `WHERE` で守る。確かめてから書くだけにしない（例: UNIQUE(notification_id, user_id)、写真の報告を受け付けているか = `backend/src/api/posts/post.ts` の `acceptsPhotoReports`）
+  - 同じ条件を読み取りでも使うときは、SQL の1か所に書いて両方から使い、JS / Go で書き直さない
+  - 判定・分類（on_time / late など）、応答の組み立て、外部サービス（GitHub API / R2 / Queue）の呼び出しはアプリのコードでよい
+  - 競合しても結果に害がない（境目の解釈がずれるだけ）なら受け入れてよい。その場合はコードに理由を一言書く
 
 ---
 _Document standards and patterns, not every dependency_

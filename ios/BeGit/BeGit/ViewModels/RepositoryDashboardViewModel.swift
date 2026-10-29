@@ -11,12 +11,20 @@ final class RepositoryDashboardViewModel: ObservableObject {
     @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var endedBeGitTime: ActiveBeGitTime?
     @Published private(set) var notificationMemberStatuses: [NotificationMemberStatus] = []
+    @Published private(set) var notificationMessage = ""
+    @Published private(set) var gameResult: BeGitGameResult = .pending
     @Published private(set) var isLoading = false                   //  Timeline取得中
     @Published var errorMessage: String?                            //  APIエラー表示
     //  進行中のBeGit Time（GET /groups/:id の active_challenge）。nil = 進行中なし
     @Published private(set) var activeChallenge: ActiveChallenge?
 
+    @Published private(set) var hasMoreActivities = false
+    @Published private(set) var isLoadingMore = false
+
     private let repositoryAPI: any RepositoryAPI
+    private var nextActivityCursor: String?
+    private var repositoryChangeCursor: Int64 = 0
+    private var currentUserID: Int64?
 
     init(
         repository: Repository,
@@ -25,8 +33,18 @@ final class RepositoryDashboardViewModel: ObservableObject {
         repositoryAPI: any RepositoryAPI = BeGitBackendAPI()
     ) {
         self.repository = repository
-        self.activities = activities ?? []
-        self.activeChallenge = activeChallenge ?? repository.activeChallenge
+        let cached = repository.backendID.flatMap { RepositoryDashboardCache.snapshots[$0] }
+        self.activities = activities ?? cached?.activities ?? []
+        self.activeChallenge = activeChallenge ?? cached?.activeChallenge ?? repository.activeChallenge
+        self.activeBeGitTime = cached?.activeBeGitTime
+        self.notificationMemberStatuses = cached?.memberStatuses ?? []
+        self.notificationMessage = cached?.notificationMessage ?? ""
+        self.gameResult = cached?.gameResult ?? .pending
+        self.nextActivityCursor = cached?.nextCursor
+        self.hasMoreActivities = cached?.nextCursor != nil
+        self.repositoryChangeCursor = cached?.changeCursor
+            ?? repository.backendID.map(RepositoryChangeCursorStore.load)
+            ?? 0
         self.repositoryAPI = repositoryAPI
     }
 
@@ -59,41 +77,56 @@ final class RepositoryDashboardViewModel: ObservableObject {
         }
 
         isLoading = true
+        self.currentUserID = currentUserID
         errorMessage = nil
         defer { isLoading = false }
 
         do {
-            var fetched = try await repositoryAPI.listActivities(repository: repository, accessToken: accessToken)
-            if let repositoryID = repository.backendID {
-                await withTaskGroup(of: (Int, [ActivityReaction]?).self) { group in
-                    for index in fetched.indices {
-                        guard let postID = fetched[index].backendPostID else { continue }
-                        group.addTask {
-                            let reactions = try? await self.repositoryAPI.listReactions(
-                                repositoryID: repositoryID,
-                                postID: postID,
-                                currentUserID: currentUserID,
-                                accessToken: accessToken
-                            )
-                            return (index, reactions)
-                        }
-                    }
-
-                    for await (index, reactions) in group {
-                        if let reactions {
-                            fetched[index].reactions = reactions
-                        }
-                    }
-                }
+            if repositoryChangeCursor == 0, let repositoryID = repository.backendID,
+               let watermark = try? await repositoryAPI.listRepositoryChanges(
+                    repositoryID: repositoryID, after: Int64.max, accessToken: accessToken
+               ) {
+                repositoryChangeCursor = watermark.cursor
+                RepositoryChangeCursorStore.save(watermark.cursor, repositoryID: repositoryID)
             }
-
-            activities = fetched
+            let page = try await repositoryAPI.listActivityPage(
+                repository: repository, cursor: nil, currentUserID: currentUserID, accessToken: accessToken
+            )
+            let fetched = page.activities
+            if fetched != activities {
+                activities = fetched
+            }
+            nextActivityCursor = page.nextCursor
+            hasMoreActivities = page.hasMore
+            saveCache()
         } catch {
             errorMessage = "投稿を取得できませんでした"
         }
 
         //  フィード取得に失敗しても、BeGit Timeの表示取得は継続する。
         await refreshActiveChallenge(accessToken: accessToken)
+    }
+
+    func loadMoreActivities(accessToken: String?) async {
+        guard isLoadingMore == false, hasMoreActivities, let cursor = nextActivityCursor,
+              let accessToken else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let page = try await repositoryAPI.listActivityPage(
+                repository: repository, cursor: cursor, currentUserID: currentUserID, accessToken: accessToken
+            )
+            var known = Set(activities.compactMap(\.backendPostID))
+            activities.append(contentsOf: page.activities.filter { activity in
+                guard let id = activity.backendPostID else { return true }
+                return known.insert(id).inserted
+            })
+            nextActivityCursor = page.nextCursor
+            hasMoreActivities = page.hasMore
+            saveCache()
+        } catch {
+            //  既存ページを維持する。
+        }
     }
 
     //  他メンバーの新着投稿を定期反映する軽量更新。
@@ -118,44 +151,133 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 fetched[index].reactions = reactions
             }
 
-            activities = fetched
+            let merged = RepositoryActivity.mergingRefresh(fetched, preserving: activities)
+            if merged != activities {
+                activities = merged
+            }
         } catch {
             //  バックグラウンド更新失敗時は、現在表示中の投稿を維持する。
         }
     }
 
+    // Repository change logから変更された投稿だけをupsert/deleteする。
+    func refreshRepositoryChanges(accessToken: String?) async {
+        guard let accessToken, let repositoryID = repository.backendID else { return }
+        do {
+            repeat {
+                let batch = try await repositoryAPI.listRepositoryChanges(
+                    repositoryID: repositoryID, after: repositoryChangeCursor, accessToken: accessToken
+                )
+                if batch.resetRequired {
+                    repositoryChangeCursor = batch.cursor
+                    RepositoryChangeCursorStore.save(batch.cursor, repositoryID: repositoryID)
+                    await loadActivities(accessToken: accessToken, currentUserID: currentUserID)
+                    saveCache()
+                    return
+                }
+
+                var latestPostOperations: [Int64: String] = [:]
+                var challengeChanged = false
+                for change in batch.changes {
+                    if let postID = change.postID {
+                        latestPostOperations[postID] = change.operation
+                    } else {
+                        challengeChanged = true
+                    }
+                }
+                for (postID, operation) in latestPostOperations {
+                    if operation == "delete" {
+                        activities.removeAll { $0.backendPostID == postID }
+                    } else if let refreshed = try await repositoryAPI.getActivity(
+                        repository: repository, postID: postID, currentUserID: currentUserID, accessToken: accessToken
+                    ) {
+                        if let index = activities.firstIndex(where: { $0.backendPostID == postID }) {
+                            activities[index] = refreshed.preservingClientState(
+                                from: activities[index], preservingReactions: false
+                            )
+                        } else {
+                            activities.append(refreshed)
+                        }
+                    } else {
+                        activities.removeAll { $0.backendPostID == postID }
+                    }
+                }
+                activities.sort { lhs, rhs in
+                    lhs.date == rhs.date ? String(describing: lhs.id) > String(describing: rhs.id) : lhs.date > rhs.date
+                }
+                repositoryChangeCursor = batch.cursor
+                RepositoryChangeCursorStore.save(batch.cursor, repositoryID: repositoryID)
+                if challengeChanged { await refreshActiveChallenge(accessToken: accessToken) }
+                saveCache()
+                if batch.hasMore == false { break }
+            } while Task.isCancelled == false
+        } catch {
+            // FCM・pollはヒントなので、失敗時はキャッシュを表示したまま次回再試行する。
+        }
+    }
+
     func refreshActiveChallenge(accessToken: String?) async {
+        let previousNotificationID = activeChallenge?.notificationID ?? activeBeGitTime?.notificationID
         guard let accessToken, let repositoryID = repository.backendID else {
             activeBeGitTime = nil
             activeChallenge = nil
             notificationMemberStatuses = []
+            notificationMessage = ""
+            gameResult = .pending
             return
         }
 
         do {
-            let active = try await repositoryAPI.getActiveBeGitTime(
-                repositoryID: repositoryID,
-                accessToken: accessToken
-            )
-            if let active {
-                activeBeGitTime = active
-                endedBeGitTime = nil
+            //  GET /groups/:id の active_challenge を状態管理元にする。
+            //  /notifications/active を重ねて呼ばないことで、1回のポーリングを
+            //  Repository取得 + 必要時のstatus取得の2通信に抑える。
+            let synced = try await repositoryAPI.getRepository(id: repositoryID, accessToken: accessToken)
+            if let challenge = synced.activeChallenge {
+                let active = ActiveBeGitTime(
+                    notificationID: challenge.notificationID,
+                    sentBy: challenge.issuer.userID,
+                    sentAt: challenge.sentAt,
+                    expiresAt: challenge.endsAt,
+                    gameMode: challenge.gameMode
+                )
+                let notificationChanged = previousNotificationID != challenge.notificationID
+                if activeChallenge != challenge {
+                    activeChallenge = challenge
+                }
+                if activeBeGitTime != active { activeBeGitTime = active }
+                if endedBeGitTime != nil {
+                    endedBeGitTime = nil
+                }
+                if notificationChanged {
+                    resetNotificationStatus()
+                }
                 if let statuses = try? await repositoryAPI.getNotificationStatus(
                     repositoryID: repositoryID,
-                    notificationID: active.notificationID,
+                    notificationID: challenge.notificationID,
                     accessToken: accessToken
                 ) {
-                    notificationMemberStatuses = statuses
+                    applyNotificationStatus(statuses)
                 }
             } else if NotificationDeliveryMode.current.usesLocalNotificationMock,
                       let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID) {
                 // ローカルモック時だけ端末内のBeGit Timeを表示する。
-                activeBeGitTime = cached
+                if activeBeGitTime != cached {
+                    activeBeGitTime = cached
+                }
+                activeChallenge = nil
+                if previousNotificationID != cached.notificationID {
+                    resetNotificationStatus()
+                }
             } else {
-                activeBeGitTime = nil
+                if activeBeGitTime != nil {
+                    activeBeGitTime = nil
+                }
+                if activeChallenge != nil {
+                    activeChallenge = nil
+                }
                 ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
                 if endedBeGitTime == nil {
-                    notificationMemberStatuses = []
+                    resetNotificationStatus()
                 }
             }
         } catch {
@@ -163,20 +285,23 @@ final class RepositoryDashboardViewModel: ObservableObject {
             // 旧ローカルモックの notificationID=0 を復元すると、存在しない通知の停止を
             // 試みてしまうため除外する。
             let cached = ActiveBeGitTimeStore.load(repositoryID: repositoryID)
-            activeBeGitTime = cached.flatMap { cached in
+            let fallback = cached.flatMap { cached in
                 NotificationDeliveryMode.current.usesLocalNotificationMock || cached.notificationID > 0
                     ? cached
                     : nil
             }
+            if activeBeGitTime != fallback {
+                activeBeGitTime = fallback
+            }
+            if activeBeGitTime?.notificationID != previousNotificationID {
+                resetNotificationStatus()
+            }
             if activeBeGitTime == nil && endedBeGitTime == nil {
-                notificationMemberStatuses = []
+                resetNotificationStatus()
             }
         }
+        saveCache()
 
-        //  GitHub活動によって作成された下書き（active_challenge.my_post）も
-        //  同じ更新タイミングで再取得する。これがないと、commit後も
-        //  「撮影して投稿」が表示されないままになる。
-        await loadActiveChallenge(accessToken: accessToken)
     }
 
     func stopActiveBeGitTime(accessToken: String?) async throws {
@@ -194,7 +319,8 @@ final class RepositoryDashboardViewModel: ObservableObject {
                 notificationID: challenge.notificationID,
                 sentBy: challenge.issuer.userID,
                 sentAt: challenge.sentAt,
-                expiresAt: challenge.endsAt
+                expiresAt: challenge.endsAt,
+                gameMode: challenge.gameMode
             )
         } else {
             throw BeGitAPIError.invalidResponse
@@ -208,6 +334,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             activeChallenge = nil
             ActiveBeGitTimeStore.remove(repositoryID: repositoryID)
             notificationMemberStatuses = []
+            notificationMessage = ""
             return
         }
 
@@ -243,7 +370,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
             notificationID: serverActive.notificationID,
             accessToken: accessToken
         ) {
-            notificationMemberStatuses = statuses
+            applyNotificationStatus(statuses)
         }
     }
 
@@ -274,7 +401,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
     }
 
     func toggleReaction(
-        activityID: UUID,
+        activityID: RepositoryActivity.ID,
         type: ActivityReactionType,
         accessToken: String?,
         currentUserID: Int64?
@@ -335,7 +462,7 @@ final class RepositoryDashboardViewModel: ObservableObject {
         }
     }
 
-    private func updateReactions(_ reactions: [ActivityReaction], for activityID: UUID) {
+    private func updateReactions(_ reactions: [ActivityReaction], for activityID: RepositoryActivity.ID) {
         if let index = activities.firstIndex(where: { $0.id == activityID }) {
             activities[index].reactions = reactions
         }
@@ -351,10 +478,78 @@ final class RepositoryDashboardViewModel: ObservableObject {
 
         do {
             let synced = try await repositoryAPI.getRepository(id: backendID, accessToken: accessToken)
-            activeChallenge = synced.activeChallenge
+            if activeChallenge != synced.activeChallenge {
+                activeChallenge = synced.activeChallenge
+            }
         } catch {
             //  失敗しても既存表示を維持
         }
     }
 
+    private func applyNotificationStatus(_ status: NotificationStatusSummary) {
+        if notificationMemberStatuses != status.members {
+            notificationMemberStatuses = status.members
+        }
+        if gameResult != status.gameResult {
+            gameResult = status.gameResult
+        }
+        if notificationMessage != status.message {
+            notificationMessage = status.message
+        }
+    }
+
+    private func resetNotificationStatus() {
+        if notificationMemberStatuses.isEmpty == false {
+            notificationMemberStatuses = []
+        }
+        if notificationMessage.isEmpty == false {
+            notificationMessage = ""
+        }
+        if gameResult != .pending {
+            gameResult = .pending
+        }
+    }
+
+    private func saveCache() {
+        guard let repositoryID = repository.backendID else { return }
+        RepositoryDashboardCache.snapshots[repositoryID] = RepositoryDashboardSnapshot(
+            activities: activities,
+            activeChallenge: activeChallenge,
+            activeBeGitTime: activeBeGitTime,
+            memberStatuses: notificationMemberStatuses,
+            notificationMessage: notificationMessage,
+            gameResult: gameResult,
+            nextCursor: nextActivityCursor,
+            changeCursor: repositoryChangeCursor
+        )
+    }
+
+}
+
+private struct RepositoryDashboardSnapshot {
+    let activities: [RepositoryActivity]
+    let activeChallenge: ActiveChallenge?
+    let activeBeGitTime: ActiveBeGitTime?
+    let memberStatuses: [NotificationMemberStatus]
+    let notificationMessage: String
+    let gameResult: BeGitGameResult
+    let nextCursor: String?
+    let changeCursor: Int64
+}
+
+@MainActor
+private enum RepositoryDashboardCache {
+    static var snapshots: [Int64: RepositoryDashboardSnapshot] = [:]
+}
+
+private enum RepositoryChangeCursorStore {
+    private static let prefix = "begit.repository-change-cursor"
+
+    static func load(repositoryID: Int64) -> Int64 {
+        Int64(UserDefaults.standard.string(forKey: "\(prefix).\(repositoryID)") ?? "") ?? 0
+    }
+
+    static func save(_ cursor: Int64, repositoryID: Int64) {
+        UserDefaults.standard.set(String(cursor), forKey: "\(prefix).\(repositoryID)")
+    }
 }

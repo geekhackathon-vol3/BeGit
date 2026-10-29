@@ -2,12 +2,52 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/internal/repository"
+	"github.com/irj0927/begit/pkg/d1"
 )
+
+type failingPointsD1Client struct{ d1.Client }
+
+func (failingPointsD1Client) Exec(context.Context, string, []interface{}) (int64, error) {
+	return 0, errors.New("D1 unavailable")
+}
+
+func TestCron_Minutely_ContinuesAfterBonusFinalizationError(t *testing.T) {
+	var scheduled, reminders30, reminders10, challengeEnd bool
+	notifs := &mockNotificationRepository{
+		listChallengeReminderDueFunc: func(_ context.Context, minutes int) ([]model.Notification, error) {
+			switch minutes {
+			case 30:
+				reminders30 = true
+			case 10:
+				reminders10 = true
+			}
+			return nil, nil
+		},
+		listChallengeEndDueFunc: func(context.Context) ([]model.Notification, error) {
+			challengeEnd = true
+			return nil, nil
+		},
+	}
+	schedules := &mockBeGitTimeScheduleRepository{
+		listDueFunc: func(context.Context, time.Time) ([]model.BeGitTimeSchedule, error) {
+			scheduled = true
+			return nil, nil
+		},
+	}
+	svc := &cronService{notifRepo: notifs, scheduleRepo: schedules, pointsRepo: repository.NewPointsRepository(failingPointsD1Client{})}
+	if err := svc.runMinutely(context.Background()); err != nil {
+		t.Fatalf("runMinutely() failed: %v", err)
+	}
+	if !scheduled || !reminders30 || !reminders10 || !challengeEnd {
+		t.Fatalf("later cron phases skipped: scheduled=%t reminders30=%t reminders10=%t challengeEnd=%t", scheduled, reminders30, reminders10, challengeEnd)
+	}
+}
 
 // mockDeliveryRepo は notification_deliveries の冪等を模す。
 // 同一 (kind, ref_id) の2回目以降は alreadySent=true を返す。

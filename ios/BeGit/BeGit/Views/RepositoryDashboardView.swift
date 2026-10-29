@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 struct RepositoryDashboardView: View {
     @EnvironmentObject private var authState: AuthState
+    @Environment(\.scenePhase) private var scenePhase
     //  Dashboard画面の状態を管理するViewModel
     @StateObject private var viewModel: RepositoryDashboardViewModel
     @State private var selectedView: RepositoryDashboardDisplayMode = .timeline
@@ -49,6 +50,14 @@ struct RepositoryDashboardView: View {
 
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 0) {
+                    NavigationLink(value: RepositoryNavigationRoute.points(viewModel.repository)) {
+                        Image(systemName: "trophy.fill")
+                            .foregroundStyle(AppTheme.softPink)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("ポイントを表示")
+
                     Button {
                         selectedView = selectedView.next
                     } label: {
@@ -124,24 +133,41 @@ struct RepositoryDashboardView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .tint(AppTheme.accent)
-        //  accessToken変更時に前のタスクを自動キャンセルしてリロード
-        .task(id: authState.accessToken) {
-            await viewModel.loadActivities(
-                accessToken: authState.accessToken,
-                currentUserID: authState.githubUser.map { Int64($0.id) }
-            )
-            while Task.isCancelled == false {
-                try? await Task.sleep(for: .seconds(5))
-                if Task.isCancelled { break }
-                await viewModel.refreshActivities(accessToken: authState.accessToken)
+        //  画面表示中かつForegroundのときだけ更新する。
+        //  通知状態は15秒、Timelineは30秒ごとに更新する。
+        .task(id: pollingTaskID) {
+            guard scenePhase == .active, selectedView == .timeline else { return }
+            if viewModel.activities.isEmpty {
+                await viewModel.loadActivities(
+                    accessToken: authState.accessToken,
+                    currentUserID: authState.githubUser.map { Int64($0.id) }
+                )
+            } else {
                 await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
+                await viewModel.refreshRepositoryChanges(accessToken: authState.accessToken)
+            }
+
+            var statusPollCount = 0
+            while Task.isCancelled == false {
+                try? await Task.sleep(for: .seconds(15))
+                if Task.isCancelled { break }
+                await viewModel.refreshActiveChallenge(accessToken: authState.accessToken)
+                statusPollCount += 1
+                if statusPollCount.isMultiple(of: 2) {
+                    await viewModel.refreshRepositoryChanges(accessToken: authState.accessToken)
+                }
             }
         }
-        //  投稿一覧は上の .task だけで取得する。ここでも loadActivities を呼ぶと、
-        //  初回表示時に同じ一覧・リアクションAPIが二重実行される。
-        .onAppear {
-            Task { await viewModel.loadActiveChallenge(accessToken: authState.accessToken) }
+        .onReceive(NotificationCenter.default.publisher(for: .repositoryDataDidChange)) { notification in
+            guard scenePhase == .active,
+                  let groupID = notification.userInfo?["group_id"] as? Int,
+                  Int64(groupID) == viewModel.repository.backendID else { return }
+            Task { await viewModel.refreshRepositoryChanges(accessToken: authState.accessToken) }
         }
+    }
+
+    private var pollingTaskID: String {
+        "\(authState.accessToken ?? "")|\(selectedView)|\(scenePhase)"
     }
 
     @ViewBuilder
@@ -195,9 +221,10 @@ struct RepositoryDashboardView: View {
             }
 
             BeGitTimeProgressSummaryView(
-                members: viewModel.repository.members,
+                members: displayedChallengeMembers,
                 achievedMemberLogins: achievedMemberLogins,
-                dimUnachieved: shouldDimUnachievedMembers
+                dimUnachieved: shouldDimUnachievedMembers,
+                comment: viewModel.notificationMessage
             )
             activityTimeline
         }
@@ -206,60 +233,62 @@ struct RepositoryDashboardView: View {
     @ViewBuilder
     private var challengeStatusView: some View {
         if let challenge = viewModel.activeChallenge {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if context.date < challenge.endsAt {
-                    activeChallengeCard(
-                        activeBeGitTime: ActiveBeGitTime(
-                            notificationID: challenge.notificationID,
-                            sentBy: challenge.issuer.userID,
-                            sentAt: challenge.sentAt,
-                            expiresAt: challenge.endsAt
-                        ),
-                        now: context.date,
-                        canStop: challenge.canEnd,
-                        draftPost: challenge.myPost,
-                        onStop: { isShowingStopConfirmation = true }
-                    )
-                }
-            }
+            activeChallengeCard(
+                activeBeGitTime: ActiveBeGitTime(
+                    notificationID: challenge.notificationID,
+                    sentBy: challenge.issuer.userID,
+                    sentAt: challenge.sentAt,
+                    expiresAt: challenge.endsAt,
+                    gameMode: challenge.gameMode
+                ),
+                canStop: challenge.canEnd,
+                draftPost: challenge.myPost,
+                onStop: { isShowingStopConfirmation = true }
+            )
         } else if let activeBeGitTime = viewModel.activeBeGitTime {
             //  active_challenge APIの反映待ちでも開催中表示は維持する。
             //  active_challenge APIの反映待ちでも写真報告へ進める。
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if context.date < activeBeGitTime.expiresAt {
-                    activeChallengeCard(
-                        activeBeGitTime: activeBeGitTime,
-                        now: context.date,
-                        canStop: isNotificationOwner(activeBeGitTime),
-                        draftPost: nil,
-                        onStop: { isShowingStopConfirmation = true }
-                    )
-                }
-            }
+            activeChallengeCard(
+                activeBeGitTime: activeBeGitTime,
+                canStop: isNotificationOwner(activeBeGitTime),
+                draftPost: nil,
+                onStop: { isShowingStopConfirmation = true }
+            )
         } else if viewModel.endedBeGitTime != nil {
             endedChallengeCard
         }
     }
 
     private var activityTimeline: some View {
-        RepositoryActivityTimelineView(
-            activities: viewModel.activities,
-            currentUserLogin: authState.githubUser?.login,
-            allowsDeletion: viewModel.repository.canPost,
-            allowsReactions: viewModel.repository.canPost,
-            onDeleteRequested: {
-                activityToDelete = $0
-                isShowingDeleteConfirmation = true
-            },
-            onReactionTapped: { activityID, type in
-                try await viewModel.toggleReaction(
-                    activityID: activityID,
-                    type: type,
-                    accessToken: authState.accessToken,
-                    currentUserID: authState.githubUser.map { Int64($0.id) }
-                )
+        LazyVStack(spacing: 12) {
+            RepositoryActivityTimelineView(
+                activities: viewModel.activities,
+                currentUserLogin: authState.githubUser?.login,
+                allowsDeletion: viewModel.repository.canPost,
+                allowsReactions: viewModel.repository.canPost,
+                onDeleteRequested: {
+                    activityToDelete = $0
+                    isShowingDeleteConfirmation = true
+                },
+                onReactionTapped: { activityID, type in
+                    try await viewModel.toggleReaction(
+                        activityID: activityID,
+                        type: type,
+                        accessToken: authState.accessToken,
+                        currentUserID: authState.githubUser.map { Int64($0.id) }
+                    )
+                }
+            )
+
+            if viewModel.hasMoreActivities {
+                ProgressView()
+                    .tint(AppTheme.accent)
+                    .padding(.vertical, 16)
+                    .onAppear {
+                        Task { await viewModel.loadMoreActivities(accessToken: authState.accessToken) }
+                    }
             }
-        )
+        }
         .padding(.horizontal, -20)
     }
 
@@ -270,6 +299,13 @@ struct RepositoryDashboardView: View {
                 PrimaryCapsuleButtonLabel(
                     title: "表示専用",
                     systemImage: "eye.fill",
+                    isEnabled: false
+                )
+            } else if viewModel.repository.isCompleted {
+                //  完成後は発行・報告できない。リザルトは設定画面から見られる
+                PrimaryCapsuleButtonLabel(
+                    title: "作品完成済み",
+                    systemImage: "checkmark.seal.fill",
                     isEnabled: false
                 )
             } else if let challenge = viewModel.activeChallenge,
@@ -291,7 +327,7 @@ struct RepositoryDashboardView: View {
             } else if let active = viewModel.activeChallenge {
                 NavigationLink(value: cameraRoute(for: ActiveBeGitTime(
                     notificationID: active.notificationID, sentBy: active.issuer.userID,
-                    sentAt: active.sentAt, expiresAt: active.endsAt
+                    sentAt: active.sentAt, expiresAt: active.endsAt, gameMode: active.gameMode
                 ))) {
                     PrimaryCapsuleButtonLabel(title: "写真で報告する", systemImage: "camera.fill", isEnabled: true)
                 }
@@ -335,14 +371,13 @@ struct RepositoryDashboardView: View {
 
     private func activeChallengeCard(
         activeBeGitTime: ActiveBeGitTime,
-        now: Date,
         canStop: Bool,
         draftPost: ActiveChallenge.MyPost?,
         onStop: @escaping () -> Void
     ) -> some View {
         let accentPurple = Color(red: 0.72, green: 0.58, blue: 0.98)
         let lightPurple = Color(red: 0.90, green: 0.84, blue: 1.00)
-        let issuer = viewModel.repository.members.first(where: {
+        let issuer = displayedChallengeMembers.first(where: {
             $0.backendUserID == activeBeGitTime.sentBy
         }) ?? viewModel.repository.members.first
         let issuerLogin = issuer?.login ?? "メンバー"
@@ -364,11 +399,21 @@ struct RepositoryDashboardView: View {
 
                 Spacer(minLength: 8)
 
-                Text(remainingTimeText(until: activeBeGitTime.expiresAt, now: now))
-                    .font(.system(size: 17, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AppTheme.softPink)
-                    .monospacedDigit()
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(remainingTimeText(until: activeBeGitTime.expiresAt, now: context.date))
+                        .font(.system(size: 17, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppTheme.softPink)
+                        .monospacedDigit()
+                }
             }
+
+            Label(activeBeGitTime.gameMode.title, systemImage: activeBeGitTime.gameMode.systemImage)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(AppTheme.accent)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AppTheme.accent.opacity(0.12))
+                .clipShape(Capsule())
 
             HStack(spacing: 10) {
                 if let issuer {
@@ -464,7 +509,8 @@ struct RepositoryDashboardView: View {
             repository: viewModel.repository,
             selectedMembers: viewModel.repository.members,
             comment: "",
-            createdAt: activeBeGitTime.sentAt
+            createdAt: activeBeGitTime.sentAt,
+            gameMode: activeBeGitTime.gameMode
         )
 
         return .camera(notification: notification)
@@ -541,7 +587,8 @@ struct RepositoryDashboardView: View {
                 notificationID: $0.notificationID,
                 sentBy: $0.issuer.userID,
                 sentAt: $0.sentAt,
-                expiresAt: $0.endsAt
+                expiresAt: $0.endsAt,
+                gameMode: $0.gameMode
             )
         }
         guard let challenge = activeWindow ?? viewModel.activeBeGitTime ?? viewModel.endedBeGitTime else {
@@ -553,6 +600,25 @@ struct RepositoryDashboardView: View {
             $0.date >= challenge.sentAt &&
             $0.date < challenge.expiresAt
         }.map(\.author.login))
+    }
+
+    private var displayedChallengeMembers: [RepositoryMember] {
+        guard viewModel.notificationMemberStatuses.isEmpty == false else {
+            return viewModel.repository.members
+        }
+        return viewModel.notificationMemberStatuses.map { status in
+            if let existing = viewModel.repository.members.first(where: {
+                $0.backendUserID == status.id
+            }) {
+                return existing
+            }
+            return RepositoryMember(
+                backendUserID: status.id,
+                login: status.login,
+                avatarURL: status.avatarURL,
+                role: .poster
+            )
+        }
     }
 
     private var shouldDimUnachievedMembers: Bool {

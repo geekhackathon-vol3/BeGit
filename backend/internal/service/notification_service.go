@@ -15,6 +15,9 @@ import (
 // NotificationStatus は通知ステータス情報
 type NotificationStatus struct {
 	NotificationID int64
+	GameMode       model.GameMode
+	GameResult     model.GameOutcome
+	Message        string
 	Members        []MemberStatus
 }
 
@@ -24,6 +27,13 @@ type ActiveNotification struct {
 	SentBy         int64
 	SentAt         time.Time
 	ExpiresAt      time.Time
+	GameMode       model.GameMode
+}
+
+type SendNotificationRequest struct {
+	GameMode  model.GameMode
+	MemberIDs []int64
+	Message   string
 }
 
 // MemberStatus はメンバーごとの投稿ステータス
@@ -45,7 +55,7 @@ type ActiveChallenge struct {
 
 // NotificationService は BeGit Time 通知サービスインターフェース
 type NotificationService interface {
-	SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error)
+	SendNotification(ctx context.Context, groupID, userID int64, request SendNotificationRequest) (*model.Notification, error)
 	GetActiveNotification(ctx context.Context, groupID int64) (*ActiveNotification, error)
 	GetNotificationStatus(ctx context.Context, notifID, groupID int64) (*NotificationStatus, error)
 	StopNotification(ctx context.Context, groupID, notifID, userID int64) error
@@ -65,9 +75,18 @@ type notificationService struct {
 	groupRepo         repository.GroupRepository
 	postRepo          repository.PostRepository
 	externalPublisher ExternalNotificationPublisher
+	pointsRepo        interface {
+		FinalizeBonuses(context.Context, int64) error
+	}
 	// allowMultiplePerSprint が true なら「1スプリント1人1回」を適用しない（BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT）。
 	// ゼロ値 false = 制限あり。1時間の時間的非共存ルールは常に適用する。
 	allowMultiplePerSprint bool
+}
+
+func AttachPointsToNotifications(notifications NotificationService, points *repository.PointsRepository) {
+	if service, ok := notifications.(*notificationService); ok {
+		service.pointsRepo = points
+	}
 }
 
 // NewNotificationService は NotificationService を作成する（SendNotification 用）
@@ -140,7 +159,55 @@ func NewNotificationServiceFullWithPublisher(
 }
 
 // SendNotification は現スプリントの取得/作成 → 時間非共存判定 → 通知 INSERT → FCM 送信を行う
-func (s *notificationService) SendNotification(ctx context.Context, groupID, userID int64) (*model.Notification, error) {
+func (s *notificationService) SendNotification(ctx context.Context, groupID, userID int64, request SendNotificationRequest) (*model.Notification, error) {
+	if request.GameMode == "" {
+		request.GameMode = model.GameModeEveryone
+	}
+	if !model.IsValidGameMode(request.GameMode) {
+		return nil, ErrValidation
+	}
+	if s.groupRepo != nil {
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if group.CompletedAt != nil {
+			return nil, ErrProjectCompleted
+		}
+		members, err := s.groupRepo.GetMembers(ctx, groupID)
+		if err != nil {
+			return nil, fmt.Errorf("notification_service: get members failed: %w", err)
+		}
+		eligible := make(map[int64]struct{}, len(members))
+		for _, member := range members {
+			if member.Role == model.GroupRoleOwner || member.Role == model.GroupRolePoster {
+				eligible[member.UserID] = struct{}{}
+			}
+		}
+		if len(request.MemberIDs) == 0 {
+			for memberID := range eligible {
+				request.MemberIDs = append(request.MemberIDs, memberID)
+			}
+		}
+		seen := make(map[int64]struct{}, len(request.MemberIDs)+1)
+		normalized := make([]int64, 0, len(request.MemberIDs)+1)
+		for _, memberID := range request.MemberIDs {
+			if _, ok := eligible[memberID]; !ok {
+				return nil, ErrValidation
+			}
+			if _, exists := seen[memberID]; !exists {
+				seen[memberID] = struct{}{}
+				normalized = append(normalized, memberID)
+			}
+		}
+		if _, ok := eligible[userID]; !ok {
+			return nil, ErrForbidden
+		}
+		if _, exists := seen[userID]; !exists {
+			normalized = append(normalized, userID)
+		}
+		request.MemberIDs = normalized
+	}
 	// Step 1: 現在のスプリントを取得または作成
 	sprint, err := s.sprintRepo.GetOrCreateCurrentSprint(ctx, groupID, 7)
 	if err != nil {
@@ -150,10 +217,16 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 	// Step 2 & 3: 時間的非共存（+ 設定次第で1スプリント1人1回）を原子的に保証する CREATE。
 	// CreateIfNoActive は同一スプリント内にアクティブ通知が無く、allowMultiplePerSprint が false なら
 	// 同一ユーザーの発行済み通知も無い場合のみ INSERT する（WHERE NOT EXISTS で原子的）。
+	message := request.Message
+	if message == "" {
+		message = "今、なに作ってる？"
+	}
 	notif, err := s.notifRepo.CreateIfNoActive(ctx, &model.Notification{
-		SprintID: sprint.ID,
-		SentBy:   userID,
-		Message:  "今、なに作ってる？",
+		SprintID:        sprint.ID,
+		SentBy:          userID,
+		Message:         message,
+		GameMode:        request.GameMode,
+		AudienceUserIDs: request.MemberIDs,
 	}, s.allowMultiplePerSprint)
 	if err != nil {
 		if errors.Is(err, repository.ErrConstraintViolation) {
@@ -164,9 +237,15 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 
 	// Step 4: FCM でグループ全メンバーに begit_time data メッセージ送信（ベストエフォート）
 	if s.fcmTokenRepo != nil && s.fcmClient != nil {
-		tokens, err := s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
+		var tokens []string
+		var err error
+		if targeted, ok := s.fcmTokenRepo.(repository.NotificationFCMTokenRepository); ok {
+			tokens, err = targeted.GetTokensByNotificationID(ctx, notif.ID)
+		} else {
+			tokens, err = s.fcmTokenRepo.GetTokensByGroupID(ctx, groupID)
+		}
 		if err == nil && len(tokens) > 0 {
-			payload := BuildBeGitTime(groupID, notif.ID, sprint.ID)
+			payload := BuildBeGitTimeWithMode(groupID, notif.ID, sprint.ID, notif.GameMode)
 			logFCMSend(payload.Data["type"], len(tokens), s.fcmClient.SendToTokensWithData(ctx, tokens, payload.Notification, payload.Data))
 		}
 	}
@@ -188,7 +267,7 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 				Key: fmt.Sprintf("begit_time:%d", notif.ID), Type: model.EventBeGitTime,
 				GroupID: groupID, GroupName: group.Name, Title: "⏰ BeGit Time!",
 				Body:        "今、なに作ってる？ 1時間だけ、みんなで進捗を草にしよう。",
-				AccentColor: "#39D353", Fields: map[string]string{"発行者": issuer, "残り時間": "60分"},
+				AccentColor: "#39D353", Fields: map[string]string{"発行者": issuer, "残り時間": "60分", "ゲームモード": string(notif.GameMode)},
 				OccurredAt: notif.SentAt,
 			}
 			if publishErr := s.externalPublisher.Publish(ctx, event); publishErr != nil {
@@ -223,6 +302,7 @@ func (s *notificationService) GetActiveNotification(ctx context.Context, groupID
 		SentBy:         notif.SentBy,
 		SentAt:         notif.SentAt,
 		ExpiresAt:      notif.SentAt.Add(challengeWindow),
+		GameMode:       notif.GameMode,
 	}, nil
 }
 
@@ -259,6 +339,11 @@ func (s *notificationService) StopNotification(ctx context.Context, groupID, not
 		}
 		return fmt.Errorf("notification_service: stop notification failed: %w", err)
 	}
+	if s.pointsRepo != nil {
+		if err := s.pointsRepo.FinalizeBonuses(ctx, groupID); err != nil {
+			log.Printf("notification_service: finalize stopped challenge failed: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -288,9 +373,9 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 	}
 
 	// グループのメンバー一覧を取得
-	members, err := s.groupRepo.GetMembers(ctx, groupID)
+	members, err := s.membersForNotification(ctx, notif, groupID)
 	if err != nil {
-		return nil, fmt.Errorf("notification_service: GetMembers failed: %w", err)
+		return nil, err
 	}
 
 	// 各メンバーの投稿ステータスを算出（③/⑤ Cron サマリと共通）
@@ -301,8 +386,36 @@ func (s *notificationService) GetNotificationStatus(ctx context.Context, notifID
 
 	return &NotificationStatus{
 		NotificationID: notifID,
+		GameMode:       notif.GameMode,
+		GameResult:     s.gameResult(ctx, notifID),
+		Message:        notif.Message,
 		Members:        memberStatuses,
 	}, nil
+}
+
+func (s *notificationService) membersForNotification(ctx context.Context, notif *model.Notification, groupID int64) ([]model.GroupMember, error) {
+	if audience, ok := s.notifRepo.(repository.NotificationAudienceRepository); ok {
+		members, err := audience.GetNotificationMembers(ctx, notif.ID)
+		if err != nil {
+			return nil, fmt.Errorf("notification_service: GetNotificationMembers failed: %w", err)
+		}
+		return members, nil
+	}
+	members, err := s.groupRepo.GetMembers(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("notification_service: GetMembers failed: %w", err)
+	}
+	return members, nil
+}
+
+func (s *notificationService) gameResult(ctx context.Context, notifID int64) model.GameOutcome {
+	if audience, ok := s.notifRepo.(repository.NotificationAudienceRepository); ok {
+		result, err := audience.GetGameResult(ctx, notifID)
+		if err == nil {
+			return result.Outcome
+		}
+	}
+	return model.GameOutcomePending
 }
 
 // GetActiveChallenge はグループで進行中のチャレンジと要求ユーザーの投稿状況を返す。進行中が無ければ (nil, nil)。
@@ -373,6 +486,11 @@ func (s *notificationService) EndChallenge(ctx context.Context, groupID, notifID
 	if err != nil {
 		return nil, fmt.Errorf("notification_service: GetByID after end failed: %w", err)
 	}
+	if s.pointsRepo != nil {
+		if err := s.pointsRepo.FinalizeBonuses(ctx, groupID); err != nil {
+			log.Printf("notification_service: finalize ended challenge failed: %v", err)
+		}
+	}
 	return updated, nil
 }
 
@@ -389,8 +507,32 @@ func computeMemberStatuses(
 ) ([]MemberStatus, error) {
 	deadline := challengeDeadline(notif)
 	statuses := make([]MemberStatus, 0, len(members))
+	postsByUser := make(map[int64]model.Post, len(members))
+	if batch, ok := postRepo.(interface {
+		ListByNotificationAndUsers(context.Context, int64, []int64) (map[int64]model.Post, error)
+	}); ok {
+		userIDs := make([]int64, 0, len(members))
+		for _, member := range members {
+			userIDs = append(userIDs, member.UserID)
+		}
+		var err error
+		postsByUser, err = batch.ListByNotificationAndUsers(ctx, notif.ID, userIDs)
+		if err != nil {
+			return nil, fmt.Errorf("ListByNotificationAndUsers failed: %w", err)
+		}
+	}
 	for _, member := range members {
-		post, err := postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)
+		var post *model.Post
+		var err error
+		if batchPost, found := postsByUser[member.UserID]; found {
+			post = &batchPost
+		} else if _, batchEnabled := postRepo.(interface {
+			ListByNotificationAndUsers(context.Context, int64, []int64) (map[int64]model.Post, error)
+		}); !batchEnabled {
+			post, err = postRepo.GetByUserAndNotification(ctx, member.UserID, notif.ID)
+		} else {
+			err = repository.ErrNotFound
+		}
 
 		var status string
 		if err != nil {

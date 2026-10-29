@@ -11,8 +11,9 @@ struct RepositoryListView: View {
     @ObservedObject private var notificationRouter = NotificationRouter.shared //  通知タップ由来の遷移要求
     @ObservedObject private var oauthManager = GitHubOAuthManager.shared //  再ログイン用OAuthフロー
     @State private var navigationPath = NavigationPath()        //  Repository Home以降のpush遷移状態
-    @State private var justPostedActivity: RepositoryActivity?  //  デモ投稿後の即時表示用activity
     @State private var isShowingAuthExpiredAlert = false       //  GitHub再接続アラートの表示状態
+    @State private var isShowingThemePicker = false            //  Theme選択Sheetの表示状態
+    @AppStorage(AppTheme.storageKey) private var selectedThemeRawValue = AppTheme.Theme.violet.rawValue
     private let currentUserAPI: any CurrentUserAPI
 
     //  デフォルトViewModelで初期化
@@ -98,7 +99,18 @@ struct RepositoryListView: View {
                     BeGitToolbarLogoView()
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    //  Theme選択
+                    Button {
+                        isShowingThemePicker = true
+                    } label: {
+                        Image(systemName: "paintpalette.fill")
+                            .foregroundStyle(AppTheme.accent)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityIdentifier("theme_picker_button")
+                    .accessibilityLabel("テーマを変更")
+
                     //  ログアウト
                     Button(action: authState.logout) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
@@ -107,6 +119,12 @@ struct RepositoryListView: View {
                     }
                     .accessibilityLabel("ログアウト")
                 }
+            }
+            .sheet(isPresented: $isShowingThemePicker) {
+                ThemePickerView(selection: selectedThemeBinding)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(AppTheme.background)
             }
             //  Repository追加Sheet
             .sheet(isPresented: $viewModel.isShowingAddRepository) {
@@ -160,10 +178,15 @@ struct RepositoryListView: View {
     //  ② Nice Work! の投稿確定後、対象リポジトリの Dashboard を表示して投稿を確認できるようにする。
     //  一覧に無いリポジトリなら root に戻す。
     private func showDashboardAfterNiceWorkPost(groupId: Int) {
-        navigationPath.removeLast(navigationPath.count)
         if let repository = viewModel.repositories.first(where: { $0.backendID == Int64(groupId) }) {
-            navigationPath.append(RepositoryNavigationRoute.dashboard(repository))
+            showDashboard(repository)
         }
+    }
+
+    // 通知送信・投稿の完了後は中間Resultを積まず、最新情報を読み直すTimelineへ戻す。
+    private func showDashboard(_ repository: Repository) {
+        navigationPath.removeLast(navigationPath.count)
+        navigationPath.append(RepositoryNavigationRoute.dashboard(repository))
     }
 
     //  共有 Router に積まれた通知 route を push し、消費済みにする
@@ -174,6 +197,19 @@ struct RepositoryListView: View {
     }
 
     // MARK: - Components
+
+    private var selectedThemeBinding: Binding<AppTheme.Theme> {
+        Binding(
+            get: {
+                AppTheme.Theme(rawValue: selectedThemeRawValue) ?? .violet
+            },
+            set: { theme in
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    selectedThemeRawValue = theme.rawValue
+                }
+            }
+        )
+    }
 
     //  認証期限切れ時のインライン接続状態
     private var authExpiredStatusRow: some View {
@@ -364,7 +400,7 @@ struct RepositoryListView: View {
         //  通知作成画面へ遷移
         case .makeNotification(let repository):
             MakeNotificationView(repository: repository) { notification in
-                navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
+                showDashboard(notification.repository)
             }
         case .camera(let notification):
             if let backendID = notification.repository.backendID,
@@ -379,10 +415,8 @@ struct RepositoryListView: View {
                     githubLogin: githubLogin,
                     accessToken: accessToken,
                     notificationID: notification.backendID
-                ) { activity in
-                    // 投稿完了後 → Result画面へ（デモ時は撮影activityを保持）
-                    justPostedActivity = activity
-                    navigationPath.append(RepositoryNavigationRoute.notificationResult(notification))
+                ) { _ in
+                    showDashboard(notification.repository)
                 }
             } else {
                 Text("必要な情報が不足しています")
@@ -391,14 +425,8 @@ struct RepositoryListView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(AppTheme.background)
             }
-        //  通知結果画面へ遷移
-        case .notificationResult(let notification):
-            NotificationResultView(notification: notification, justPostedActivity: justPostedActivity) {
-                // 結果画面からはHOMEではなく、投稿先リポジトリのTimelineを開く。
-                justPostedActivity = nil
-                navigationPath.removeLast(navigationPath.count)
-                navigationPath.append(RepositoryNavigationRoute.dashboard(notification.repository))
-            }
+        case .points(let repository):
+            ProjectPointsView(repository: repository)
 
         // MARK: - FCM 通知タップからの遷移（#55・中身は #56/#57 が実装）
         case let .notificationPostCreation(groupId, notificationId):
@@ -419,14 +447,125 @@ struct RepositoryListView: View {
             NiceWorkDraftCaptureView(groupId: groupId, draftPostId: draftPostId) {
                 showDashboardAfterNiceWorkPost(groupId: groupId)
             }
-        case let .notificationChallengeResult(groupId, notificationId):
-            NotificationChallengeResultStubView(groupId: groupId, notificationId: notificationId)
+        case let .notificationChallengeResult(groupId, _):
+            if let repository = viewModel.repositories.first(where: { $0.backendID == Int64(groupId) }) {
+                ProjectPointsView(repository: repository)
+            } else {
+                Text("ポイントを取得できません。グループ一覧を更新してください。")
+                    .foregroundStyle(.white)
+            }
         case let .notificationSprintOverview(groupId, sprintId):
             NotificationSprintOverviewStubView(groupId: groupId, sprintId: sprintId)
         case let .notificationSprintResult(groupId, sprintId):
             NotificationSprintResultStubView(groupId: groupId, sprintId: sprintId)
         case let .notificationPostDetail(groupId, postId, kind):
             NotificationPostDetailStubView(groupId: groupId, postId: postId, kind: kind)
+        }
+    }
+}
+
+private struct ThemePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var selection: AppTheme.Theme
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("カラーテーマ")
+                    .font(.system(size: 24, weight: .black, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.primary)
+
+                Text("アプリ全体のカラーを選択できます")
+                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.medium)
+
+                VStack(spacing: 12) {
+                    ForEach(AppTheme.Theme.allCases) { theme in
+                        themeRow(theme)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 22)
+            .background(AppTheme.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完了") {
+                        dismiss()
+                    }
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AppTheme.accent)
+                }
+            }
+        }
+        .tint(AppTheme.accent)
+    }
+
+    private func themeRow(_ theme: AppTheme.Theme) -> some View {
+        let palette = theme.palette
+        let isSelected = selection == theme
+
+        return Button {
+            selection = theme
+        } label: {
+            HStack(spacing: 14) {
+                themePreview(palette)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(theme.name)
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.primary)
+
+                    Text(theme.description)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AppTheme.Text.medium)
+                }
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isSelected ? palette.accent : AppTheme.Text.muted)
+            }
+            .padding(12)
+            .background(isSelected ? palette.accent.opacity(0.12) : AppTheme.fieldBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? palette.accent : AppTheme.borderSubtle, lineWidth: isSelected ? 2 : 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("theme_option_\(theme.rawValue)")
+        .accessibilityLabel("\(theme.name)テーマ")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func themePreview(_ palette: AppTheme.Palette) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(palette.background)
+
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(palette.cardBackground)
+                .frame(width: 36, height: 28)
+
+            Circle()
+                .fill(palette.accent)
+                .frame(width: 13, height: 13)
+                .offset(x: 15, y: 12)
+
+            Circle()
+                .fill(palette.softPink)
+                .frame(width: 8, height: 8)
+                .offset(x: -17, y: -13)
+        }
+        .frame(width: 58, height: 48)
+        .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
         }
     }
 }

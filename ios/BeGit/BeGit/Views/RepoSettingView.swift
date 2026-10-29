@@ -17,6 +17,12 @@ struct RepoSettingView: View {
     @State private var members: [RepositoryMember]
     @State private var memberRoleError: String?
     @State private var canManage: Bool
+    @State private var finalResult: ProjectFinalResult?
+    @State private var finalResultLoadFailed = false
+    @State private var showingFinalResult = false
+    @State private var showingCompletionConfirmation = false
+    @State private var completionError: String?
+    @State private var isCompleting = false
     private let memberRoleAPI: any GroupMemberRoleAPI
 
     init(repository: Repository, memberRoleAPI: any GroupMemberRoleAPI = BeGitBackendAPI()) {
@@ -35,59 +41,7 @@ struct RepoSettingView: View {
                 AppTheme.background.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Settings")
-                                .font(.custom("Bitcount", size: 34))
-                                .foregroundStyle(AppTheme.Text.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-
-                        // MARK: リポジトリ情報
-                        settingSection(
-                            title: "■ GitHub Repository",
-                            color: AppTheme.sectionYellow
-                        ) {
-                            repoInfoRow
-                        }
-
-                        settingSection(
-                            title: "■ Automatic BeGit Time",
-                            color: AppTheme.accent
-                        ) {
-                            beGitTimeScheduleSection
-                        }
-
-                        settingSection(
-                            title: "■ Notification Channels",
-                            color: AppTheme.checkmarkGreen
-                        ) {
-                            notificationChannelSection
-                        }
-
-                        // MARK: メンバー一覧
-                        settingSection(
-                            title: "■ Team Members",
-                            color: AppTheme.sectionPink
-                        ) {
-                            VStack(spacing: 0) {
-                                ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
-                                    memberRow(member)
-                                    if index < members.count - 1 {
-                                        Divider()
-                                            .background(Color.white.opacity(0.08))
-                                            .padding(.leading, 56)
-                                    }
-                                }
-                            }
-                            .background(Color.white.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 24)
-                    .padding(.bottom, 40)
+                    settingsSections
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
@@ -107,6 +61,27 @@ struct RepoSettingView: View {
             .task {
                 await notificationChannels.load(accessToken: authState.accessToken)
                 await beGitTimeSchedule.load(accessToken: authState.accessToken)
+                await loadFinalResult()
+            }
+            .sheet(isPresented: $showingFinalResult) {
+                if let finalResult {
+                    NavigationStack {
+                        ProjectPointsView(repository: repository, initialFinalResult: finalResult)
+                    }
+                    .environmentObject(authState)
+                }
+            }
+            .confirmationDialog("この作品を完成しますか？集計が確定し、新しいBeGit Timeは発行できなくなります。", isPresented: $showingCompletionConfirmation) {
+                Button("完成する") { Task { await completeRepository() } }
+                Button("キャンセル", role: .cancel) { }
+            }
+            .alert("作品完成", isPresented: Binding(
+                get: { completionError != nil },
+                set: { if !$0 { completionError = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(completionError ?? "")
             }
             .sheet(isPresented: $isShowingChannelSetup) {
                 NotificationChannelSetupView { platform, name, webhookURL in
@@ -189,6 +164,84 @@ struct RepoSettingView: View {
     }
 
     // MARK: - Components
+
+    private var settingsSections: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("Settings")
+                .font(.custom("Bitcount", size: 34))
+                .foregroundStyle(AppTheme.Text.primary)
+            settingSection(title: "■ GitHub Repository", color: AppTheme.sectionYellow) { repoInfoRow }
+            completionSection
+            settingSection(title: "■ Automatic BeGit Time", color: AppTheme.accent) { beGitTimeScheduleSection }
+            settingSection(title: "■ Notification Channels", color: AppTheme.checkmarkGreen) { notificationChannelSection }
+            settingSection(title: "■ Team Members", color: AppTheme.sectionPink) { teamMembersSection }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 24)
+        .padding(.bottom, 40)
+    }
+
+    private var completionSection: some View {
+        settingSection(title: "■ 作品完成", color: AppTheme.accent) {
+            if finalResult != nil {
+                Button("完成リザルトを見る") { showingFinalResult = true }
+                    .foregroundStyle(AppTheme.accent)
+            } else if finalResultLoadFailed, repository.isCompleted || repository.canManage {
+                //  読み込めないまま「完成」を出すと、完成済みの作品にも押せてしまう
+                Button("完成リザルトを再読み込み") { Task { await loadFinalResult() } }
+                    .foregroundStyle(AppTheme.accent)
+            } else if repository.isCompleted {
+                Text("完成リザルトを読み込み中...")
+                    .foregroundStyle(AppTheme.Text.medium)
+            } else if repository.canManage, repository.ownerVerified, repository.backendID != nil {
+                //  サーバーは確認済みの管理者本人だけに完成を許可する
+                Button(isCompleting ? "集計中..." : "完成") { showingCompletionConfirmation = true }
+                    .foregroundStyle(AppTheme.accent)
+                    .disabled(isCompleting)
+            } else {
+                Text("確認済みの管理者が作品を完成できます")
+                    .foregroundStyle(AppTheme.Text.medium)
+            }
+        }
+    }
+
+    private var teamMembersSection: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
+                memberRow(member)
+                if index < members.count - 1 {
+                    Divider().background(Color.white.opacity(0.08)).padding(.leading, 56)
+                }
+            }
+        }
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func loadFinalResult() async {
+        guard let repositoryID = repository.backendID,
+              let accessToken = authState.accessToken else { return }
+        do {
+            finalResult = try await BeGitBackendAPI().getFinalResult(repositoryID: repositoryID, accessToken: accessToken)
+            finalResultLoadFailed = false
+        } catch {
+            finalResult = nil
+            finalResultLoadFailed = true
+        }
+    }
+
+    private func completeRepository() async {
+        guard let repositoryID = repository.backendID,
+              let accessToken = authState.accessToken else { return }
+        isCompleting = true
+        defer { isCompleting = false }
+        do {
+            finalResult = try await BeGitBackendAPI().completeRepository(repositoryID: repositoryID, accessToken: accessToken)
+            showingFinalResult = true
+        } catch {
+            completionError = error.localizedDescription
+        }
+    }
 
     private var repoInfoRow: some View {
         HStack(spacing: 12) {

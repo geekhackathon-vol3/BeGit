@@ -26,5 +26,6 @@ struct ActiveChallenge: Hashable, Sendable {
     let endsAt: Date            //  締め切り（発行 + 1h）
     let canEnd: Bool            //  自分が発行者で途中終了できるか
     let myPost: MyPost?
+    let gameMode: BeGitGameMode
 
 }

@@ -21,6 +21,34 @@
                ReferencedContainer = "container:BeGit.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "BEE100042FC3000000000004"
+               BuildableName = "BeGitTests.xctest"
+               BlueprintName = "BeGitTests"
+               ReferencedContainer = "container:BeGit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A0B100030000000000000003"
+               BuildableName = "BeGitSecurityTests.xctest"
+               BlueprintName = "BeGitSecurityTests"
+               ReferencedContainer = "container:BeGit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -35,6 +63,17 @@
                BlueprintIdentifier = "A0B100030000000000000003"
                BuildableName = "BeGitSecurityTests.xctest"
                BlueprintName = "BeGitSecurityTests"
+               ReferencedContainer = "container:BeGit.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "BEE100042FC3000000000004"
+               BuildableName = "BeGitTests.xctest"
+               BlueprintName = "BeGitTests"
                ReferencedContainer = "container:BeGit.xcodeproj">
             </BuildableReference>
          </TestableReference>

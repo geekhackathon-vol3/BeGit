@@ -4,8 +4,34 @@ import (
 	"context"
 	"testing"
 
+	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/pkg/d1"
 )
+
+func TestReactionRepository_ListByPostIDsGroupsRowsInOneQuery(t *testing.T) {
+	queries := 0
+	mock := &mockD1Client{queryFunc: func(ctx context.Context, sql string, params []interface{}) ([]map[string]interface{}, error) {
+		queries++
+		return []map[string]interface{}{
+			{"id": float64(1), "post_id": float64(10), "user_id": float64(2), "reaction_type": "heart", "login": "alice", "avatar_url": "a.png"},
+			{"id": float64(2), "post_id": float64(11), "user_id": float64(3), "reaction_type": "fire", "login": "bob", "avatar_url": "b.png"},
+		}, nil
+	}}
+	repo := NewReactionRepository(mock)
+	batch, ok := repo.(interface {
+		ListByPostIDs(context.Context, []int64) (map[int64][]model.Reaction, error)
+	})
+	if !ok {
+		t.Fatal("batch reaction repository is unavailable")
+	}
+	result, err := batch.ListByPostIDs(context.Background(), []int64{10, 11})
+	if err != nil {
+		t.Fatalf("ListByPostIDs failed: %v", err)
+	}
+	if queries != 1 || len(result[10]) != 1 || len(result[11]) != 1 {
+		t.Fatalf("unexpected batch result queries=%d result=%+v", queries, result)
+	}
+}
 
 // TestReactionRepository_ListByPostID はリアクション一覧を返すことを確認する
 func TestReactionRepository_ListByPostID(t *testing.T) {

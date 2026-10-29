@@ -19,21 +19,26 @@ final class MakeNotificationViewModel: ObservableObject {
     @Published private(set) var repositoryMemberCandidates: [RepositoryMember] // Repository由来のmember候補一覧
     @Published var selectedMemberIDs: Set<UUID>     //  選択中member ID一覧
     @Published var comment = ""                     //  通知コメント入力値
+    @Published var selectedGameMode: BeGitGameMode = .everyone
     @Published private(set) var activeBeGitTime: ActiveBeGitTime?
     @Published private(set) var isSending = false   //  通知送信中
     @Published private(set) var isLoadingMembers = false // member同期中
     @Published var errorMessage: String?            //  APIエラー表示
     //  進行中のBeGit Time（サーバー同期時に取得）。あれば送信不可
     @Published private(set) var activeChallenge: ActiveChallenge?
+    //  作品完成済み（サーバー同期時に更新）。完成後は発行できない
+    @Published private(set) var isCompleted: Bool
 
     private let repositoryAPI: any RepositoryAPI    // Repository関連API
 
     init(repository: Repository, repositoryAPI: any RepositoryAPI = BeGitBackendAPI()) {
         self.repository = repository
-        self.members = repository.members                           //  初期member一覧
-        self.repositoryMemberCandidates = repository.members         //  初期Repository member候補一覧
-        self.selectedMemberIDs = Set(repository.members.map(\.id))  //  初期状態では全memberを選択
+        let eligibleMembers = repository.members.filter { $0.role != .viewer }
+        self.members = eligibleMembers
+        self.repositoryMemberCandidates = eligibleMembers
+        self.selectedMemberIDs = Set(eligibleMembers.map(\.id))
         self.activeChallenge = repository.activeChallenge
+        self.isCompleted = repository.isCompleted
         self.repositoryAPI = repositoryAPI
     }
 
@@ -47,9 +52,9 @@ final class MakeNotificationViewModel: ObservableObject {
         members.filter { selectedMemberIDs.contains($0.id) }
     }
 
-    //  通知送信可能か（BeGit Time 進行中は 409 になるので送らせない）
+    //  通知送信可能か（BeGit Time 進行中・作品完成済みは 409 になるので送らせない）
     var canSend: Bool {
-        selectedMembers.isEmpty == false && isSending == false && activeChallenge == nil
+        selectedMembers.isEmpty == false && isSending == false && activeChallenge == nil && isCompleted == false
     }
 
     // Dashboardの開催中カードと同じBeGit Time終了日時を表示に使う。
@@ -64,6 +69,9 @@ final class MakeNotificationViewModel: ObservableObject {
 
     //  進行中のBeGit Timeの説明文（送信不可の理由）
     var activeChallengeMessage: String? {
+        if isCompleted {
+            return "この作品は完成済みのため、BeGit Timeは発行できません。"
+        }
         guard let activeChallenge else { return nil }
         let issuer = activeChallenge.issuer.login.isEmpty ? "メンバー" : activeChallenge.issuer.login
         let endsAt = Self.formatEndTime(activeChallenge.endsAt)
@@ -102,8 +110,14 @@ final class MakeNotificationViewModel: ObservableObject {
             return
         }
 
-        members.append(member)
-        selectedMemberIDs.insert(member.id)
+        guard let candidate = repositoryMemberCandidates.first(where: {
+            $0.login.caseInsensitiveCompare(member.login) == .orderedSame && $0.backendUserID != nil
+        }) else {
+            errorMessage = "通知対象にはRepositoryの投稿可能メンバーだけを追加できます。"
+            return
+        }
+        members.append(candidate)
+        selectedMemberIDs.insert(candidate.id)
     }
 
     //  通知モデル生成
@@ -114,7 +128,8 @@ final class MakeNotificationViewModel: ObservableObject {
             //  選択中memberのみ通知対象
             selectedMembers: selectedMembers,
             //  前後空白を除去
-            comment: comment.trimmingCharacters(in: .whitespacesAndNewlines)
+            comment: comment.trimmingCharacters(in: .whitespacesAndNewlines),
+            gameMode: selectedGameMode
         )
     }
 
@@ -122,9 +137,10 @@ final class MakeNotificationViewModel: ObservableObject {
         guard isLoadingMembers == false else { return }
         guard let accessToken else { return }
         guard let backendID = repository.backendID else {
-            members = repository.members
-            repositoryMemberCandidates = repository.members
-            selectedMemberIDs = Set(repository.members.map(\.id))
+            let eligibleMembers = repository.members.filter { $0.role != .viewer }
+            members = eligibleMembers
+            repositoryMemberCandidates = eligibleMembers
+            selectedMemberIDs = Set(eligibleMembers.map(\.id))
             return
         }
 
@@ -134,14 +150,17 @@ final class MakeNotificationViewModel: ObservableObject {
 
         do {
             let syncedRepository = try await repositoryAPI.getRepository(id: backendID, accessToken: accessToken)
-            members = syncedRepository.members
-            repositoryMemberCandidates = syncedRepository.members
-            selectedMemberIDs = Set(syncedRepository.members.map(\.id))
+            let eligibleMembers = syncedRepository.members.filter { $0.role != .viewer }
+            members = eligibleMembers
+            repositoryMemberCandidates = eligibleMembers
+            selectedMemberIDs = Set(eligibleMembers.map(\.id))
             activeChallenge = syncedRepository.activeChallenge
+            isCompleted = syncedRepository.isCompleted
         } catch {
-            members = repository.members
-            repositoryMemberCandidates = repository.members
-            selectedMemberIDs = Set(repository.members.map(\.id))
+            let eligibleMembers = repository.members.filter { $0.role != .viewer && $0.backendUserID != nil }
+            members = eligibleMembers
+            repositoryMemberCandidates = eligibleMembers
+            selectedMemberIDs = Set(eligibleMembers.map(\.id))
         }
     }
 
@@ -191,22 +210,40 @@ final class MakeNotificationViewModel: ObservableObject {
             }
 
             do {
-                let notificationID = try await repositoryAPI.sendNotification(repositoryID: backendID, accessToken: accessToken)
+                let memberIDs = selectedMembers.compactMap(\.backendUserID)
+                guard memberIDs.isEmpty == false else {
+                    errorMessage = "通知対象のメンバーを選択してください。"
+                    return nil
+                }
+                let notificationID = try await repositoryAPI.sendNotification(
+                    repositoryID: backendID,
+                    gameMode: selectedGameMode,
+                    memberIDs: memberIDs,
+                    message: comment.trimmingCharacters(in: .whitespacesAndNewlines),
+                    accessToken: accessToken
+                )
                 ActiveBeGitTimeStore.save(
                     repositoryID: backendID,
                     notificationID: notificationID,
                     sentBy: sentBy ?? 0,
-                    expiresAt: Date().addingTimeInterval(60 * 60)
+                    expiresAt: Date().addingTimeInterval(60 * 60),
+                    gameMode: selectedGameMode
                 )
                 await loadActiveBeGitTime(accessToken: accessToken)
                 return makeNotification(backendID: notificationID)
-            } catch BeGitAPIError.requestFailed(statusCode: 409, message: _) {
-                // チャレンジ進行中（発行から1時間以内）、または設定によりこのスプリントは送信済み。
-                // 送信できていないので結果画面へは進めない
-                errorMessage = "今は送信できません。チャレンジが進行中か、このスプリントは送信済みです。"
-                return nil
             } catch {
-                errorMessage = "通知の送信に失敗しました。"
+                // 生成クライアント経由のエラーは ClientError に包まれて届くので取り出して判定する。
+                // 送信できていないので結果画面へは進めない
+                let apiError = beGitAPIError(from: error)
+                if apiError?.isProjectCompleted == true {
+                    // 理由は activeChallengeMessage が表示するので、エラー欄には重ねない
+                    isCompleted = true
+                } else if case .requestFailed(statusCode: 409, message: _)? = apiError {
+                    // チャレンジ進行中（発行から1時間以内）、または設定によりこのスプリントは送信済み。
+                    errorMessage = "今は送信できません。チャレンジが進行中か、このスプリントは送信済みです。"
+                } else {
+                    errorMessage = "通知の送信に失敗しました。"
+                }
                 return nil
             }
         }
@@ -216,7 +253,8 @@ final class MakeNotificationViewModel: ObservableObject {
             ActiveBeGitTimeStore.save(
                 repositoryID: repositoryID,
                 sentBy: sentBy ?? 0,
-                expiresAt: notification.createdAt.addingTimeInterval(60 * 60)
+                expiresAt: notification.createdAt.addingTimeInterval(60 * 60),
+                gameMode: selectedGameMode
             )
         }
         LocalNotificationScheduler.shared.scheduleNotification(for: notification)

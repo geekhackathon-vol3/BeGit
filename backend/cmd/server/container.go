@@ -95,6 +95,8 @@ func (s *server) buildHandler() (http.Handler, error) {
 	notificationChannelRepo := repository.NewNotificationChannelRepository(d1Client)
 	notificationDeliveryJobRepo := repository.NewNotificationDeliveryJobRepository(d1Client)
 	beGitTimeScheduleRepo := repository.NewBeGitTimeScheduleRepository(d1Client)
+	pointsRepo := repository.NewPointsRepository(d1Client)
+	repositoryChangeRepo := repository.NewRepositoryChangeRepository(d1Client)
 
 	externalSender := externalnotify.NewClient()
 	queueClient := notificationqueue.NewClient(cfg.AppBaseURL, cfg.NotificationQueueSecret)
@@ -124,8 +126,10 @@ func (s *server) buildHandler() (http.Handler, error) {
 		cfg.BeGitTimeAllowMultiplePerSprint,
 		externalPublisher,
 	)
+	service.AttachPointsToNotifications(notifSvc, pointsRepo)
 
 	postSvc := service.NewPostService(githubClient, sprintRepo, postRepo, groupRepo, photoRepo, r2Client, notifRepo)
+	service.AttachReactionsToPosts(postSvc, reactionRepo)
 
 	photoSvc := service.NewPhotoService(r2Client, photoRepo, postRepo, notifRepo)
 
@@ -139,10 +143,14 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// ⑦ ソーシャル通知付き（fcm 依存注入）
 	reactionSvc := service.NewReactionServiceWithExternalNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
+	// Worker が Queue に積んだ FCM 通知を送る（#134）
+	pushNotificationSvc := service.NewPushNotificationService(userRepo, fcmTokenRepo, fcmClient)
+
 	commentSvc := service.NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
 	// ③④⑤⑥ Cron サービス
 	cronSvc := service.NewCronServiceWithPublisher(notifRepo, sprintRepo, groupRepo, postRepo, deliveryRepo, fcmTokenRepo, fcmClient, externalPublisher, beGitTimeScheduleRepo)
+	service.AttachPointsToCron(cronSvc, pointsRepo)
 
 	appInstallationClient, ok := githubClient.(githubpkg.AppInstallationClient)
 	if !ok {
@@ -185,8 +193,10 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// Handler 層の初期化
 	authHandler := handler.NewAuthHandler(authSvc)
 	groupHandler := handler.NewGroupHandler(groupSvc, notifSvc)
+	pointsHandler := handler.NewPointsHandler(service.NewPointsService(groupRepo, pointsRepo))
 	notifHandler := handler.NewNotificationHandler(notifSvc)
 	postHandler := handler.NewPostHandler(postSvc)
+	repositoryChangeHandler := handler.NewRepositoryChangeHandler(repositoryChangeRepo)
 	photoHandler := handler.NewPhotoHandler(photoSvc, r2Client)
 	webhookHandler := handler.NewWebhookHandler(webhookSvc, webhookRepo, cfg.GitHubWebhookSecret)
 	fcmTokenHandler := handler.NewFCMTokenHandler(fcmTokenSvc, authSvc)
@@ -198,6 +208,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	notificationChannelHandler := handler.NewNotificationChannelHandler(notificationChannelSvc)
 	beGitTimeScheduleHandler := handler.NewBeGitTimeScheduleHandler(beGitTimeScheduleSvc)
 	externalDeliveryHandler := handler.NewNotificationDeliveryHandler(externalDeliverySvc, cfg.NotificationQueueSecret)
+	pushNotificationHandler := handler.NewPushNotificationHandler(pushNotificationSvc, cfg.NotificationQueueSecret)
 
 	// ミドルウェアの初期化
 	bearerAuth := handler.BearerAuth(userRepo, encryptor)
@@ -209,6 +220,9 @@ func (s *server) buildHandler() (http.Handler, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+	// RemoveExtraSlash は有効にしないこと。有効にすると gin がその場でパスを整形してからルーティングし、
+	// /x/..%2Finternal/cron のようなパスで Worker の /internal/* 遮断（src/index.ts の isInternalPath）を
+	// 迂回して内部エンドポイントに到達できるようになる。
 	// パスは一致するがメソッドが異なる場合は 404 ではなく 405 を返す（従来挙動を維持）
 	r.HandleMethodNotAllowed = true
 	r.NoMethod(func(c *gin.Context) {
@@ -240,6 +254,7 @@ func (s *server) buildHandler() (http.Handler, error) {
 	// Workers scheduled() 経由でのみ到達する想定で公開はしない）。
 	r.POST("/internal/cron", cronHandler.Run)
 	r.POST("/internal/notification-deliveries/:jobId", externalDeliveryHandler.Deliver)
+	r.POST("/internal/push-notifications", pushNotificationHandler.Send)
 
 	// dev 専用ログイン（DEV_MODE=true のときだけ登録。false なら未登録＝404）
 	if cfg.DevMode {
@@ -259,16 +274,23 @@ func (s *server) buildHandler() (http.Handler, error) {
 
 	// グループメンバー確認が必要なエンドポイント
 	r.GET("/groups/:id", bearerAuth, groupMember, groupHandler.Get)
+	r.GET("/groups/:id/points", bearerAuth, groupMember, pointsHandler.Summary)
+	r.GET("/groups/:id/final-result", bearerAuth, groupMember, pointsHandler.Result)
+	r.POST("/groups/:id/complete", bearerAuth, groupOwner, pointsHandler.Complete)
 	r.POST("/groups/:id/sync-members", bearerAuth, groupOwner, groupHandler.SyncMembers)
 	r.PATCH("/groups/:id/members/:userId", bearerAuth, groupOwner, groupHandler.UpdateMemberRole)
 	r.POST("/groups/:id/notifications", bearerAuth, groupPoster, notifHandler.Send)
 	r.GET("/groups/:id/notifications/active", bearerAuth, groupMember, notifHandler.GetActive)
 	r.GET("/groups/:id/notifications/:nid", bearerAuth, groupMember, notifHandler.GetStatus)
-	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupOwner, notifHandler.Stop)
+	// 停止可否はNotificationServiceで通知発行者本人かどうかを判定する。
+	// 管理者に限定するとposter権限で発行した本人が停止できないため、ここではメンバー確認のみ行う。
+	r.POST("/groups/:id/notifications/:nid/stop", bearerAuth, groupMember, notifHandler.Stop)
 	r.POST("/groups/:id/notifications/:nid/end", bearerAuth, groupOwner, notifHandler.End)
 	r.POST("/groups/:id/posts", bearerAuth, groupPoster, postHandler.Create)
 	r.GET("/groups/:id/posts", bearerAuth, groupMember, postHandler.List)
+	r.GET("/groups/:id/posts/:postId", bearerAuth, groupMember, postHandler.Get)
 	r.DELETE("/groups/:id/posts/:postId", bearerAuth, groupPoster, postHandler.Delete)
+	r.GET("/groups/:id/changes", bearerAuth, groupMember, repositoryChangeHandler.List)
 	r.GET("/groups/:id/posts/:postId/draft", bearerAuth, groupPoster, postHandler.GetDraft)
 	r.POST("/groups/:id/posts/:postId/confirm", bearerAuth, groupPoster, postHandler.Confirm)
 	r.POST("/groups/:id/posts/:postId/photos", bearerAuth, groupPoster, photoHandler.Upload)

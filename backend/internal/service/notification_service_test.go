@@ -340,6 +340,12 @@ func (f *failingFCMClient) SendToTokensWithData(ctx context.Context, tokens []st
 	return errors.New("fcm down")
 }
 
+type failingPointsFinalizer struct{}
+
+func (failingPointsFinalizer) FinalizeBonuses(context.Context, int64) error {
+	return errors.New("points unavailable")
+}
+
 // TestNotificationService_SendNotification_Conflict は同一スプリントで2回目の通知発行を試みると ErrConflict が返ることを確認する
 func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 	sprintRepo := &mockSprintRepository{}
@@ -352,7 +358,7 @@ func TestNotificationService_SendNotification_Conflict(t *testing.T) {
 
 	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, nil)
 
-	_, err := svc.SendNotification(context.Background(), 1, 2)
+	_, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{})
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict, got %v", err)
 	}
@@ -379,13 +385,74 @@ func TestNotificationService_GetActiveNotification(t *testing.T) {
 	}
 }
 
+func TestNotificationService_StopNotification_AllowsIssuer(t *testing.T) {
+	sentAt := time.Now().UTC().Add(-10 * time.Minute)
+	var stoppedBy int64
+	notifRepo := &mockNotificationRepository{
+		getByIDFunc: func(_ context.Context, notifID int64) (*model.Notification, error) {
+			return &model.Notification{ID: notifID, SprintID: 3, SentBy: 23, SentAt: sentAt}, nil
+		},
+		stopFunc: func(_ context.Context, notifID, userID int64) error {
+			if notifID != 8 {
+				t.Fatalf("expected notification 8, got %d", notifID)
+			}
+			stoppedBy = userID
+			return nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(_ context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: sprintID, GroupID: 12}, nil
+		},
+	}
+	svc := NewNotificationService(sprintRepo, notifRepo, nil, nil)
+	svc.(*notificationService).pointsRepo = failingPointsFinalizer{}
+
+	if err := svc.StopNotification(context.Background(), 12, 8, 23); err != nil {
+		t.Fatalf("StopNotification() must keep the successful stop when point finalization fails: %v", err)
+	}
+	if stoppedBy != 23 {
+		t.Fatalf("expected issuer 23 to stop notification, got %d", stoppedBy)
+	}
+}
+
+func TestNotificationService_StopNotification_RejectsNonIssuer(t *testing.T) {
+	stopCalled := false
+	notifRepo := &mockNotificationRepository{
+		getByIDFunc: func(_ context.Context, notifID int64) (*model.Notification, error) {
+			return &model.Notification{
+				ID: notifID, SprintID: 3, SentBy: 23,
+				SentAt: time.Now().UTC().Add(-10 * time.Minute),
+			}, nil
+		},
+		stopFunc: func(context.Context, int64, int64) error {
+			stopCalled = true
+			return nil
+		},
+	}
+	sprintRepo := &mockSprintRepository{
+		getByIDFunc: func(_ context.Context, sprintID int64) (*model.Sprint, error) {
+			return &model.Sprint{ID: sprintID, GroupID: 12}, nil
+		},
+	}
+	svc := NewNotificationService(sprintRepo, notifRepo, nil, nil)
+
+	err := svc.StopNotification(context.Background(), 12, 8, 24)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected ErrForbidden for non-issuer, got %v", err)
+	}
+	if stopCalled {
+		t.Fatal("repository Stop must not be called for a non-issuer")
+	}
+}
+
 // TestNotificationService_SendNotification_OncePerSprintByDefault は既定（設定なし）で
 // 1スプリント1人1回の判定を有効にしてリポジトリへ渡すことを確認する
 func TestNotificationService_SendNotification_OncePerSprintByDefault(t *testing.T) {
 	notifRepo := &mockNotificationRepository{}
 	svc := NewNotificationService(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil)
 
-	if _, err := svc.SendNotification(context.Background(), 1, 2); err != nil {
+	if _, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(notifRepo.createIfNoActiveAllowMultiple) != 1 || notifRepo.createIfNoActiveAllowMultiple[0] {
@@ -400,7 +467,7 @@ func TestNotificationService_SendNotification_AllowMultiplePerSprint(t *testing.
 	svc := NewNotificationServiceFull(&mockSprintRepository{}, notifRepo, &mockFCMTokenRepository{}, nil, nil, nil, true)
 
 	for i := 0; i < 2; i++ {
-		if _, err := svc.SendNotification(context.Background(), 1, 2); err != nil {
+		if _, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{}); err != nil {
 			t.Fatalf("send #%d: unexpected error: %v", i+1, err)
 		}
 	}
@@ -425,7 +492,7 @@ func TestNotificationService_SendNotification_ActiveConflict(t *testing.T) {
 
 	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, fcmClient)
 
-	_, err := svc.SendNotification(context.Background(), 1, 2)
+	_, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{})
 	if !errors.Is(err, ErrConflict) {
 		t.Errorf("expected ErrConflict when active challenge exists, got %v", err)
 	}
@@ -456,7 +523,7 @@ func TestNotificationService_SendNotification_SuccessSendsBeGitTimeData(t *testi
 
 	svc := NewNotificationService(sprintRepo, notifRepo, fcmTokenRepo, fcmClient)
 
-	notif, err := svc.SendNotification(context.Background(), 12, 2)
+	notif, err := svc.SendNotification(context.Background(), 12, 2, SendNotificationRequest{})
 	if err != nil {
 		t.Fatalf("SendNotification() failed: %v", err)
 	}
@@ -472,6 +539,58 @@ func TestNotificationService_SendNotification_SuccessSendsBeGitTimeData(t *testi
 	}
 	if call.data["type"] != "begit_time" || call.data["notification_id"] != "345" || call.data["sprint_id"] != "7" || call.data["group_id"] != "12" {
 		t.Errorf("unexpected begit_time data: %v", call.data)
+	}
+}
+
+func TestNotificationService_SendNotification_ValidatesAndFreezesSelectedMembers(t *testing.T) {
+	var created *model.Notification
+	notifRepo := &mockNotificationRepository{
+		createIfNoActiveFunc: func(_ context.Context, notif *model.Notification) (*model.Notification, error) {
+			copy := *notif
+			created = &copy
+			notif.ID = 99
+			return notif, nil
+		},
+	}
+	groupRepo := &mockGroupRepository{
+		getByIDFunc: func(context.Context, int64) (*model.Group, error) {
+			return &model.Group{ID: 12}, nil
+		},
+		getMembersFunc: func(context.Context, int64) ([]model.GroupMember, error) {
+			return []model.GroupMember{
+				{UserID: 1, Role: model.GroupRoleOwner},
+				{UserID: 2, Role: model.GroupRolePoster},
+				{UserID: 3, Role: model.GroupRoleViewer},
+			}, nil
+		},
+	}
+	svc := NewNotificationServiceFull(
+		&mockSprintRepository{}, notifRepo, nil, nil, groupRepo, nil, false,
+	)
+
+	_, err := svc.SendNotification(context.Background(), 12, 1, SendNotificationRequest{
+		GameMode:  model.GameModeSpotlight,
+		MemberIDs: []int64{2, 2},
+		Message:   "focus",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if created == nil || created.GameMode != model.GameModeSpotlight || created.Message != "focus" {
+		t.Fatalf("unexpected notification: %+v", created)
+	}
+	if len(created.AudienceUserIDs) != 2 || created.AudienceUserIDs[0] != 2 || created.AudienceUserIDs[1] != 1 {
+		t.Fatalf("expected deduplicated audience with issuer, got %v", created.AudienceUserIDs)
+	}
+
+	for name, request := range map[string]SendNotificationRequest{
+		"invalid mode":   {GameMode: "unknown", MemberIDs: []int64{1}},
+		"viewer target":  {GameMode: model.GameModeEveryone, MemberIDs: []int64{3}},
+		"unknown target": {GameMode: model.GameModeEveryone, MemberIDs: []int64{404}},
+	} {
+		if _, err := svc.SendNotification(context.Background(), 12, 1, request); !errors.Is(err, ErrValidation) {
+			t.Errorf("%s: expected ErrValidation, got %v", name, err)
+		}
 	}
 }
 
@@ -631,7 +750,7 @@ func TestNotificationService_SendNotification_FCMFailure_DoesNotFail(t *testing.
 		},
 	}
 	svc := NewNotificationService(sprintRepo, notifRepo, ft, &failingFCMClient{})
-	if _, err := svc.SendNotification(context.Background(), 12, 2); err != nil {
+	if _, err := svc.SendNotification(context.Background(), 12, 2, SendNotificationRequest{}); err != nil {
 		t.Fatalf("SendNotification() should succeed even if FCM fails, got: %v", err)
 	}
 }
@@ -778,10 +897,11 @@ func TestNotificationService_EndChallenge_OK(t *testing.T) {
 		return true, nil
 	}
 	svc := NewNotificationServiceWithGroupRepo(sprintRepo, notifRepo, &mockGroupRepository{}, &mockPostRepository{})
+	svc.(*notificationService).pointsRepo = failingPointsFinalizer{}
 
 	notif, err := svc.EndChallenge(context.Background(), 12, 8, 23)
 	if err != nil {
-		t.Fatalf("EndChallenge() failed: %v", err)
+		t.Fatalf("EndChallenge() must return the updated notification when point finalization fails: %v", err)
 	}
 	if notif.EndedAt == nil || !notif.EndedAt.Equal(endedAt) {
 		t.Errorf("expected EndedAt %v, got %v", endedAt, notif.EndedAt)
@@ -860,5 +980,19 @@ func TestComputeMemberStatuses_DraftIsNotReported(t *testing.T) {
 	}
 	if len(statuses) != 1 || statuses[0].Status != "Missed" {
 		t.Fatalf("draft must not count: %+v", statuses)
+	}
+}
+
+// TestNotificationService_SendNotification_CompletedProject は完成済みのグループでは発行できず、進行中の競合と区別できることを確認する
+func TestNotificationService_SendNotification_CompletedProject(t *testing.T) {
+	completedAt := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	groupRepo := &mockGroupRepository{getByIDFunc: func(ctx context.Context, groupID int64) (*model.Group, error) {
+		return &model.Group{ID: groupID, CompletedAt: &completedAt}, nil
+	}}
+	svc := NewNotificationServiceWithGroupRepo(&mockSprintRepository{}, &mockNotificationRepository{}, groupRepo, nil)
+
+	_, err := svc.SendNotification(context.Background(), 1, 2, SendNotificationRequest{})
+	if !errors.Is(err, ErrProjectCompleted) || !errors.Is(err, ErrConflict) {
+		t.Errorf("expected ErrProjectCompleted wrapping ErrConflict, got %v", err)
 	}
 }

@@ -27,6 +27,11 @@ func TestBuildBeGitTime(t *testing.T) {
 	}
 }
 
+func TestBuildBeGitTimeWithMode(t *testing.T) {
+	p := BuildBeGitTimeWithMode(12, 345, 7, "spotlight")
+	assertContains(t, p.Data, "game_mode", "spotlight")
+}
+
 // TestBuildNiceWork は ② nice_work の data フィールドが ios-guide §2 と一致することを検証する
 func TestBuildNiceWork(t *testing.T) {
 	p := BuildNiceWork(12, 345, 890, "on_time")
@@ -43,6 +48,12 @@ func TestBuildChallengeEnd(t *testing.T) {
 	assertContains(t, p.Data, "type", "challenge_end")
 	assertContains(t, p.Data, "group_id", "12")
 	assertContains(t, p.Data, "notification_id", "345")
+}
+
+func TestBuildChallengeEndWithResult(t *testing.T) {
+	p := BuildChallengeEndWithResult(12, 345, "everyone", "succeeded")
+	assertContains(t, p.Data, "game_mode", "everyone")
+	assertContains(t, p.Data, "game_result", "succeeded")
 }
 
 // TestBuildSprintReminder は ④ sprint_reminder の data フィールドを検証する

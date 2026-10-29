@@ -16,6 +16,8 @@ setup:
 # v2.0.0-rc5: OpenAPI 3.1 生成に対応。ローカルの swag のバージョンには依存しない。
 openapi:
 	cd backend && go run github.com/swaggo/swag/v2/cmd/swag@$(SWAG_VERSION) init -g cmd/server/main.go -o docs --ot json,yaml --parseInternal --v3.1
+	python3 ./scripts/normalize-openapi-generated.py backend/docs/swagger.json
+	python3 ./scripts/normalize-openapi-generated.py backend/docs/swagger.yaml
 	@echo "✅ OpenAPI 3.1 仕様を backend/docs/ に生成しました"
 
 # OpenAPI 仕様を再生成し、iOS (swift-openapi-generator) のターゲットへ配布する。
@@ -55,11 +57,10 @@ terraform-apply:
 	mv backend/wrangler.toml.tmp backend/wrangler.toml && \
 	echo "✅ backend/wrangler.toml の database_id を更新しました: $$D1_ID"
 
-# Task 4.2: Docker build → wrangler deploy → D1 migration
+# 本番（begit）は Actions の "Deploy" から手動デプロイする。手元からは出さない。
 deploy:
-	docker build --platform linux/amd64 -t begit-api ./backend && \
-	cd backend && npx wrangler deploy && \
-	npx wrangler d1 migrations apply begit-db --remote
+	@echo "❌ 手元からのデプロイは使いません。Actions の \"Deploy\" を Run workflow してください。" >&2
+	@false
 
 # ── dev 環境（フロント共有用）─────────────────────────────────────────
 # dev D1 を作成（初回のみ）。出力された database_id を
@@ -72,11 +73,12 @@ dev-db-create:
 	@echo "   - [[env.dev.d1_databases]].database_id"
 	@echo "👉 次に: npx wrangler secret put CF_API_TOKEN --env dev （cd backend で実行）"
 
-# dev Worker(begit-dev) をデプロイ（DEV_MODE=true）。Docker build → deploy → dev D1 migration
+# dev Worker(begit-dev) は main へのマージで CI から自動デプロイする。
+# 手元からは出さない（dev の中身が main とずれるため）。ブランチは Actions の "Deploy (dev)" で試す。
 deploy-dev:
-	docker build --platform linux/amd64 -t begit-api ./backend && \
-	cd backend && npx wrangler deploy --env dev && \
-	npx wrangler d1 migrations apply begit-db-dev --env dev --remote
+	@echo "❌ 手元からのデプロイは使いません。main へのマージで自動デプロイされます。" >&2
+	@echo "   ブランチを試すときは Actions の \"Deploy (dev)\" を ref 指定で Run workflow してください。" >&2
+	@false
 
 # dev API にシードデータを投入（公開 API 経由で作成。スモークテスト兼用）
 seed-dev:

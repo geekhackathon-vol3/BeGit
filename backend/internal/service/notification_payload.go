@@ -5,6 +5,7 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/irj0927/begit/internal/model"
 	"github.com/irj0927/begit/pkg/fcm"
 )
 
@@ -42,16 +43,28 @@ func s(v int64) string {
 // BuildBeGitTime は ① begit_time のペイロードを構築する。
 // data: type, group_id, notification_id, sprint_id
 func BuildBeGitTime(groupID, notifID, sprintID int64) Payload {
+	return BuildBeGitTimeWithMode(groupID, notifID, sprintID, model.GameModeEveryone)
+}
+
+func BuildBeGitTimeWithMode(groupID, notifID, sprintID int64, mode model.GameMode) Payload {
+	if !model.IsValidGameMode(mode) {
+		mode = model.GameModeEveryone
+	}
+	body := "今、なに作ってる？チームへの通知が届きました"
+	if mode == model.GameModeSpotlight {
+		body = "俺の進捗を見ろ！チャレンジが始まりました"
+	}
 	return Payload{
 		Notification: fcm.Notification{
 			Title: "🐙 BeGit Time!",
-			Body:  "今、なに作ってる？チームへの通知が届きました",
+			Body:  body,
 		},
 		Data: map[string]string{
 			"type":            "begit_time",
 			"group_id":        s(groupID),
 			"notification_id": s(notifID),
 			"sprint_id":       s(sprintID),
+			"game_mode":       string(mode),
 		},
 	}
 }
@@ -87,6 +100,10 @@ func BuildNiceWork(groupID, notifID, draftPostID int64, status NiceWorkStatus) P
 // BuildChallengeEnd は ③ challenge_end のペイロードを構築する。
 // data: type, group_id, notification_id
 func BuildChallengeEnd(groupID, notifID int64) Payload {
+	return BuildChallengeEndWithResult(groupID, notifID, model.GameModeEveryone, model.GameOutcomePending)
+}
+
+func BuildChallengeEndWithResult(groupID, notifID int64, mode model.GameMode, outcome model.GameOutcome) Payload {
 	return Payload{
 		Notification: fcm.Notification{
 			Title: "🏁 チャレンジ終了",
@@ -96,6 +113,8 @@ func BuildChallengeEnd(groupID, notifID int64) Payload {
 			"type":            "challenge_end",
 			"group_id":        s(groupID),
 			"notification_id": s(notifID),
+			"game_mode":       string(mode),
+			"game_result":     string(outcome),
 		},
 	}
 }

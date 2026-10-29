@@ -15,6 +15,7 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
     let myRole: RepositoryRole      //  ログイン中ユーザーのBeGit内権限
     let ownerVerified: Bool         //  GitHub owner/adminの確認済み管理者がいるか
     let activeChallenge: ActiveChallenge? //  進行中のBeGit Time（GET /groups/:id 取得時のみ。一覧では常にnil）
+    let completedAt: Date?          //  作品完成日時。完成後はBeGit Timeの発行・報告ができない
 
     init(
         id: UUID = UUID(),
@@ -26,7 +27,8 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         isReadOnly: Bool = false,
         myRole: RepositoryRole = .viewer,
         ownerVerified: Bool = true,
-        activeChallenge: ActiveChallenge? = nil
+        activeChallenge: ActiveChallenge? = nil,
+        completedAt: Date? = nil
     ) {
         self.id = id
         self.backendID = backendID
@@ -38,10 +40,12 @@ struct Repository: Identifiable, Equatable, Hashable, Sendable {
         self.myRole = myRole
         self.ownerVerified = ownerVerified
         self.activeChallenge = activeChallenge
+        self.completedAt = completedAt
     }
 
     var canPost: Bool { myRole == .owner || myRole == .poster }
     var canManage: Bool { myRole == .owner }
+    var isCompleted: Bool { completedAt != nil }
 }
 
 //  Preview / Mock表示用データ

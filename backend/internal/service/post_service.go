@@ -55,6 +55,21 @@ type postService struct {
 	photoRepo    repository.PhotoRepository
 	r2Client     r2.Client
 	notifRepo    repository.NotificationRepository
+	reactionRepo repository.ReactionRepository
+}
+
+// AttachReactionsToPosts はフィードへリアクションを一括付与する。
+func AttachReactionsToPosts(posts PostService, reactions repository.ReactionRepository) {
+	if service, ok := posts.(*postService); ok {
+		service.reactionRepo = reactions
+	}
+}
+
+// PostPageService はページング対応フィードの拡張契約。
+// 基本PostServiceから分離し、既存テストダブルを壊さない。
+type PostPageService interface {
+	ListPostsPage(ctx context.Context, groupID, userID int64, limit int, before time.Time, beforeID int64) ([]model.PostFeed, bool, error)
+	GetPostFeed(ctx context.Context, groupID, userID, postID int64) (*model.PostFeed, error)
 }
 
 // NewPostService は PostService を作成する。
@@ -85,6 +100,15 @@ func NewPostService(
 
 // CreatePost は投稿種別に対応する GitHub 情報を取得して posts テーブルに INSERT する。
 func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, groupID, userID int64) (*model.Post, error) {
+	if s.groupRepo != nil && req.NotificationID != nil {
+		group, err := s.groupRepo.GetByID(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if group.CompletedAt != nil {
+			return nil, ErrProjectCompleted
+		}
+	}
 	postType := req.PostType
 	if postType == "" {
 		postType = "commit"
@@ -106,6 +130,9 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 	}
 	if contentSource == "manual" && (req.Body == nil || strings.TrimSpace(*req.Body) == "") {
 		return nil, fmt.Errorf("%w: comment body is required for manual posts", ErrValidation)
+	}
+	if req.NotificationID != nil && contentSource == "manual" {
+		return nil, fmt.Errorf("%w: BeGit Time reports require GitHub activity or a photo", ErrValidation)
 	}
 	if req.NotificationID != nil && s.notifRepo != nil {
 		if err := s.validateNotificationPost(ctx, groupID, *req.NotificationID, contentSource == "photo"); err != nil {
@@ -206,6 +233,10 @@ func (s *postService) CreatePost(ctx context.Context, req CreatePostRequest, gro
 
 	created, err := s.postRepo.Create(ctx, post)
 	if err != nil {
+		// UNIQUE(notification_id, user_id): 同じ BeGit Time! に2回目の報告
+		if errors.Is(err, repository.ErrConstraintViolation) {
+			return nil, fmt.Errorf("%w: already reported for this notification", ErrConflict)
+		}
 		return nil, fmt.Errorf("post_service: CreatePost failed: %w", err)
 	}
 	return created, nil
@@ -352,7 +383,60 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		return nil, fmt.Errorf("post_service: ListPosts failed: %w", err)
 	}
 
-	// Step 3: グループメンバー情報を取得（Login/AvatarURL 付与のため）
+	return s.buildFeeds(ctx, groupID, posts)
+}
+
+// ListPostsPage はフィードをキーセットページングで取得する。
+func (s *postService) ListPostsPage(ctx context.Context, groupID, userID int64, limit int, before time.Time, beforeID int64) ([]model.PostFeed, bool, error) {
+	pager, ok := s.postRepo.(interface {
+		ListPageByGroupID(context.Context, int64, int, time.Time, int64) ([]model.Post, error)
+	})
+	if !ok {
+		posts, err := s.ListPosts(ctx, groupID, userID)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(posts) > limit {
+			return posts[:limit], true, nil
+		}
+		return posts, false, nil
+	}
+	posts, err := pager.ListPageByGroupID(ctx, groupID, limit, before, beforeID)
+	if err != nil {
+		return nil, false, err
+	}
+	hasMore := len(posts) > limit
+	if hasMore {
+		posts = posts[:limit]
+	}
+	feeds, err := s.buildFeeds(ctx, groupID, posts)
+	return feeds, hasMore, err
+}
+
+// GetPostFeed は差分同期で変更された1投稿だけを再取得する。
+func (s *postService) GetPostFeed(ctx context.Context, groupID, userID, postID int64) (*model.PostFeed, error) {
+	post, err := s.postRepo.GetByID(ctx, postID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if post.GroupID != groupID || post.IsDraft || isMissedPost(post) {
+		return nil, ErrNotFound
+	}
+	feeds, err := s.buildFeeds(ctx, groupID, []model.Post{*post})
+	if err != nil {
+		return nil, err
+	}
+	if len(feeds) == 0 {
+		return nil, ErrNotFound
+	}
+	return &feeds[0], nil
+}
+
+func (s *postService) buildFeeds(ctx context.Context, groupID int64, posts []model.Post) ([]model.PostFeed, error) {
+	// グループメンバー情報を取得（Login/AvatarURL 付与のため）
 	memberMap := make(map[int64]model.GroupMember)
 	if s.groupRepo != nil {
 		members, err := s.groupRepo.GetMembers(ctx, groupID)
@@ -363,7 +447,7 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		}
 	}
 
-	// Step 4: 投稿に紐づく写真をまとめて取得（N+1 回避）
+	// 投稿に紐づく写真をまとめて取得（N+1 回避）
 	photoMap := make(map[int64][]model.Photo)
 	if s.photoRepo != nil && len(posts) > 0 {
 		postIDs := make([]int64, 0, len(posts))
@@ -377,6 +461,21 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 		photoMap = m
 	}
 
+	reactionMap := make(map[int64][]model.Reaction)
+	if batch, ok := s.reactionRepo.(interface {
+		ListByPostIDs(context.Context, []int64) (map[int64][]model.Reaction, error)
+	}); ok && len(posts) > 0 {
+		postIDs := make([]int64, 0, len(posts))
+		for _, post := range posts {
+			postIDs = append(postIDs, post.ID)
+		}
+		var err error
+		reactionMap, err = batch.ListByPostIDs(ctx, postIDs)
+		if err != nil {
+			return nil, fmt.Errorf("post_service: reactions failed: %w", err)
+		}
+	}
+
 	// Step 5: PostFeed を構築
 	feeds := make([]model.PostFeed, 0, len(posts))
 	for _, post := range posts {
@@ -384,8 +483,9 @@ func (s *postService) ListPosts(ctx context.Context, groupID, userID int64) ([]m
 			continue
 		}
 		feed := model.PostFeed{
-			Post:   post,
-			Photos: s.buildFeedPhotos(photoMap[post.ID]),
+			Post:      post,
+			Photos:    s.buildFeedPhotos(photoMap[post.ID]),
+			Reactions: reactionMap[post.ID],
 		}
 
 		// メンバー情報を付与

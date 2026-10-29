@@ -20,6 +20,11 @@ components:
           description: EndsAt は締め切り（sent_at + 1h）。残り時間の表示に使う
           example: "2026-09-18T02:25:46Z"
           type: string
+        game_mode:
+          enum:
+          - everyone
+          - spotlight
+          type: string
         my_post:
           $ref: '#/components/schemas/handler.ActiveChallengePostJSON'
         notification_id:
@@ -47,6 +52,11 @@ components:
     handler.ActiveNotificationJSON:
       properties:
         expires_at:
+          type: string
+        game_mode:
+          enum:
+          - everyone
+          - spotlight
           type: string
         notification_id:
           type: integer
@@ -224,6 +234,8 @@ components:
           $ref: '#/components/schemas/handler.ActiveChallengeJSON'
         avatar_url:
           type: string
+        completed_at:
+          type: string
         id:
           type: integer
         member_count:
@@ -247,6 +259,8 @@ components:
     handler.GroupJSON:
       properties:
         avatar_url:
+          type: string
+        completed_at:
           type: string
         id:
           type: integer
@@ -337,6 +351,11 @@ components:
           description: EndedAt は発行者による途中中断時刻。未中断なら省略
           example: "2026-09-18T01:40:00Z"
           type: string
+        game_mode:
+          enum:
+          - everyone
+          - spotlight
+          type: string
         id:
           type: integer
         sent_at:
@@ -346,11 +365,25 @@ components:
       type: object
     handler.NotificationStatusJSON:
       properties:
+        game_mode:
+          enum:
+          - everyone
+          - spotlight
+          type: string
+        game_result:
+          enum:
+          - pending
+          - succeeded
+          - failed
+          - cancelled
+          type: string
         members:
           items:
             $ref: '#/components/schemas/handler.MemberStatusJSON'
           type: array
           uniqueItems: false
+        message:
+          type: string
         notification_id:
           type: integer
       type: object
@@ -392,6 +425,11 @@ components:
           uniqueItems: false
         post_type:
           type: string
+        reactions:
+          items:
+            $ref: '#/components/schemas/handler.ReactionJSON'
+          type: array
+          uniqueItems: false
         repo_full_name:
           type: string
         status:
@@ -428,11 +466,55 @@ components:
       type: object
     handler.PostListResponse:
       properties:
+        has_more:
+          type: boolean
+        next_cursor:
+          type: string
         posts:
           items:
             $ref: '#/components/schemas/handler.PostFeedJSON'
           type: array
           uniqueItems: false
+      type: object
+    handler.ProjectFinalResultJSON:
+      properties:
+        completed_at:
+          type: string
+        group_id:
+          type: integer
+        members:
+          items:
+            $ref: '#/components/schemas/repository.FinalMemberPoints'
+          type: array
+          uniqueItems: false
+        mode_results:
+          items:
+            $ref: '#/components/schemas/repository.FinalModeResult'
+          type: array
+          uniqueItems: false
+        team_total:
+          type: integer
+      type: object
+    handler.ProjectPointsSummaryJSON:
+      properties:
+        completed_at:
+          type: string
+        group_id:
+          type: integer
+        is_final:
+          type: boolean
+        members:
+          items:
+            $ref: '#/components/schemas/repository.FinalMemberPoints'
+          type: array
+          uniqueItems: false
+        mode_results:
+          items:
+            $ref: '#/components/schemas/repository.FinalModeResult'
+          type: array
+          uniqueItems: false
+        team_total:
+          type: integer
       type: object
     handler.PullRequestJSON:
       properties:
@@ -507,6 +589,48 @@ components:
           type: array
           uniqueItems: false
       type: object
+    handler.RepositoryChangeJSON:
+      properties:
+        entity_id:
+          type: integer
+        entity_type:
+          type: string
+        operation:
+          type: string
+        post_id:
+          type: integer
+        sequence:
+          type: integer
+      type: object
+    handler.RepositoryChangesResponse:
+      properties:
+        changes:
+          items:
+            $ref: '#/components/schemas/handler.RepositoryChangeJSON'
+          type: array
+          uniqueItems: false
+        cursor:
+          type: integer
+        has_more:
+          type: boolean
+        reset_required:
+          type: boolean
+      type: object
+    handler.SendNotificationRequestJSON:
+      properties:
+        game_mode:
+          enum:
+          - everyone
+          - spotlight
+          type: string
+        member_ids:
+          items:
+            type: integer
+          type: array
+          uniqueItems: false
+        message:
+          type: string
+      type: object
     handler.UpdateBeGitTimeScheduleRequest:
       properties:
         enabled:
@@ -572,6 +696,38 @@ components:
           type: string
         name:
           type: string
+      type: object
+    repository.FinalMemberPoints:
+      properties:
+        avatar_url:
+          type: string
+        bonus_points:
+          type: integer
+        login:
+          type: string
+        report_points:
+          type: integer
+        total_points:
+          type: integer
+        user_id:
+          type: integer
+      type: object
+    repository.FinalModeResult:
+      properties:
+        attempts:
+          type: integer
+        bonus_points:
+          type: integer
+        cancelled:
+          type: integer
+        failures:
+          type: integer
+        game_mode:
+          type: string
+        pending:
+          type: integer
+        successes:
+          type: integer
       type: object
   securitySchemes:
     BearerAuth:
@@ -995,6 +1151,39 @@ paths:
       summary: BeGit Time 自動開催設定を更新
       tags:
       - begit-time-schedule
+  /groups/{id}/changes:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 前回カーソル
+        in: query
+        name: after
+        schema:
+          default: 0
+          type: integer
+      - description: 取得件数（最大200）
+        in: query
+        name: limit
+        schema:
+          default: 100
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.RepositoryChangesResponse'
+          description: OK
+      security:
+      - BearerAuth: []
+      summary: Repository差分取得
+      tags:
+      - repository-changes
   /groups/{id}/claim-ownership:
     post:
       parameters:
@@ -1121,6 +1310,91 @@ paths:
       summary: コミット一覧
       tags:
       - github
+  /groups/{id}/complete:
+    post:
+      description: 確認済み管理者のみ実行可。進行中のBeGit Timeがある場合は完了できず、再実行しても同じ集計を返す
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ProjectFinalResultJSON'
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 作品を完成する
+      tags:
+      - points
+  /groups/{id}/final-result:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ProjectFinalResultJSON'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 完成リザルトを取得する
+      tags:
+      - points
   /groups/{id}/members/{userId}:
     patch:
       parameters:
@@ -1335,6 +1609,12 @@ paths:
         required: true
         schema:
           type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/handler.SendNotificationRequestJSON'
+        description: ゲームモード・通知対象メンバー
       responses:
         "201":
           content:
@@ -1354,6 +1634,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/handler.ErrorResponse'
           description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Unprocessable Entity
         "500":
           content:
             application/json:
@@ -1568,6 +1854,39 @@ paths:
       summary: 進行中のBeGit Time取得
       tags:
       - notifications
+  /groups/{id}/points:
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ProjectPointsSummaryJSON'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Internal Server Error
+      security:
+      - BearerAuth: []
+      summary: 現在のポイント集計を取得する
+      tags:
+      - points
   /groups/{id}/posts:
     get:
       parameters:
@@ -1577,6 +1896,17 @@ paths:
         required: true
         schema:
           type: integer
+      - description: 取得件数（最大50）
+        in: query
+        name: limit
+        schema:
+          default: 20
+          type: integer
+      - description: 次ページカーソル
+        in: query
+        name: cursor
+        schema:
+          type: string
       responses:
         "200":
           content:
@@ -1645,6 +1975,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/handler.ErrorResponse'
           description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
         "500":
           content:
             application/json:
@@ -1719,6 +2055,38 @@ paths:
       security:
       - BearerAuth: []
       summary: 投稿削除
+      tags:
+      - posts
+    get:
+      parameters:
+      - description: グループ ID
+        in: path
+        name: id
+        required: true
+        schema:
+          type: integer
+      - description: 投稿 ID
+        in: path
+        name: postId
+        required: true
+        schema:
+          type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.PostFeedJSON'
+          description: OK
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Not Found
+      security:
+      - BearerAuth: []
+      summary: 投稿単体取得
       tags:
       - posts
   /groups/{id}/posts/{postId}/comments:
@@ -2075,6 +2443,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/handler.ErrorResponse'
           description: Not Found
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/handler.ErrorResponse'
+          description: Conflict
         "413":
           content:
             application/json:
