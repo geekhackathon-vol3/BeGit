@@ -77,12 +77,21 @@ final class AuthState: ObservableObject {
     /// GitHub App Setup URLから戻ったカスタムURLを処理する。
     @discardableResult
     func handleGitHubAppInstallationURL(_ url: URL) -> Bool {
-        guard url.scheme == "begit", url.host == "github-app-setup" else {
+        guard isLoggedIn,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == "begit",
+              components.host == "github-app-setup",
+              components.user == nil,
+              components.password == nil,
+              components.port == nil,
+              components.path.isEmpty,
+              components.fragment == nil else {
             return false
         }
 
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        guard let rawInstallationID = components?.queryItems?.first(where: { $0.name == "installation_id" })?.value,
+        let installationIDs = components.queryItems?.filter { $0.name == "installation_id" } ?? []
+        guard installationIDs.count == 1,
+              let rawInstallationID = installationIDs[0].value,
               let installationID = Int64(rawInstallationID),
               installationID > 0 else {
             return false
