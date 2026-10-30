@@ -17,6 +17,8 @@ struct BeGitApp: App {
     init() {
         Self.configureNavigationBar()
 
+        guard !AppRuntime.isUnitTesting else { return }
+
         GitHubOAuthManager.shared.configure(
             // 認証状態管理クラス
             authState: AuthState.shared,
@@ -29,11 +31,15 @@ struct BeGitApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(AuthState.shared)    // ログイン状態をアプリ全体で共有
-                .onOpenURL { url in
-                    _ = AuthState.shared.handleGitHubAppInstallationURL(url)
-                }
+            if AppRuntime.isUnitTesting {
+                EmptyView()
+            } else {
+                ContentView()
+                    .environmentObject(AuthState.shared)    // ログイン状態をアプリ全体で共有
+                    .onOpenURL { url in
+                        _ = AuthState.shared.handleGitHubAppInstallationURL(url)
+                    }
+            }
         }
     }
 

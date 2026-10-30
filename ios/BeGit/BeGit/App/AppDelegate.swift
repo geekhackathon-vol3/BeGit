@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        guard !AppRuntime.isUnitTesting else { return true }
+
         //  Firebase 初期化（GoogleService-Info.plist を読む）
         FirebaseApp.configure()
 

@@ -38,8 +38,16 @@ struct NotificationPayload: Equatable {
         guard let typeString = Self.string(userInfo["type"]),
               let type = NotificationType(rawValue: typeString),
               let groupIdString = Self.string(userInfo["group_id"]),
-              let groupId = Int(groupIdString) else {
+              let groupId = Int(groupIdString),
+              groupId > 0 else {
             return nil
+        }
+
+        //  遷移先の識別子は、任意フィールドでも指定された値が不正なら通知ごと無視する。
+        for key in ["notification_id", "sprint_id", "draft_post_id", "post_id"] {
+            if let value = userInfo[key], (Self.int(value) ?? 0) <= 0 {
+                return nil
+            }
         }
 
         self.type = type
