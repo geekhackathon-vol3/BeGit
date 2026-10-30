@@ -19,59 +19,54 @@ struct ProjectResultMarkdownFormatter {
         makeMarkdown(repositoryName: repositoryName, summary: ProjectPointsSummary(finalResult: result))
     }
 
-    /// ポイント集計（確定前の暫定結果も含む）のMarkdownを生成する
+    /// ポイント集計（確定前の暫定結果も含む）のMarkdownを生成する。
+    /// Discord / Slack は表（テーブル）記法に対応していないため、見出しと箇条書きだけで構成する。
     func makeMarkdown(repositoryName: String, summary: ProjectPointsSummary) -> String {
         let isFinal = summary.finalResult != nil
 
         var lines = [
-            isFinal ? "# Hackathon Result" : "# Hackathon Result（集計中）",
-            ""
+            isFinal ? "# 🏆 Hackathon Result" : "# 🏆 Hackathon Result（集計中）"
         ]
         if isFinal == false {
-            lines.append(contentsOf: ["> ⏳ 集計中の暫定リザルトです", ""])
+            lines.append("> ⏳ 集計中の暫定リザルトです")
         }
 
         lines.append(contentsOf: [
-            "## チーム",
             "",
-            sanitizedParagraph(repositoryName),
-            ""
+            "## チーム",
+            escapedInline(repositoryName)
         ])
 
         if isFinal, let completedAt = summary.completedAt {
             lines.append(contentsOf: [
-                "## 完成日時",
                 "",
-                completionDateText(completedAt),
-                ""
+                "## 完成日時",
+                completionDateText(completedAt)
             ])
         }
 
         lines.append(contentsOf: [
+            "",
             "## チーム合計",
+            "**\(formattedPoints(summary.teamTotal)) pt**",
             "",
-            "\(formattedPoints(summary.teamTotal)) pt",
-            "",
-            "## メンバー別ポイント",
-            "",
-            "| 順位 | メンバー | 報告ポイント | ボーナスポイント | 合計 |",
-            "|:-:|---|---:|---:|---:|"
+            "## メンバー別ポイント"
         ])
         lines.append(contentsOf: rankedMembers(summary.members).map { (ranked: RankedMember) -> String in
             let member = ranked.member
-            return "| \(rankLabel(ranked.rank)) | @\(escapedTableCell(member.login)) | \(formattedPoints(member.reportPoints)) pt | \(formattedPoints(member.bonusPoints)) pt | \(formattedPoints(member.totalPoints)) pt |"
+            return "- \(rankLabel(ranked.rank)) **@\(escapedInline(member.login))** \(formattedPoints(member.totalPoints)) pt"
+                + "（報告 \(formattedPoints(member.reportPoints)) pt / ボーナス \(formattedPoints(member.bonusPoints)) pt）"
         })
 
         if summary.modeResults.isEmpty == false {
             lines.append(contentsOf: [
                 "",
-                "## ゲームリザルト",
-                "",
-                "| モード | 達成 | 失敗 | 途中終了 | 判定中 | ボーナス |",
-                "|---|---:|---:|---:|---:|---:|"
+                "## ゲームリザルト"
             ])
             lines.append(contentsOf: summary.modeResults.map { (mode: ProjectModeResult) -> String in
-                "| \(escapedTableCell(mode.gameMode.title)) | \(mode.successes)/\(mode.attempts) | \(mode.failures) | \(mode.cancelled) | \(mode.pending) | +\(formattedPoints(mode.bonusPoints)) pt |"
+                "- **\(escapedInline(mode.gameMode.title))** 達成 \(mode.successes)/\(mode.attempts)"
+                    + "・失敗 \(mode.failures)・途中終了 \(mode.cancelled)・判定中 \(mode.pending)"
+                    + "・ボーナス +\(formattedPoints(mode.bonusPoints)) pt"
             })
         }
 
@@ -106,7 +101,7 @@ struct ProjectResultMarkdownFormatter {
         case 1: "🥇"
         case 2: "🥈"
         case 3: "🥉"
-        default: "\(rank)"
+        default: "\(rank)位"
         }
     }
 
@@ -152,9 +147,12 @@ struct ProjectResultMarkdownFormatter {
             .replacingOccurrences(of: "\r", with: " ")
     }
 
-    private func escapedTableCell(_ value: String) -> String {
-        sanitizedParagraph(value)
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "|", with: "\\|")
+    /// Markdown記法として解釈される記号をエスケープする
+    private func escapedInline(_ value: String) -> String {
+        var escaped = sanitizedParagraph(value).replacingOccurrences(of: "\\", with: "\\\\")
+        for symbol in ["*", "_", "~", "`", "|", "#", ">", "["] {
+            escaped = escaped.replacingOccurrences(of: symbol, with: "\\" + symbol)
+        }
+        return escaped
     }
 }
