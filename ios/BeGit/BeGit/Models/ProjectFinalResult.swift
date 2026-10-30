@@ -141,6 +141,22 @@ struct ProjectPointsSummary: Decodable, Identifiable {
         case members, teamTotal = "team_total", modeResults = "mode_results"
     }
 
+    init(
+        groupID: Int64,
+        isFinal: Bool,
+        completedAt: String?,
+        members: [ProjectMemberPoints],
+        teamTotal: Int,
+        modeResults: [ProjectModeResult]
+    ) {
+        self.groupID = groupID
+        self.isFinal = isFinal
+        self.completedAt = completedAt
+        self.members = members
+        self.teamTotal = teamTotal
+        self.modeResults = modeResults
+    }
+
     init(finalResult: ProjectFinalResult) {
         groupID = finalResult.groupID
         isFinal = true

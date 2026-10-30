@@ -39,9 +39,7 @@ struct ProjectPointsView: View {
                         if summary.modeResults.isEmpty == false {
                             modeSection(summary.modeResults)
                         }
-                        if let finalResult = summary.finalResult {
-                            exportSection(finalResult)
-                        }
+                        exportSection(summary)
                     }
 
                     if let errorMessage = viewModel.errorMessage {
@@ -133,8 +131,8 @@ struct ProjectPointsView: View {
     private func memberSection(_ members: [ProjectMemberPoints]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("■ MEMBER POINTS")
-            ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
-                memberCard(member, rank: index + 1)
+            ForEach(ProjectResultMarkdownFormatter().rankedMembers(members)) { ranked in
+                memberCard(ranked.member, rank: ranked.rank)
             }
         }
     }
@@ -205,13 +203,18 @@ struct ProjectPointsView: View {
         }
     }
 
-    private func exportSection(_ result: ProjectFinalResult) -> some View {
+    private func exportSection(_ summary: ProjectPointsSummary) -> some View {
         let markdown = ProjectResultMarkdownFormatter().makeMarkdown(
             repositoryName: viewModel.repository.name,
-            result: result
+            summary: summary
         )
         return VStack(alignment: .leading, spacing: 12) {
             sectionTitle("■ SHARE RESULT")
+            if summary.finalResult == nil {
+                Text("集計中の暫定リザルトとしてコピーされます")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(AppTheme.Text.medium)
+            }
             PrimaryButton("Markdownをコピー", systemImage: "doc.on.doc.fill") {
                 UIPasteboard.general.string = markdown
                 showCopyToast()
