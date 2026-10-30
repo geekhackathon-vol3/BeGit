@@ -210,28 +210,9 @@ struct ProjectPointsView: View {
         )
         return VStack(alignment: .leading, spacing: 12) {
             sectionTitle("■ SHARE RESULT")
-            if summary.finalResult == nil {
-                Text("集計中の暫定リザルトとしてコピーされます")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(AppTheme.Text.medium)
-            }
             PrimaryButton("Markdownをコピー", systemImage: "doc.on.doc.fill") {
                 UIPasteboard.general.string = markdown
                 showCopyToast()
-            }
-
-            ShareLink(item: markdown, subject: Text("\(viewModel.repository.name) Hackathon Result")) {
-                HStack(spacing: 10) {
-                    Image(systemName: "square.and.arrow.up")
-                    Text("共有する")
-                }
-                .font(.system(size: 16, weight: .bold, design: .monospaced))
-                .foregroundStyle(AppTheme.accent)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(AppTheme.cardBackground)
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(AppTheme.accent, lineWidth: 2))
             }
         }
     }
