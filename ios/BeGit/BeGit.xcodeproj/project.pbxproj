@@ -14,8 +14,19 @@
 		DD61B2402FD0F7F1007D98A2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = DD61B2412FD0F7F1007D98A2 /* FirebaseCore */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A0B100090000000000000009 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 848E88BB2FC31C7E0099886A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 848E88C22FC31C7E0099886A;
+			remoteInfo = BeGit;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		848E88C32FC31C7E0099886A /* BeGit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BeGit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A0B100010000000000000001 /* BeGitSecurityTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeGitSecurityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BEE100012FC3000000000001 /* BeGitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BeGitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		84B1C0012FC9000000010001 /* BeGit/Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = BeGit/Config.xcconfig; sourceTree = "<group>"; };
 		84B1C0022FC9000000010002 /* BeGit/Config-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "BeGit/Config-Release.xcconfig"; sourceTree = "<group>"; };
@@ -34,6 +45,11 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		A0B100020000000000000002 /* BeGitSecurityTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BeGitSecurityTests;
+			sourceTree = "<group>";
+		};
 		848E88C52FC31C7E0099886A /* BeGit */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -78,6 +94,7 @@
 				84B1C0022FC9000000010002 /* BeGit/Config-Release.xcconfig */,
 				84B1C0012FC9000000010001 /* BeGit/Config.xcconfig */,
 				848E88C52FC31C7E0099886A /* BeGit */,
+				A0B100020000000000000002 /* BeGitSecurityTests */,
 				BEE100022FC3000000000002 /* BeGitTests */,
 				848E88C42FC31C7E0099886A /* Products */,
 			);
@@ -87,6 +104,7 @@
 			isa = PBXGroup;
 			children = (
 				848E88C32FC31C7E0099886A /* BeGit.app */,
+				A0B100010000000000000001 /* BeGitSecurityTests.xctest */,
 				BEE100012FC3000000000001 /* BeGitTests.xctest */,
 			);
 			name = Products;
@@ -95,6 +113,25 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		A0B100030000000000000003 /* BeGitSecurityTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A0B100060000000000000006 /* Build configuration list for PBXNativeTarget "BeGitSecurityTests" */;
+			buildPhases = (
+				A0B100040000000000000004 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A0B1000A000000000000000A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A0B100020000000000000002 /* BeGitSecurityTests */,
+			);
+			name = BeGitSecurityTests;
+			productName = BeGitSecurityTests;
+			productReference = A0B100010000000000000001 /* BeGitSecurityTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		848E88C22FC31C7E0099886A /* BeGit */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 848E88CE2FC31C7F0099886A /* Build configuration list for PBXNativeTarget "BeGit" */;
@@ -199,6 +236,7 @@
 			projectRoot = "";
 			targets = (
 				848E88C22FC31C7E0099886A /* BeGit */,
+				A0B100030000000000000003 /* BeGitSecurityTests */,
 				BEE100042FC3000000000004 /* BeGitTests */,
 			);
 		};
@@ -222,6 +260,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		A0B100040000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		848E88BF2FC31C7E0099886A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -238,7 +283,49 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A0B1000A000000000000000A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 848E88C22FC31C7E0099886A /* BeGit */;
+			targetProxy = A0B100090000000000000009 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		A0B100070000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tochi.BeGit.SecurityTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BeGit.app/BeGit";
+			};
+			name = Debug;
+		};
+		A0B100080000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tochi.BeGit.SecurityTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BeGit.app/BeGit";
+			};
+			name = Release;
+		};
 		BEE1000B2FC300000000000B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -266,7 +353,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 74768K7M65;
+				DEVELOPMENT_TEAM = 254WMWP4Z2;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				MARKETING_VERSION = 1.0;
@@ -510,6 +597,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		A0B100060000000000000006 /* Build configuration list for PBXNativeTarget "BeGitSecurityTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0B100070000000000000007 /* Debug */,
+				A0B100080000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		BEE1000A2FC300000000000A /* Build configuration list for PBXNativeTarget "BeGitTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -22,7 +22,6 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
 
     private let clientID = "Ov23lilFdIRDnZUp0ai7"       //  GitHub OAuth Client ID
     private let callbackScheme = "begit"                //  OAuthコールバック用URLスキーム
-    private let callbackHost = "oauth-callback"         //  OAuthコールバック用ホスト名
     private let redirectURI = "begit://oauth-callback"  //  GitHubに登録したリダイレクトURI
     private let authBaseURL = URL(string: "https://github.com/login/oauth/authorize")!
 
@@ -68,7 +67,7 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
                 }
 
                 do {
-                    let code = try self.extractCode(from: callbackURL)
+                    let code = try OAuthCallbackParser.extractCode(from: callbackURL, expectedState: self.currentOAuthState)
                     //  /auth/github の応答に実ユーザー情報が含まれるため、ここで /me を追加で叩く必要はない。
                     let response = try await self.authAPI.exchangeCode(code: code)  //  認証コードをトークン＋ユーザーへ交換
                     try self.keychainManager.saveAccessToken(response.accessToken)   //  アクセストークンをKeychainへ保存
@@ -110,33 +109,6 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
         return components?.url
     }
 
-    //  コールバックURLから認証コードを取得
-    private func extractCode(from callbackURL: URL?) throws -> String {
-        guard let callbackURL else {
-            throw GitHubOAuthError.invalidCallbackURL
-        }
-
-        guard
-            callbackURL.scheme == callbackScheme,
-            callbackURL.host == callbackHost
-        else {
-            throw GitHubOAuthError.invalidCallbackURL
-        }
-
-        let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)
-        let state = components?.queryItems?.first(where: { $0.name == "state" })?.value
-        guard state == currentOAuthState else {
-            throw GitHubOAuthError.stateMismatch(expected: currentOAuthState, actual: state)
-        }
-
-        guard let code = components?.queryItems?.first(where: { $0.name == "code" })?.value,
-              !code.isEmpty else {
-            throw GitHubOAuthError.missingCode
-        }
-
-        return code
-    }
-
     private func mapAuthenticationError(_ error: Error) -> Error {
         let nsError = error as NSError
         if nsError.domain == ASWebAuthenticationSessionError.errorDomain,
@@ -159,6 +131,46 @@ final class GitHubOAuthManager: NSObject, GitHubOAuthManaging {
         }
 
         return GitHubOAuthError.networkFailure(underlying: error)
+    }
+}
+
+// URL 解析をセッションから分離し、外部から渡されたコールバックを単体テストできるようにする。
+enum OAuthCallbackParser {
+    static func extractCode(from callbackURL: URL?, expectedState: String) throws -> String {
+        guard let callbackURL else {
+            throw GitHubOAuthError.invalidCallbackURL
+        }
+
+        guard
+            let components = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+            components.scheme == "begit",
+            components.host == "oauth-callback",
+            components.user == nil,
+            components.password == nil,
+            components.port == nil,
+            components.path.isEmpty,
+            components.fragment == nil
+        else {
+            throw GitHubOAuthError.invalidCallbackURL
+        }
+
+        let states = components.queryItems?.filter { $0.name == "state" } ?? []
+        let codes = components.queryItems?.filter { $0.name == "code" } ?? []
+        guard states.count == 1, codes.count == 1 else {
+            throw GitHubOAuthError.invalidCallbackURL
+        }
+
+        let state = states[0].value
+        guard state == expectedState else {
+            throw GitHubOAuthError.stateMismatch(expected: expectedState, actual: state)
+        }
+
+        guard let code = codes[0].value,
+              !code.isEmpty else {
+            throw GitHubOAuthError.missingCode
+        }
+
+        return code
     }
 }
 
