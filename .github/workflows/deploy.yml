@@ -23,10 +23,10 @@ jobs:
         working-directory: backend
     # Cloudflare のトークンは wrangler のステップにだけ渡す（npm ci で動くコードから読めないようにする）。
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           check-latest: true
