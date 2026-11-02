@@ -1,13 +1,13 @@
 module github.com/irj0927/begit
 
-go 1.25.0
+go 1.26.0
 
 toolchain go1.27.3
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/oauth2 v0.37.0
+	golang.org/x/sync v0.24.0
 )
 
 require (
