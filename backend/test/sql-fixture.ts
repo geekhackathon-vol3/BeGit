@@ -44,7 +44,7 @@ export async function setupFixture(fixture: GoFixture): Promise<FakeD1> {
   return d1;
 }
 
-export function toRequest(c: GoCase): Request {
+export function toRequest(c: Pick<GoCase, "method" | "path" | "token" | "body" | "headers">): Request {
   const headers: Record<string, string> = { ...c.headers };
   if (c.token !== null) headers.Authorization = `Bearer ${c.token}`;
   const init: RequestInit = { method: c.method, headers };
@@ -87,6 +87,10 @@ export class FakeQueue {
 
   async send(message: NotificationQueueMessage): Promise<void> {
     this.sent.push(message);
+  }
+
+  async sendBatch(messages: { body: NotificationQueueMessage }[]): Promise<void> {
+    this.sent.push(...messages.map((message) => message.body));
   }
 
   asQueue(): Queue<NotificationQueueMessage> {

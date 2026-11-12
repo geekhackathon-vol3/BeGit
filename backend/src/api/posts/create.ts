@@ -1,3 +1,4 @@
+import { readCloneUpTo } from "../body";
 import { errorResponse } from "../errors";
 import { decodeGoObject } from "../gojson";
 import type { RouteContext } from "../types";
@@ -132,32 +133,4 @@ export async function createPhotoDraft({ db, caller, input }: RouteContext): Pro
 // Go の scan は、空でない文字列のときだけ時刻として読む
 function isSet(value: unknown): value is string {
   return typeof value === "string" && value !== "";
-}
-
-// readCloneUpTo は request.clone() の本文を max バイトまで読む。超えたら null を返す。
-// clone は元の本文と tee() でつながっていて、片方の取り消しはもう片方も取り消されるまで終わらないので、取り消しは待たない
-// （body.ts の readBodyUpTo は取り消しを待つため使わない）
-async function readCloneUpTo(request: Request, max: number): Promise<Uint8Array | null> {
-  const clone = request.clone();
-  if (!clone.body) return new Uint8Array();
-  const reader = clone.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > max) {
-      reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
 }

@@ -1,0 +1,248 @@
+{
+ "about": "BeGit Time! のトリガー（POST /groups/:id/notifications）の Go の実際の応答。Worker が同じ応答を返すかを test/trigger-go.test.ts で確かめる。expect は、users と setup を検証環境に入れ、cases を上から順に Go に送って記録したもので、手で書き換えない。rows は各ケースの後に読んだ行。新しくできた通知・スプリント・配信の仕事の id は出てきた順に <notification:N> などに、今に近い時刻は5分単位で <now-30m> などに置き換えてある（T と Z の形の時刻は末尾に ' Z'）。",
+ "env": {
+  "BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT": "false"
+ },
+ "users": [
+  {
+   "id": 9301,
+   "login": "tr_owner",
+   "github_id": -1007187,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9302,
+   "login": "tr_poster",
+   "github_id": -461481,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9303,
+   "login": "tr_viewer",
+   "github_id": -716734,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9304,
+   "login": "tr_outsider",
+   "github_id": -1015347,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9305,
+   "login": "tr_legacy",
+   "github_id": -426875,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  }
+ ],
+ "setup": [
+  "INSERT INTO groups (id, repo_full_name, name, owner_user_id) VALUES (9311, 'tr/g9311', 'tr once', 9301), (9312, 'tr/g9312', 'tr scheduled', 9301), (9313, 'tr/g9313', 'tr previous sprint', 9301)",
+  "INSERT INTO group_members (group_id, user_id, role) VALUES (9311, 9301, 'owner'), (9311, 9302, 'poster'), (9312, 9301, 'owner'), (9313, 9301, 'owner')",
+  "INSERT INTO sprints (id, group_id, index_num, started_at, ends_at) VALUES (9381, 9311, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9382, 9312, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9383, 9313, 0, '2026-01-01 00:00:00', '2026-01-08 00:00:00'), (9384, 9313, 1, datetime('now', '-3 days'), '2099-01-01 00:00:00')",
+  "INSERT INTO notifications (id, sprint_id, sent_by, sent_at, stopped_at, ended_at, source) VALUES (930101, 9381, 9301, datetime('now', '-30 minutes'), datetime('now', '-20 minutes'), NULL, 'manual'), (930102, 9382, 9301, datetime('now', '-30 minutes'), datetime('now', '-20 minutes'), NULL, 'scheduled'), (930103, 9383, 9301, '2026-01-02 00:00:00', NULL, NULL, 'manual')"
+ ],
+ "fixed_ids": {
+  "notifications": [
+   930101,
+   930102,
+   930103
+  ],
+  "sprints": [
+   9381,
+   9382,
+   9383,
+   9384
+  ]
+ },
+ "cases": [
+  {
+   "name": "同じスプリントで2回目（1回目は止めた）",
+   "method": "POST",
+   "path": "/groups/9311/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9311 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "conflict: a challenge is in progress or already sent in this sprint"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930101,
+       "sprint_id": 9381,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-30m>",
+       "stopped_at": "<now-20m>",
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301,9302"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "同じスプリントでも別の人",
+   "method": "POST",
+   "path": "/groups/9311/notifications",
+   "token": "dev_tr_poster",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9311 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:1>",
+     "sprint_id": 9381,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930101,
+       "sprint_id": 9381,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-30m>",
+       "stopped_at": "<now-20m>",
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301,9302"
+      },
+      {
+       "id": "<notification:1>",
+       "sprint_id": 9381,
+       "sent_by": 9302,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302]",
+       "members": "9301,9302"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "定期の通知は数えない",
+   "method": "POST",
+   "path": "/groups/9312/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9312 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:2>",
+     "sprint_id": 9382,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930102,
+       "sprint_id": 9382,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-30m>",
+       "stopped_at": "<now-20m>",
+       "ended_at": null,
+       "source": "scheduled",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301"
+      },
+      {
+       "id": "<notification:2>",
+       "sprint_id": 9382,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301]",
+       "members": "9301"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "前のスプリントで送っていても",
+   "method": "POST",
+   "path": "/groups/9313/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9313 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:3>",
+     "sprint_id": 9384,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930103,
+       "sprint_id": 9383,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "2026-01-02 00:00:00",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301"
+      },
+      {
+       "id": "<notification:3>",
+       "sprint_id": 9384,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301]",
+       "members": "9301"
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "recorded": {
+  "at": "2026-11-12",
+  "go": "7fba0ba（origin/main）のトリガーの Go。デプロイした版（9507caca）は 138-trigger-v2 の未コミットの変更入りだが、変更は SendBeGitTime とコメントだけで、トリガーの経路は main と同じ",
+  "how": "test/record/trigger_go.py で、users を /auth/dev で作って id を揃え、setup を流し、cases を上から順に送って、応答と rows を記録した"
+ }
+}

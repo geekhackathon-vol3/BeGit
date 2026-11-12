@@ -1,0 +1,1822 @@
+{
+ "about": "BeGit Time! のトリガー（POST /groups/:id/notifications）の Go の実際の応答。Worker が同じ応答を返すかを test/trigger-go.test.ts で確かめる。expect は、users と setup を検証環境に入れ、cases を上から順に Go に送って記録したもので、手で書き換えない。rows は各ケースの後に読んだ行。新しくできた通知・スプリント・配信の仕事の id は出てきた順に <notification:N> などに、今に近い時刻は5分単位で <now-30m> などに置き換えてある（T と Z の形の時刻は末尾に ' Z'）。",
+ "env": {
+  "BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT": "true"
+ },
+ "users": [
+  {
+   "id": 9301,
+   "login": "tr_owner",
+   "github_id": -1007187,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9302,
+   "login": "tr_poster",
+   "github_id": -461481,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9303,
+   "login": "tr_viewer",
+   "github_id": -716734,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9304,
+   "login": "tr_outsider",
+   "github_id": -1015347,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  },
+  {
+   "id": 9305,
+   "login": "tr_legacy",
+   "github_id": -426875,
+   "avatar_url": "https://avatars.githubusercontent.com/u/0?v=4"
+  }
+ ],
+ "setup": [
+  "INSERT INTO groups (id, repo_full_name, name, owner_user_id) VALUES (9301, 'tr/g9301', 'tr main', 9301), (9302, 'tr/g9302', 'tr expired sprint', 9301), (9303, 'tr/g9303', 'tr no sprint', 9301), (9305, 'tr/g9305', 'tr stopped', 9301), (9306, 'tr/g9306', 'tr old active', 9301), (9307, 'tr/g9307', 'A&B <チーム> \"q\"', 9301), (9308, 'tr/g9308', 'tr legacy', 9301), (9309, 'tr/g9309', 'tr body', 9301), (9310, 'tr/g9310', 'tr other', 9304)",
+  "INSERT INTO groups (id, repo_full_name, name, owner_user_id, completed_at) VALUES (9304, 'tr/g9304', 'tr completed', 9301, datetime('now', '-1 days'))",
+  "INSERT INTO group_members (group_id, user_id, role) VALUES (9301, 9301, 'owner'), (9301, 9302, 'poster'), (9301, 9303, 'viewer'), (9302, 9301, 'owner'), (9303, 9301, 'owner'), (9304, 9301, 'owner'), (9305, 9301, 'owner'), (9306, 9301, 'owner'), (9307, 9302, 'owner'), (9307, 9301, 'poster'), (9308, 9301, 'owner'), (9308, 9305, 'member'), (9309, 9301, 'owner'), (9310, 9304, 'owner')",
+  "INSERT INTO sprints (id, group_id, index_num, started_at, ends_at) VALUES (9301, 9301, 1, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9302, 9302, 0, '2026-01-01 00:00:00', '2026-01-08 00:00:00'), (9304, 9304, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9305, 9305, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9306, 9306, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9307, 9307, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9308, 9308, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00'), (9309, 9309, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00')",
+  "INSERT INTO notifications (id, sprint_id, sent_by, sent_at, stopped_at, ended_at, source) VALUES (930001, 9305, 9301, datetime('now', '-30 minutes'), datetime('now', '-20 minutes'), NULL, 'manual'), (930002, 9305, 9301, datetime('now', '-15 minutes'), NULL, datetime('now', '-10 minutes'), 'manual'), (930003, 9306, 9301, datetime('now', '-2 hours'), NULL, NULL, 'manual')",
+  "INSERT INTO notification_channels (id, group_id, platform, display_name, encrypted_webhook_url, enabled, created_by) VALUES (9301, 9307, 'discord', 'on', 'not-encrypted', 1, 9302), (9302, 9307, 'slack', 'disabled', 'not-encrypted', 0, 9302), (9303, 9307, 'slack', 'reaction only', 'not-encrypted', 1, 9302), (9304, 9307, 'discord', 'two events', 'not-encrypted', 1, 9302), (9305, 9301, 'slack', 'other group', 'not-encrypted', 1, 9301)",
+  "INSERT INTO notification_channel_subscriptions (channel_id, event_type) VALUES (9301, 'begit_time'), (9302, 'begit_time'), (9303, 'reaction'), (9304, 'reaction'), (9304, 'begit_time'), (9305, 'reaction')",
+  "INSERT INTO groups (id, repo_full_name, name, owner_user_id, completed_at) VALUES (9320, 'tr/g9320', 'tr body 9320', 9301, NULL), (9321, 'tr/g9321', 'tr body 9321', 9301, NULL), (9322, 'tr/g9322', 'tr body 9322', 9301, NULL), (9323, 'tr/g9323', 'tr body 9323', 9301, NULL), (9324, 'tr/g9324', 'tr body 9324', 9301, NULL), (9325, 'tr/g9325', 'tr body 9325', 9301, NULL), (9326, 'tr/g9326', 'tr body 9326', 9301, NULL), (9327, 'tr/g9327', 'tr body 9327', 9301, NULL), (9328, 'tr/g9328', 'tr body 9328', 9301, NULL), (9329, 'tr/g9329', 'tr body 9329', 9301, NULL), (9330, 'tr/g9330', 'tr body 9330', 9301, NULL), (9331, 'tr/g9331', 'tr body 9331', 9301, NULL), (9332, 'tr/g9332', 'tr body 9332', 9301, NULL), (9333, 'tr/g9333', 'tr body 9333', 9301, NULL), (9334, 'tr/g9334', 'tr body 9334', 9301, NULL), (9335, 'tr/g9335', 'tr body 9335', 9301, NULL), (9336, 'tr/g9336', 'tr body 9336', 9301, NULL), (9337, 'tr/g9337', 'tr body 9337', 9301, NULL), (9338, 'tr/g9338', 'tr body 9338', 9301, NULL), (9339, 'tr/g9339', 'tr body 9339', 9301, NULL), (9340, 'tr/g9340', 'tr body 9340', 9301, datetime('now', '-1 days')), (9341, 'tr/g9341', 'tr body 9341', 9301, datetime('now', '-1 days')), (9342, 'tr/g9342', 'tr body 9342', 9301, NULL), (9343, 'tr/g9343', 'tr body 9343', 9301, NULL), (9344, 'tr/g9344', 'tr body 9344', 9301, NULL), (9345, 'tr/g9345', 'tr body 9345', 9301, NULL), (9346, 'tr/g9346', 'tr body 9346', 9301, NULL), (9347, 'tr/g9347', 'tr body 9347', 9301, NULL), (9348, 'tr/g9348', 'tr body 9348', 9301, NULL), (9349, 'tr/g9349', 'tr body 9349', 9301, NULL), (9350, 'tr/g9350', 'tr body 9350', 9301, NULL), (9351, 'tr/g9351', 'tr body 9351', 9301, NULL)",
+  "INSERT INTO group_members (group_id, user_id, role) VALUES (9320, 9301, 'owner'), (9320, 9302, 'poster'), (9320, 9303, 'viewer'), (9320, 9305, 'member'), (9321, 9301, 'owner'), (9321, 9302, 'poster'), (9321, 9303, 'viewer'), (9321, 9305, 'member'), (9322, 9301, 'owner'), (9322, 9302, 'poster'), (9322, 9303, 'viewer'), (9322, 9305, 'member'), (9323, 9301, 'owner'), (9323, 9302, 'poster'), (9323, 9303, 'viewer'), (9323, 9305, 'member'), (9324, 9301, 'owner'), (9324, 9302, 'poster'), (9324, 9303, 'viewer'), (9324, 9305, 'member'), (9325, 9301, 'owner'), (9325, 9302, 'poster'), (9325, 9303, 'viewer'), (9325, 9305, 'member'), (9326, 9301, 'owner'), (9326, 9302, 'poster'), (9326, 9303, 'viewer'), (9326, 9305, 'member'), (9327, 9301, 'owner'), (9327, 9302, 'poster'), (9327, 9303, 'viewer'), (9327, 9305, 'member'), (9328, 9301, 'owner'), (9328, 9302, 'poster'), (9328, 9303, 'viewer'), (9328, 9305, 'member'), (9329, 9301, 'owner'), (9329, 9302, 'poster'), (9329, 9303, 'viewer'), (9329, 9305, 'member'), (9330, 9301, 'owner'), (9330, 9302, 'poster'), (9330, 9303, 'viewer'), (9330, 9305, 'member'), (9331, 9301, 'owner'), (9331, 9302, 'poster'), (9331, 9303, 'viewer'), (9331, 9305, 'member'), (9332, 9301, 'owner'), (9332, 9302, 'poster'), (9332, 9303, 'viewer'), (9332, 9305, 'member'), (9333, 9301, 'owner'), (9333, 9302, 'poster'), (9333, 9303, 'viewer'), (9333, 9305, 'member'), (9334, 9301, 'owner'), (9334, 9302, 'poster'), (9334, 9303, 'viewer'), (9334, 9305, 'member'), (9335, 9301, 'owner'), (9335, 9302, 'poster'), (9335, 9303, 'viewer'), (9335, 9305, 'member'), (9336, 9301, 'owner'), (9336, 9302, 'poster'), (9336, 9303, 'viewer'), (9336, 9305, 'member'), (9337, 9301, 'owner'), (9337, 9302, 'poster'), (9337, 9303, 'viewer'), (9337, 9305, 'member'), (9338, 9301, 'owner'), (9338, 9302, 'poster'), (9338, 9303, 'viewer'), (9338, 9305, 'member'), (9339, 9301, 'owner'), (9339, 9302, 'poster'), (9339, 9303, 'viewer'), (9339, 9305, 'member'), (9340, 9301, 'owner'), (9340, 9302, 'poster'), (9340, 9303, 'viewer'), (9340, 9305, 'member'), (9341, 9301, 'owner'), (9341, 9302, 'poster'), (9341, 9303, 'viewer'), (9341, 9305, 'member'), (9342, 9301, 'owner'), (9342, 9302, 'poster'), (9342, 9303, 'viewer'), (9342, 9305, 'member'), (9343, 9301, 'owner'), (9343, 9302, 'poster'), (9343, 9303, 'viewer'), (9343, 9305, 'member'), (9344, 9301, 'owner'), (9344, 9302, 'poster'), (9344, 9303, 'viewer'), (9344, 9305, 'member'), (9345, 9301, 'owner'), (9345, 9302, 'poster'), (9345, 9303, 'viewer'), (9345, 9305, 'member'), (9346, 9301, 'owner'), (9346, 9302, 'poster'), (9346, 9303, 'viewer'), (9346, 9305, 'member'), (9347, 9301, 'owner'), (9347, 9302, 'poster'), (9347, 9303, 'viewer'), (9347, 9305, 'member'), (9348, 9301, 'owner'), (9348, 9302, 'poster'), (9348, 9303, 'viewer'), (9348, 9305, 'member'), (9349, 9301, 'owner'), (9349, 9302, 'poster'), (9349, 9303, 'viewer'), (9349, 9305, 'member'), (9350, 9301, 'owner'), (9350, 9302, 'poster'), (9350, 9303, 'viewer'), (9350, 9305, 'member'), (9351, 9301, 'owner'), (9351, 9302, 'poster'), (9351, 9303, 'viewer'), (9351, 9305, 'member')",
+  "INSERT INTO sprints (id, group_id, index_num, started_at, ends_at) VALUES (9310, 9342, 0, datetime('now', '-3 days'), '2099-01-01 00:00:00')",
+  "INSERT INTO notifications (id, sprint_id, sent_by, sent_at, source) VALUES (930004, 9310, 9302, datetime('now', '-10 minutes'), 'manual')",
+  "INSERT INTO notification_channels (id, group_id, platform, display_name, encrypted_webhook_url, enabled, created_by) VALUES (9306, 9343, 'discord', 'spotlight', 'not-encrypted', 1, 9301)",
+  "INSERT INTO notification_channel_subscriptions (channel_id, event_type) VALUES (9306, 'begit_time')"
+ ],
+ "fixed_ids": {
+  "notifications": [
+   930001,
+   930002,
+   930003,
+   930004
+  ],
+  "sprints": [
+   9301,
+   9302,
+   9304,
+   9305,
+   9306,
+   9307,
+   9308,
+   9309,
+   9310
+  ]
+ },
+ "cases": [
+  {
+   "name": "認証なし",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": null,
+   "body": null,
+   "headers": {},
+   "rows": null,
+   "expect": {
+    "status": 401,
+    "body": {
+     "error": "unauthorized"
+    }
+   }
+  },
+  {
+   "name": "知らないトークン",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": "dev_nobody_9399",
+   "body": null,
+   "headers": {},
+   "rows": null,
+   "expect": {
+    "status": 401,
+    "body": {
+     "error": "unauthorized"
+    }
+   }
+  },
+  {
+   "name": "グループ ID が数字でない",
+   "method": "POST",
+   "path": "/groups/abc/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": null,
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid group id"
+    }
+   }
+  },
+  {
+   "name": "存在しないグループ",
+   "method": "POST",
+   "path": "/groups/9399/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": null,
+   "expect": {
+    "status": 403,
+    "body": {
+     "error": "forbidden"
+    }
+   }
+  },
+  {
+   "name": "viewer",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": "dev_tr_viewer",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9301 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 403,
+    "body": {
+     "error": "forbidden"
+    },
+    "rows": {
+     "notifications": []
+    }
+   }
+  },
+  {
+   "name": "メンバーでない",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": "dev_tr_outsider",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9301 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 403,
+    "body": {
+     "error": "forbidden"
+    },
+    "rows": {
+     "notifications": []
+    }
+   }
+  },
+  {
+   "name": "owner がトリガー",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9301 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:1>",
+     "sprint_id": 9301,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:1>",
+       "sprint_id": 9301,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302]",
+       "members": "9301,9302"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "進行中に poster がもう一度",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": "dev_tr_poster",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9301 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "conflict: a challenge is in progress or already sent in this sprint"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:1>",
+       "sprint_id": 9301,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302]",
+       "members": "9301,9302"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "進行中に owner がもう一度",
+   "method": "POST",
+   "path": "/groups/9301/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9301 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "conflict: a challenge is in progress or already sent in this sprint"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:1>",
+       "sprint_id": 9301,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302]",
+       "members": "9301,9302"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "期限切れのスプリントしかない",
+   "method": "POST",
+   "path": "/groups/9302/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9302 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9302 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:2>",
+     "sprint_id": "<sprint:1>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:2>",
+       "sprint_id": "<sprint:1>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301]",
+       "members": "9301"
+      }
+     ],
+     "sprints": [
+      {
+       "id": 9302,
+       "group_id": 9302,
+       "index_num": 0,
+       "started_at": "2026-01-01 00:00:00",
+       "ends_at": "2026-01-08 00:00:00"
+      },
+      {
+       "id": "<sprint:1>",
+       "group_id": 9302,
+       "index_num": 1,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "スプリントがない",
+   "method": "POST",
+   "path": "/groups/9303/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9303 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9303 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:3>",
+     "sprint_id": "<sprint:2>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:3>",
+       "sprint_id": "<sprint:2>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301]",
+       "members": "9301"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:2>",
+       "group_id": 9303,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "完成済みのグループ",
+   "method": "POST",
+   "path": "/groups/9304/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9304 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9304 ORDER BY id"
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "conflict: project is completed"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": [
+      {
+       "id": 9304,
+       "group_id": 9304,
+       "index_num": 0,
+       "started_at": "<now-4320m>",
+       "ends_at": "2099-01-01 00:00:00"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "止めた・中断した通知の後",
+   "method": "POST",
+   "path": "/groups/9305/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9305 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:4>",
+     "sprint_id": 9305,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930001,
+       "sprint_id": 9305,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-30m>",
+       "stopped_at": "<now-20m>",
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301"
+      },
+      {
+       "id": 930002,
+       "sprint_id": 9305,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-15m>",
+       "stopped_at": null,
+       "ended_at": "<now-10m>",
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301"
+      },
+      {
+       "id": "<notification:4>",
+       "sprint_id": 9305,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301]",
+       "members": "9301"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "2時間前の通知が残っている",
+   "method": "POST",
+   "path": "/groups/9306/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9306 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:5>",
+     "sprint_id": 9306,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930003,
+       "sprint_id": 9306,
+       "sent_by": 9301,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-120m>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301"
+      },
+      {
+       "id": "<notification:5>",
+       "sprint_id": 9306,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301]",
+       "members": "9301"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "外部通知のチャネルがある",
+   "method": "POST",
+   "path": "/groups/9307/notifications",
+   "token": "dev_tr_owner",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9307 ORDER BY n.id",
+    "jobs": "SELECT j.id, j.event_key, j.channel_id, j.event_type, j.payload_json, j.status, j.attempt_count FROM notification_delivery_jobs j JOIN notification_channels c ON c.id = j.channel_id WHERE c.group_id = 9307 ORDER BY j.channel_id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:6>",
+     "sprint_id": 9307,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:6>",
+       "sprint_id": 9307,
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302]",
+       "members": "9301,9302"
+      }
+     ],
+     "jobs": [
+      {
+       "id": "<job:1>",
+       "event_key": "begit_time:<notification:6>",
+       "channel_id": 9301,
+       "event_type": "begit_time",
+       "payload_json": "{\"key\":\"begit_time:<notification:6>\",\"type\":\"begit_time\",\"group_id\":9307,\"group_name\":\"A\\u0026B \\u003cチーム\\u003e \\\"q\\\"\",\"title\":\"⏰ BeGit Time!\",\"body\":\"今、なに作ってる？ 1時間だけ、みんなで進捗を草にしよう。\",\"accent_color\":\"#39D353\",\"fields\":{\"ゲームモード\":\"everyone\",\"残り時間\":\"60分\",\"発行者\":\"@tr_owner\"},\"occurred_at\":\"<now Z>\"}",
+       "status": "pending",
+       "attempt_count": 0
+      },
+      {
+       "id": "<job:2>",
+       "event_key": "begit_time:<notification:6>",
+       "channel_id": 9304,
+       "event_type": "begit_time",
+       "payload_json": "{\"key\":\"begit_time:<notification:6>\",\"type\":\"begit_time\",\"group_id\":9307,\"group_name\":\"A\\u0026B \\u003cチーム\\u003e \\\"q\\\"\",\"title\":\"⏰ BeGit Time!\",\"body\":\"今、なに作ってる？ 1時間だけ、みんなで進捗を草にしよう。\",\"accent_color\":\"#39D353\",\"fields\":{\"ゲームモード\":\"everyone\",\"残り時間\":\"60分\",\"発行者\":\"@tr_owner\"},\"occurred_at\":\"<now Z>\"}",
+       "status": "pending",
+       "attempt_count": 0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "旧 role の member",
+   "method": "POST",
+   "path": "/groups/9308/notifications",
+   "token": "dev_tr_legacy",
+   "body": null,
+   "headers": {},
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9308 ORDER BY n.id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:7>",
+     "sprint_id": 9308,
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:7>",
+       "sprint_id": 9308,
+       "sent_by": 9305,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9305]",
+       "members": "9301"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "本文が JSON でない（Content-Type も JSON）",
+   "method": "POST",
+   "path": "/groups/9309/notifications",
+   "token": "dev_tr_owner",
+   "body": "not json",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9309 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9309 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": [
+      {
+       "id": 9309,
+       "group_id": 9309,
+       "index_num": 0,
+       "started_at": "<now-4320m>",
+       "ends_at": "2099-01-01 00:00:00"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "空の本文（Content-Length: 0）",
+   "method": "POST",
+   "path": "/groups/9320/notifications",
+   "token": "dev_tr_owner",
+   "body": "",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9320 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9320 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:8>",
+     "sprint_id": "<sprint:3>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:8>",
+       "sprint_id": "<sprint:3>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:3>",
+       "group_id": 9320,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "本文が {}",
+   "method": "POST",
+   "path": "/groups/9321/notifications",
+   "token": "dev_tr_owner",
+   "body": "{}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9321 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9321 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:9>",
+     "sprint_id": "<sprint:4>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:9>",
+       "sprint_id": "<sprint:4>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:4>",
+       "group_id": 9321,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "本文が null",
+   "method": "POST",
+   "path": "/groups/9322/notifications",
+   "token": "dev_tr_owner",
+   "body": "null",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9322 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9322 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:10>",
+     "sprint_id": "<sprint:5>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:10>",
+       "sprint_id": "<sprint:5>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:5>",
+       "group_id": 9322,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "member_ids が null",
+   "method": "POST",
+   "path": "/groups/9323/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":null}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9323 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9323 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:11>",
+     "sprint_id": "<sprint:6>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:11>",
+       "sprint_id": "<sprint:6>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:6>",
+       "group_id": 9323,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "member_ids が空",
+   "method": "POST",
+   "path": "/groups/9324/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9324 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9324 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:12>",
+     "sprint_id": "<sprint:7>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:12>",
+       "sprint_id": "<sprint:7>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:7>",
+       "group_id": 9324,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "本文が壊れた JSON",
+   "method": "POST",
+   "path": "/groups/9325/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9325 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9325 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "本文が配列",
+   "method": "POST",
+   "path": "/groups/9326/notifications",
+   "token": "dev_tr_owner",
+   "body": "[]",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9326 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9326 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "game_mode が数字",
+   "method": "POST",
+   "path": "/groups/9327/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":1}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9327 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9327 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids が文字列",
+   "method": "POST",
+   "path": "/groups/9328/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":\"9302\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9328 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9328 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids に小数",
+   "method": "POST",
+   "path": "/groups/9329/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9302.5]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9329 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9329 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "message が数字",
+   "method": "POST",
+   "path": "/groups/9330/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"message\":1}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9330 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9330 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "iOS と同じ本文（everyone）",
+   "method": "POST",
+   "path": "/groups/9331/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"everyone\",\"member_ids\":[9301,9302],\"message\":\"やるぞ\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9331 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9331 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:13>",
+     "sprint_id": "<sprint:8>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:13>",
+       "sprint_id": "<sprint:8>",
+       "sent_by": 9301,
+       "message": "やるぞ",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:8>",
+       "group_id": 9331,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "spotlight・自分を含まない対象",
+   "method": "POST",
+   "path": "/groups/9332/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"spotlight\",\"member_ids\":[9302],\"message\":\"見て\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9332 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9332 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:14>",
+     "sprint_id": "<sprint:9>",
+     "sent_at": "<now Z>",
+     "game_mode": "spotlight"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:14>",
+       "sprint_id": "<sprint:9>",
+       "sent_by": 9301,
+       "message": "見て",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "spotlight",
+       "audience_user_ids": "[9302,9301]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:9>",
+       "group_id": 9332,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "game_mode が知らない値",
+   "method": "POST",
+   "path": "/groups/9333/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"solo\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9333 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9333 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "game_mode が大文字",
+   "method": "POST",
+   "path": "/groups/9334/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"SPOTLIGHT\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9334 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9334 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids が重複",
+   "method": "POST",
+   "path": "/groups/9335/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9302,9302,9301]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9335 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9335 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:15>",
+     "sprint_id": "<sprint:10>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:15>",
+       "sprint_id": "<sprint:10>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9302,9301]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:10>",
+       "group_id": 9335,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "member_ids に viewer",
+   "method": "POST",
+   "path": "/groups/9336/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9302,9303]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9336 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9336 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids にメンバーでない人",
+   "method": "POST",
+   "path": "/groups/9337/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9304]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9337 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9337 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids に旧 role の member",
+   "method": "POST",
+   "path": "/groups/9338/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9305]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9338 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9338 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:16>",
+     "sprint_id": "<sprint:11>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:16>",
+       "sprint_id": "<sprint:11>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9305,9301]",
+       "members": "9301"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:11>",
+       "group_id": 9338,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "message が空文字",
+   "method": "POST",
+   "path": "/groups/9339/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"message\":\"\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9339 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9339 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:17>",
+     "sprint_id": "<sprint:12>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:17>",
+       "sprint_id": "<sprint:12>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:12>",
+       "group_id": 9339,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "不正な game_mode・完成済み",
+   "method": "POST",
+   "path": "/groups/9340/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"solo\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9340 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9340 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "不正な member_ids・完成済み",
+   "method": "POST",
+   "path": "/groups/9341/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9304]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9341 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9341 ORDER BY id"
+   },
+   "expect": {
+    "status": 409,
+    "body": {
+     "error": "conflict: project is completed"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "不正な member_ids・進行中",
+   "method": "POST",
+   "path": "/groups/9342/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9304]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9342 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9342 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": 930004,
+       "sprint_id": 9310,
+       "sent_by": 9302,
+       "message": "今なに作ってる？",
+       "sent_at": "<now-10m>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": 9310,
+       "group_id": 9342,
+       "index_num": 0,
+       "started_at": "<now-4320m>",
+       "ends_at": "2099-01-01 00:00:00"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "外部通知のチャネルがある・spotlight",
+   "method": "POST",
+   "path": "/groups/9343/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"spotlight\",\"member_ids\":[9302]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9343 ORDER BY n.id",
+    "jobs": "SELECT j.id, j.event_key, j.channel_id, j.event_type, j.payload_json, j.status, j.attempt_count FROM notification_delivery_jobs j JOIN notification_channels c ON c.id = j.channel_id WHERE c.group_id = 9343 ORDER BY j.channel_id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:18>",
+     "sprint_id": "<sprint:13>",
+     "sent_at": "<now Z>",
+     "game_mode": "spotlight"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:18>",
+       "sprint_id": "<sprint:13>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "spotlight",
+       "audience_user_ids": "[9302,9301]",
+       "members": "9301,9302"
+      }
+     ],
+     "jobs": [
+      {
+       "id": "<job:3>",
+       "event_key": "begit_time:<notification:18>",
+       "channel_id": 9306,
+       "event_type": "begit_time",
+       "payload_json": "{\"key\":\"begit_time:<notification:18>\",\"type\":\"begit_time\",\"group_id\":9343,\"group_name\":\"tr body 9343\",\"title\":\"⏰ BeGit Time!\",\"body\":\"今、なに作ってる？ 1時間だけ、みんなで進捗を草にしよう。\",\"accent_color\":\"#39D353\",\"fields\":{\"ゲームモード\":\"spotlight\",\"残り時間\":\"60分\",\"発行者\":\"@tr_owner\"},\"occurred_at\":\"<now Z>\"}",
+       "status": "pending",
+       "attempt_count": 0
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "member_ids に指数の形の数",
+   "method": "POST",
+   "path": "/groups/9344/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9.302e3]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9344 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9344 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids に .0 つきの数",
+   "method": "POST",
+   "path": "/groups/9345/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[9302.0]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9345 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9345 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids に int64 を超える数",
+   "method": "POST",
+   "path": "/groups/9346/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[99999999999999999999]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9346 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9346 ORDER BY id"
+   },
+   "expect": {
+    "status": 400,
+    "body": {
+     "error": "invalid request body"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "member_ids に負の数",
+   "method": "POST",
+   "path": "/groups/9347/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"member_ids\":[-1]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9347 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9347 ORDER BY id"
+   },
+   "expect": {
+    "status": 422,
+    "body": {
+     "error": "invalid game mode or notification members"
+    },
+    "rows": {
+     "notifications": [],
+     "sprints": []
+    }
+   }
+  },
+  {
+   "name": "game_mode と message が null",
+   "method": "POST",
+   "path": "/groups/9348/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":null,\"message\":null}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9348 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9348 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:19>",
+     "sprint_id": "<sprint:14>",
+     "sent_at": "<now Z>",
+     "game_mode": "everyone"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:19>",
+       "sprint_id": "<sprint:14>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "everyone",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:14>",
+       "group_id": 9348,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "知らない項目は無視",
+   "method": "POST",
+   "path": "/groups/9349/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"game_mode\":\"spotlight\",\"extra\":1}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9349 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9349 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:20>",
+     "sprint_id": "<sprint:15>",
+     "sent_at": "<now Z>",
+     "game_mode": "spotlight"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:20>",
+       "sprint_id": "<sprint:15>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "spotlight",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:15>",
+       "group_id": 9349,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "poster が自分だけを対象",
+   "method": "POST",
+   "path": "/groups/9350/notifications",
+   "token": "dev_tr_poster",
+   "body": "{\"game_mode\":\"spotlight\",\"member_ids\":[9302]}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9350 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9350 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:21>",
+     "sprint_id": "<sprint:16>",
+     "sent_at": "<now Z>",
+     "game_mode": "spotlight"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:21>",
+       "sprint_id": "<sprint:16>",
+       "sent_by": 9302,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "spotlight",
+       "audience_user_ids": "[9302]",
+       "members": "9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:16>",
+       "group_id": 9350,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "キーの大文字小文字が違う",
+   "method": "POST",
+   "path": "/groups/9351/notifications",
+   "token": "dev_tr_owner",
+   "body": "{\"GAME_MODE\":\"spotlight\"}",
+   "headers": {
+    "Content-Type": "application/json"
+   },
+   "rows": {
+    "notifications": "SELECT n.id, n.sprint_id, n.sent_by, n.message, n.sent_at, n.stopped_at, n.ended_at, n.source, n.game_mode, n.audience_user_ids, (SELECT group_concat(user_id) FROM (SELECT user_id FROM notification_members WHERE notification_id = n.id ORDER BY user_id)) AS members FROM notifications n JOIN sprints s ON s.id = n.sprint_id WHERE s.group_id = 9351 ORDER BY n.id",
+    "sprints": "SELECT id, group_id, index_num, started_at, ends_at FROM sprints WHERE group_id = 9351 ORDER BY id"
+   },
+   "expect": {
+    "status": 201,
+    "body": {
+     "id": "<notification:22>",
+     "sprint_id": "<sprint:17>",
+     "sent_at": "<now Z>",
+     "game_mode": "spotlight"
+    },
+    "rows": {
+     "notifications": [
+      {
+       "id": "<notification:22>",
+       "sprint_id": "<sprint:17>",
+       "sent_by": 9301,
+       "message": "今、なに作ってる？",
+       "sent_at": "<now>",
+       "stopped_at": null,
+       "ended_at": null,
+       "source": "manual",
+       "game_mode": "spotlight",
+       "audience_user_ids": "[9301,9302,9305]",
+       "members": "9301,9302"
+      }
+     ],
+     "sprints": [
+      {
+       "id": "<sprint:17>",
+       "group_id": 9351,
+       "index_num": 0,
+       "started_at": "<now>",
+       "ends_at": "<now+10080m>"
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "recorded": {
+  "at": "2026-11-12",
+  "go": "3ac6ef1（検証環境の c757208a）。backend は origin/main 7fba0ba と同じ（計測用のコードを除く）",
+  "how": "test/record/trigger_go.py で、users を /auth/dev で作って id を揃え、setup を流し、cases を上から順に送って、応答と rows を記録した"
+ }
+}
