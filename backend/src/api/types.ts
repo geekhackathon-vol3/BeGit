@@ -10,6 +10,8 @@ export interface ApiEnv {
   // Worker で処理する API の名前をカンマ区切りで並べる（例 "posts.confirm"）。空なら全てコンテナへ転送する。
   WORKER_ROUTES?: string;
   D1_METRICS?: string;
+  // "true" なら BeGit Time! の「1スプリント1人1回」を適用しない（notifications/send.ts。Go と同じ変数）
+  BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT?: string;
   // 写真（r2.ts）。R2 の認証情報がなければスタブで動く（Go と同じ）
   PHOTOS?: R2Bucket;
   R2_ACCESS_KEY_ID?: string;
@@ -33,7 +35,7 @@ export interface RouteContext {
 // NotificationQueueMessage は NOTIFICATION_QUEUE に積むメッセージ。受けて送るのは Go の裏方のコンテナ（src/queue.ts）
 //   { job_id }             : 外部通知の配信の仕事（Go が積む。今までの形）→ POST /internal/notification-deliveries/:jobId
 //   { type: "reaction" }   : リアクションの作者への FCM 通知（Worker が積む）→ POST /internal/push-notifications（#134）
-//   { type: "begit_time" } : BeGit Time! のグループ全員への FCM 通知（トリガーを移したときに Worker が積む）→ 同上
+//   { type: "begit_time" } : BeGit Time! の対象メンバーへの FCM 通知（Worker のトリガーが積む。モードは Go が通知から読む）→ 同上
 export type NotificationQueueMessage =
   | { job_id: number }
   | { type: "reaction"; group_id: number; post_id: number; actor_user_id: number; author_user_id: number }

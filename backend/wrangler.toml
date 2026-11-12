@@ -84,6 +84,9 @@ DEV_MODE = "true"
 # BeGit Time! の「1スプリント1人1回」を解除（動作確認で何度でも発行できるように）。
 # 1時間のチャレンジ中は発行不可のルールは維持される。
 BEGIT_TIME_ALLOW_MULTIPLE_PER_SPRINT = "true"
+# Worker が D1 で直接処理する API（#132。名前は src/api/router.ts の ROUTES）。ここにないものは Go コンテナへ転送する。
+# dev だけで有効にする（本番の [vars] には書かない）。戻すときはここから名前を外す。
+WORKER_ROUTES = "posts.create,photos.upload,posts.confirm,reactions.create,posts.list,notifications.send"
 CF_ACCOUNT_ID = "c53d3c6ca02ae31a86aa3bf8fcbe5e55"
 D1_DATABASE_ID = "05f3624f-cac0-4158-a40e-0e3e67e9c383"
 R2_BUCKET = "begit-photos"

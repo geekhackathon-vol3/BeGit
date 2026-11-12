@@ -8,17 +8,9 @@ import { loadFixture, seedFakeD1, TEST_KEY, toRequest } from "./go-fixture";
 
 const fixture = loadFixture("feed-go.json");
 
-// Worker が意図して Go と違う応答を返すケース（理由つき）
-const INTENDED_DIFFERENCES: Record<string, { status: number; check: (body: { posts: { id: number }[] }) => void; reason: string }> = {
-  "投稿が100件を超えるグループ": {
-    status: 200,
-    // 一番新しい 915012 の後に、915200 から 915100 までが新しい順に並ぶ
-    check: (body) => {
-      expect(body.posts.map((post) => post.id)).toEqual([915012, ...Array.from({ length: 101 }, (_, i) => 915200 - i)]);
-    },
-    reason: "Go は写真を IN (?, …) で引くので、D1 の1つの SQL に渡せる値（100個）を超えて 500 になる。Worker はサブクエリで引く",
-  },
-};
+// Worker が意図して Go と違う応答を返すケース（理由つき）。
+// 前回まであった「投稿が100件を超えるグループ」は、Go も最大 50 件ずつ返すようになり（#164）、差がなくなった
+const INTENDED_DIFFERENCES: Record<string, { status: number; check: (body: unknown) => void; reason: string }> = {};
 
 let d1: FakeD1;
 let env: ApiEnv;
@@ -44,15 +36,45 @@ describe("フィード取得が Go と同じ応答を返す（fixtures/feed-go.j
     const intended = INTENDED_DIFFERENCES[c.name];
     if (intended) {
       expect(response!.status).toBe(intended.status);
-      intended.check(body as { posts: { id: number }[] });
+      intended.check(body);
     } else {
       expect({ status: response!.status, body }).toEqual({ status: c.expect.status, body: c.expect.body });
     }
   });
 
-  it("投稿・投稿者・写真を1回の往復で取る（認証と合わせて2回。Go は5回）", async () => {
+  it("投稿・投稿者・写真・リアクションを1回の往復で取る（認証と合わせて2回。Go は6回）", async () => {
     const before = d1.roundTrips;
     await handleWorkerRoute(toRequest(fixture.cases[0]), env);
     expect(d1.roundTrips - before).toBe(2);
+  });
+});
+
+// fixture にない、カーソルの id の表記。期待する値は、Go の postCursor（ID int64）に json.Unmarshal して確かめたもの
+// （1.0・1e3・int64 の範囲外はエラーで 400 "invalid cursor"、int64 に収まれば大きくても読める）
+describe("カーソルの id は Go の int64 と同じ規則で読む", () => {
+  const feed = async (idSource: string) => {
+    const json = `{"created_at":"2026-10-20T10:00:00Z","id":${idSource}}`;
+    const cursor = btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const request = new Request(`https://begit.example/groups/9101/posts?limit=50&cursor=${cursor}`, {
+      headers: { Authorization: "Bearer dev_user001" },
+    });
+    const response = await handleWorkerRoute(request, env);
+    return { status: response!.status, body: await response!.json() };
+  };
+
+  it.each(["915003.0", "1e3", "1E3", "1e100", "9223372036854775808", "-9223372036854775809"])("%s は 400", async (id) => {
+    expect(await feed(id)).toEqual({ status: 400, body: { error: "invalid cursor" } });
+  });
+
+  it.each(["9223372036854775807", "9007199254740993"])("%s は int64 に収まるので読める（どの投稿の id より大きい）", async (id) => {
+    const larger = await feed("999999999");
+    expect(larger.status).toBe(200);
+    expect(await feed(id)).toEqual(larger);
+  });
+
+  it("-9223372036854775808 は int64 に収まるので読める（どの投稿の id より小さい）", async () => {
+    const smaller = await feed("0");
+    expect(smaller.status).toBe(200);
+    expect(await feed("-9223372036854775808")).toEqual(smaller);
   });
 });

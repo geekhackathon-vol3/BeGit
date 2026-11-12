@@ -1,6 +1,7 @@
 import { authorizeGroup, GROUP_ROLE_OWNER, GROUP_ROLE_POSTER, type GroupAccess } from "./auth";
 import { MeteredDB } from "./db";
 import { errorResponse } from "./errors";
+import { claimTrigger, sendNotification } from "./notifications/send";
 import { uploadPhotos } from "./photos/upload";
 import { confirmPost } from "./posts/confirm";
 import { listPosts } from "./posts/list";
@@ -61,6 +62,15 @@ const ROUTES: Route[] = [
     pattern: /^\/groups\/([^/]+)\/posts\/([^/]+)\/reactions$/,
     access: { kind: "roles", roles: [GROUP_ROLE_OWNER, GROUP_ROLE_POSTER] },
     handler: createReaction,
+  },
+  {
+    // BeGit Time! のトリガー。本文（game_mode・member_ids・message）を Go と同じに読めないものは Go に任せる
+    name: "notifications.send",
+    method: "POST",
+    pattern: /^\/groups\/([^/]+)\/notifications$/,
+    access: { kind: "roles", roles: [GROUP_ROLE_OWNER, GROUP_ROLE_POSTER] },
+    claim: claimTrigger,
+    handler: sendNotification,
   },
 ];
 

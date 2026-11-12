@@ -235,7 +235,7 @@ func (s *notificationService) SendNotification(ctx context.Context, groupID, use
 		return nil, fmt.Errorf("notification_service: create notification failed: %w", err)
 	}
 
-	// Step 4: FCM でグループ全メンバーに begit_time data メッセージ送信（ベストエフォート）
+	// Step 4: FCM で通知の対象メンバー（notification_members）に begit_time data メッセージ送信（ベストエフォート）
 	if s.fcmTokenRepo != nil && s.fcmClient != nil {
 		var tokens []string
 		var err error

@@ -89,14 +89,29 @@ function toInt(value: number | null): number {
 
 const ZERO_TIME = "0001-01-01T00:00:00Z";
 // Go の time.Parse は、レイアウトになくても秒の後ろの小数（区切りは . か ,）を読む
-const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?(Z|[+-]\d{2}:\d{2})$/;
-const SQLITE_DATETIME = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?$/;
+const RFC3339 = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:[.,](\d+))?(Z|[+-]\d{2}:\d{2})$/;
+const SQLITE_DATETIME = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})(?:[.,](\d+))?$/;
+
+// GoTime は Go の time.Time のうち、使う所（ミリ秒未満を切り捨てた時刻と、秒の後ろのナノ秒）
+export interface GoTime {
+  date: Date;
+  nanos: number;
+}
 
 // formatTimestamp は Go の scanPost → CreatedAt.UTC().Format(time.RFC3339) と同じ文字列にする。
 // 読めなければゼロ時刻にする（Go と同じ）。
 export function formatTimestamp(value: unknown): string {
   const date = parseGoTimestamp(value);
   return date ? formatRFC3339(date) : ZERO_TIME;
+}
+
+// formatTimestampNano は Go の scanPost → CreatedAt.UTC().Format(time.RFC3339Nano) と同じ文字列にする。
+// 小数は末尾の 0 を落とし、なければ付けない。読めなければゼロ時刻
+export function formatTimestampNano(value: unknown): string {
+  const time = parseGoTime(value, true);
+  if (!time) return ZERO_TIME;
+  const fraction = time.nanos === 0 ? "" : `.${String(time.nanos).padStart(9, "0").replace(/0+$/, "")}`;
+  return formatRFC3339(time.date).replace(/Z$/, `${fraction}Z`);
 }
 
 // formatRFC3339 は Go の t.UTC().Format(time.RFC3339) と同じく、秒までの UTC にする
@@ -107,10 +122,20 @@ export function formatRFC3339(date: Date): string {
 // parseGoTimestamp は Go の time.Parse(time.RFC3339, v)、だめなら time.Parse("2006-01-02 15:04:05", v) と同じ規則で読む。
 // SQLite の datetime('now') の形式は UTC として読む。読めなければ null
 export function parseGoTimestamp(value: unknown): Date | null {
+  return parseGoTime(value, true)?.date ?? null;
+}
+
+// isGoZeroTime は Go の t.IsZero()（0001-01-01T00:00:00Z ちょうど）
+export function isGoZeroTime(time: GoTime): boolean {
+  return time.nanos === 0 && formatRFC3339(time.date) === ZERO_TIME;
+}
+
+// parseGoTime は Go の time.Parse(time.RFC3339, v) と同じ規則で読む（RFC3339Nano も同じ）。
+// sqlite なら、だめなとき time.Parse("2006-01-02 15:04:05", v) も試す（UTC として読む）。読めなければ null
+export function parseGoTime(value: unknown, sqlite: boolean): GoTime | null {
   if (typeof value !== "string") return null;
   const rfc = RFC3339.exec(value);
-  const sqlite = rfc ? null : SQLITE_DATETIME.exec(value);
-  const m = rfc ?? sqlite;
+  const m = rfc ?? (sqlite ? SQLITE_DATETIME.exec(value) : null);
   if (!m) return null;
 
   const [year, month, day, hour, minute, second] = m.slice(1, 7).map(Number);
@@ -123,7 +148,7 @@ export function parseGoTimestamp(value: unknown): Date | null {
     return null;
   }
 
-  const zone = rfc ? m[7] : "Z";
+  const zone = rfc ? m[8] : "Z";
   if (zone !== "Z") {
     const zoneHours = +zone.slice(1, 3);
     const zoneMinutes = +zone.slice(4, 6);
@@ -132,5 +157,7 @@ export function parseGoTimestamp(value: unknown): Date | null {
     const sign = zone[0] === "-" ? -1 : 1;
     date.setTime(date.getTime() - sign * (zoneHours * 60 + zoneMinutes) * 60_000);
   }
-  return date;
+  // Go はナノ秒より下の桁を切り捨てる
+  const nanos = m[7] ? Number(m[7].slice(0, 9).padEnd(9, "0")) : 0;
+  return { date, nanos };
 }
