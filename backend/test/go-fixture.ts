@@ -46,7 +46,7 @@ export interface TargetRow {
 export const TEST_KEY = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
 // 外部キーの向きに合わせた順
-const TABLES = ["users", "groups", "group_members", "sprints", "notifications", "posts", "photos"];
+const TABLES = ["users", "groups", "group_members", "sprints", "notifications", "posts", "photos", "reactions"];
 
 export function loadFixture(name: string): GoFixture {
   return JSON.parse(readFileSync(join(import.meta.dirname, "fixtures", name), "utf8"));

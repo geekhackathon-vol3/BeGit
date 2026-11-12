@@ -8,17 +8,9 @@ import { loadFixture, seedFakeD1, TEST_KEY, toRequest } from "./go-fixture";
 
 const fixture = loadFixture("feed-go.json");
 
-// Worker が意図して Go と違う応答を返すケース（理由つき）
-const INTENDED_DIFFERENCES: Record<string, { status: number; check: (body: { posts: { id: number }[] }) => void; reason: string }> = {
-  "投稿が100件を超えるグループ": {
-    status: 200,
-    // 一番新しい 915012 の後に、915200 から 915100 までが新しい順に並ぶ
-    check: (body) => {
-      expect(body.posts.map((post) => post.id)).toEqual([915012, ...Array.from({ length: 101 }, (_, i) => 915200 - i)]);
-    },
-    reason: "Go は写真を IN (?, …) で引くので、D1 の1つの SQL に渡せる値（100個）を超えて 500 になる。Worker はサブクエリで引く",
-  },
-};
+// Worker が意図して Go と違う応答を返すケース（理由つき）。
+// 前回まであった「投稿が100件を超えるグループ」は、Go も最大 50 件ずつ返すようになり（#164）、差がなくなった
+const INTENDED_DIFFERENCES: Record<string, { status: number; check: (body: unknown) => void; reason: string }> = {};
 
 let d1: FakeD1;
 let env: ApiEnv;
@@ -44,13 +36,13 @@ describe("フィード取得が Go と同じ応答を返す（fixtures/feed-go.j
     const intended = INTENDED_DIFFERENCES[c.name];
     if (intended) {
       expect(response!.status).toBe(intended.status);
-      intended.check(body as { posts: { id: number }[] });
+      intended.check(body);
     } else {
       expect({ status: response!.status, body }).toEqual({ status: c.expect.status, body: c.expect.body });
     }
   });
 
-  it("投稿・投稿者・写真を1回の往復で取る（認証と合わせて2回。Go は5回）", async () => {
+  it("投稿・投稿者・写真・リアクションを1回の往復で取る（認証と合わせて2回。Go は6回）", async () => {
     const before = d1.roundTrips;
     await handleWorkerRoute(toRequest(fixture.cases[0]), env);
     expect(d1.roundTrips - before).toBe(2);
