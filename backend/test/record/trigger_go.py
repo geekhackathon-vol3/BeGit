@@ -424,8 +424,8 @@ CLEANUP = [
     f"DELETE FROM posts WHERE group_id IN ({GROUPS})",
     f"DELETE FROM point_awards WHERE group_id IN ({GROUPS})",
     f"DELETE FROM final_result_members WHERE group_id IN ({GROUPS})",
-    f"DELETE FROM notification_deliveries WHERE (kind = 'challenge_end' AND ref_id IN ({NOTIFICATIONS})) "
-    f"OR (kind LIKE 'sprint_%' AND ref_id IN ({SPRINTS}))",
+    f"DELETE FROM notification_deliveries WHERE (kind IN ('challenge_end', 'challenge_reminder_30', 'challenge_reminder_10') "
+    f"AND ref_id IN ({NOTIFICATIONS})) OR (kind LIKE 'sprint_%' AND ref_id IN ({SPRINTS}))",
     f"DELETE FROM notification_game_results WHERE notification_id IN ({NOTIFICATIONS})",
     f"DELETE FROM notification_members WHERE notification_id IN ({NOTIFICATIONS})",
     f"DELETE FROM notifications WHERE sprint_id IN ({SPRINTS})",
