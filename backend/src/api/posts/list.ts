@@ -27,11 +27,14 @@ export async function listPosts({ request, env, db, caller }: RouteContext): Pro
     binds.push(cursor.stamp, cursor.stamp, cursor.id);
   }
   page += " ORDER BY datetime(p.created_at) DESC, p.id DESC LIMIT ?";
-  binds.push(limit + 1);
+  const postBinds = [...binds, limit + 1];
+  // 写真とリアクションは、応答する limit 件の投稿の分だけ取る（Go も limit 件に切ってから引く）。
+  // 並びは id まで含めて一意なので、先頭の limit 件は投稿の側で切り詰めたものと同じになる
   const pagePostIDs = `SELECT p.id FROM posts p WHERE ${page}`;
+  const relatedBinds = [...binds, limit];
 
-  // 投稿・投稿者・写真・リアクションを1回の往復で取る。Go は写真とリアクションを IN (?, …) で引くが、
-  // D1 の1つの SQL に渡せる値（100個）に当たらないよう、ここではサブクエリで引く
+  // 投稿・投稿者・写真・リアクションを1回の往復で取る。Go は写真とリアクションを IN (?, …) で引いて往復が増えるので、
+  // ここではサブクエリにして同じ batch に入れる
   const [posts, photos, reactions] = await db.batch([
     db.prepare(
       `SELECT ${postColumns("p")},
@@ -40,13 +43,13 @@ export async function listPosts({ request, env, db, caller }: RouteContext): Pro
        LEFT JOIN group_members gm ON gm.group_id = p.group_id AND gm.user_id = p.user_id
        LEFT JOIN users u ON u.id = gm.user_id
        WHERE ${page}`,
-    ).bind(...binds),
+    ).bind(...postBinds),
     db.prepare(
       `SELECT ph.id, ph.post_id, ph.r2_key, ph.photo_type
        FROM photos ph
        WHERE ph.post_id IN (${pagePostIDs})
        ORDER BY ph.id ASC`,
-    ).bind(...binds),
+    ).bind(...relatedBinds),
     // Go の reactionRepository.ListByPostIDs と同じく、users にいない人のリアクションは出さない
     db.prepare(
       `SELECT rx.id, rx.post_id, rx.user_id, rx.reaction_type, u.github_login AS login, u.avatar_url AS avatar_url
@@ -54,7 +57,7 @@ export async function listPosts({ request, env, db, caller }: RouteContext): Pro
        INNER JOIN users u ON rx.user_id = u.id
        WHERE rx.post_id IN (${pagePostIDs})
        ORDER BY rx.id ASC`,
-    ).bind(...binds),
+    ).bind(...relatedBinds),
   ]);
 
   let rows = posts.results as unknown as FeedRow[];
