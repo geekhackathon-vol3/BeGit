@@ -144,7 +144,12 @@ func (s *server) buildHandler() (http.Handler, error) {
 	reactionSvc := service.NewReactionServiceWithExternalNotifications(reactionRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
 	// Worker が Queue に積んだ FCM 通知を送る（#134）
-	pushNotificationSvc := service.NewPushNotificationService(userRepo, fcmTokenRepo, fcmClient)
+	// begit_time は対象メンバーだけに送るので、対象メンバーのトークンを引けるリポジトリが要る。配線の誤りは起動時に止める
+	pushTokenRepo, ok := fcmTokenRepo.(service.PushTokenRepository)
+	if !ok {
+		return nil, fmt.Errorf("fcm token repository does not implement service.PushTokenRepository")
+	}
+	pushNotificationSvc := service.NewPushNotificationService(userRepo, notifRepo, pushTokenRepo, fcmClient)
 
 	commentSvc := service.NewCommentServiceWithExternalNotifications(commentRepo, postRepo, userRepo, fcmTokenRepo, fcmClient, groupRepo, externalPublisher)
 
