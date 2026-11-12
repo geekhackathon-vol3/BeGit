@@ -436,10 +436,11 @@ CLEANUP = [
     f"DELETE FROM groups WHERE id IN ({GROUPS})",
     f"DELETE FROM users WHERE id IN ({TEST_USERS})",
 ]
-# 自動の続き番号を、残った行の最大値に戻す（setup の id で進んだ分）
+# 自動の続き番号を、残った行の最大値に戻す（setup の id で進んだ分）。
+# repository_changes の sequence は戻さない。クライアントが同期のカーソルとして持つので、戻すと番号が再び使われ、変更を取りこぼす
 RESET_SEQUENCES = [
-    f"UPDATE sqlite_sequence SET seq = (SELECT COALESCE(MAX({'sequence' if table == 'repository_changes' else 'id'}), 0) FROM {table}) WHERE name = '{table}'"
-    for table in ("users", "groups", "sprints", "notifications", "notification_channels", "notification_delivery_jobs", "repository_changes")
+    f"UPDATE sqlite_sequence SET seq = (SELECT COALESCE(MAX(id), 0) FROM {table}) WHERE name = '{table}'"
+    for table in ("users", "groups", "sprints", "notifications", "notification_channels", "notification_delivery_jobs")
 ]
 
 
