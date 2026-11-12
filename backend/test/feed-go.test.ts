@@ -48,3 +48,33 @@ describe("フィード取得が Go と同じ応答を返す（fixtures/feed-go.j
     expect(d1.roundTrips - before).toBe(2);
   });
 });
+
+// fixture にない、カーソルの id の表記。期待する値は、Go の postCursor（ID int64）に json.Unmarshal して確かめたもの
+// （1.0・1e3・int64 の範囲外はエラーで 400 "invalid cursor"、int64 に収まれば大きくても読める）
+describe("カーソルの id は Go の int64 と同じ規則で読む", () => {
+  const feed = async (idSource: string) => {
+    const json = `{"created_at":"2026-10-20T10:00:00Z","id":${idSource}}`;
+    const cursor = btoa(json).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const request = new Request(`https://begit.example/groups/9101/posts?limit=50&cursor=${cursor}`, {
+      headers: { Authorization: "Bearer dev_user001" },
+    });
+    const response = await handleWorkerRoute(request, env);
+    return { status: response!.status, body: await response!.json() };
+  };
+
+  it.each(["915003.0", "1e3", "1E3", "1e100", "9223372036854775808", "-9223372036854775809"])("%s は 400", async (id) => {
+    expect(await feed(id)).toEqual({ status: 400, body: { error: "invalid cursor" } });
+  });
+
+  it.each(["9223372036854775807", "9007199254740993"])("%s は int64 に収まるので読める（どの投稿の id より大きい）", async (id) => {
+    const larger = await feed("999999999");
+    expect(larger.status).toBe(200);
+    expect(await feed(id)).toEqual(larger);
+  });
+
+  it("-9223372036854775808 は int64 に収まるので読める（どの投稿の id より小さい）", async () => {
+    const smaller = await feed("0");
+    expect(smaller.status).toBe(200);
+    expect(await feed("-9223372036854775808")).toEqual(smaller);
+  });
+});

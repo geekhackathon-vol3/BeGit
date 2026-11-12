@@ -101,23 +101,37 @@ function parseLimit(raw: string): number | null {
 
 const NO_CURSOR = Symbol("no cursor");
 
-// Cursor は SQL に渡す値。stamp は Go と同じく、カーソルの時刻を秒までの RFC3339 にしたもの
+// Cursor は SQL に渡す値。stamp は Go と同じく、カーソルの時刻を秒までの RFC3339 にしたもの。
+// id は、JavaScript の数値で正確に表せない int64 なら10進の文字列（p.id は INTEGER の列なので、SQLite が数値にして比べる）
 interface Cursor {
   stamp: string;
-  id: number;
+  id: number | string;
 }
+
+const INT64_MIN = -(2n ** 63n);
+const INT64_MAX = 2n ** 63n - 1n;
 
 // parseCursor は Go の List と同じ規則でカーソルを読む。読めなければ null（400 "invalid cursor"）。
 //   base64url（パディングなし）→ JSON {"created_at": RFC3339Nano, "id": 整数}
 //   キーは Go の encoding/json と同じく大文字小文字を区別しない。id がなければ 0
+//   id は Go の int64 と同じく、整数の表記（1.0 や 1e3 は不可）で int64 に収まるものだけ
 //   空、または時刻がゼロ時刻なら、カーソルなし（最初のページ）
 function parseCursor(raw: string): Cursor | typeof NO_CURSOR | null {
   if (raw === "") return NO_CURSOR;
   const decoded = decodeBase64RawURL(raw);
   if (decoded === null) return null;
+  // 一番外のオブジェクトの数値の元の表記（JSON.parse の reviver は内側から順に呼ばれる）
+  const numberSources = new Map<object, Map<string, string | undefined>>();
   let value: unknown;
   try {
-    value = JSON.parse(decoded);
+    value = JSON.parse(decoded, function (this: object, key: string, item: unknown, context?: { source?: string }) {
+      if (typeof item === "number") {
+        let sources = numberSources.get(this);
+        if (!sources) numberSources.set(this, (sources = new Map()));
+        sources.set(key, context?.source);
+      }
+      return item;
+    });
   } catch {
     return null;
   }
@@ -126,7 +140,7 @@ function parseCursor(raw: string): Cursor | typeof NO_CURSOR | null {
   if (typeof value !== "object" || Array.isArray(value)) return null;
 
   let createdAt: unknown = "";
-  let id: unknown = 0;
+  let id: number | string = 0;
   for (const [key, field] of Object.entries(value)) {
     const name = key.toLowerCase();
     // Go は null を読むと、その項目を変えない
@@ -135,15 +149,27 @@ function parseCursor(raw: string): Cursor | typeof NO_CURSOR | null {
       if (typeof field !== "string") return null;
       createdAt = field;
     } else if (name === "id") {
-      if (typeof field !== "number" || !Number.isInteger(field)) return null;
-      id = field;
+      const parsed = parseCursorID(field, numberSources.get(value)?.get(key));
+      if (parsed === null) return null;
+      id = parsed;
     }
   }
 
   const time = parseGoTime(createdAt, false);
   if (!time) return null;
   if (isGoZeroTime(time)) return NO_CURSOR;
-  return { stamp: formatRFC3339(time.date), id: id as number };
+  return { stamp: formatRFC3339(time.date), id };
+}
+
+// parseCursorID は、Go が int64 として読める id を、SQL に渡す値にする。読めなければ null。
+// 元の表記がわからない実行環境では、JavaScript の数値で正確に表せる整数だけを受け付ける
+function parseCursorID(field: unknown, source: string | undefined): number | string | null {
+  if (typeof field !== "number") return null;
+  if (source === undefined) return Number.isSafeInteger(field) ? field : null;
+  if (!/^-?\d+$/.test(source)) return null;
+  const exact = BigInt(source);
+  if (exact < INT64_MIN || exact > INT64_MAX) return null;
+  return Number.isSafeInteger(field) ? field : exact.toString();
 }
 
 // decodeBase64RawURL は Go の base64.RawURLEncoding.DecodeString と同じく読み、UTF-8 として文字列にする。
