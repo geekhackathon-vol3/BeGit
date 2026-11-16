@@ -31,16 +31,16 @@ jobs:
     # Cloudflare のトークンは wrangler のステップにだけ渡す。go test・npm ci で動く
     # 依存パッケージのコードから読めないようにするため。
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       # 必須チェックは admin が迂回でき、手動実行ではブランチを直接出せるため、ここでもテストする。
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
       - run: go test ./...
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           check-latest: true
